@@ -1,6 +1,6 @@
 # WebHomeTV 编译说明
 
-本目录只保留 APK 编译所需的工程文件，不含 Git 历史与构建缓存；下载中心模块的实现要点、真机验证结论和待办见文末第四～六节。
+本目录只保留 APK 编译所需的工程文件，构建缓存不入库；仓库已建立 Git 基线（见第四节「接手开发须知」），下载中心模块的实现要点、真机验证结论和待办见文末第四～六节。
 
 ## 一、编译环境（本机已装好）
 
@@ -12,7 +12,7 @@
 | Python | 3.10（`/home/s/.local/bin/python3.10`，Chaquo 要求） |
 | Gradle | 工程自带 Wrapper（`./gradlew`），无需另装 |
 
-SDK 路径已写入 `local.properties`：`sdk.dir=/home/s/Android/Sdk`
+SDK 路径已写入 `local.properties`：`sdk.dir=/home/s/Android/Sdk`。该文件**不入库**（Release 签名口令也从这里读，见 `app/build.gradle`），换机器需自行创建。
 
 ## 二、编译命令
 
@@ -101,11 +101,14 @@ cd /home/s/webtv
 ./gradlew :app:assembleMobileArm64_v8aDebug                                    # 手机包
 ./gradlew :app:compileLeanbackArm64_v8aDebugJavaWithJavac                       # 电视版仅编译校验
 ./gradlew :app:testMobileArm64_v8aDebugUnitTest --tests 'com.fongmi.android.tv.download.M3u8Test'
+
+git status --porcelain                                                                    # 改前确认工作区干净
+git diff 4e2474f -- app/src/mobile/java/com/fongmi/android/tv/ui/activity/DownloadCenterActivity.java   # 与基线比对某个文件
 ```
 
 ### 接手开发须知
 
-- 本目录**不是 git 仓库**（无 `.git`、无历史），改动只存在于工作区文件本身；接手前建议先 `git init` 并提交基线，否则无法回滚或比对 diff。
+- 仓库已初始化：`main` 分支第一个提交 `4e2474f` 是 2026-10-26 下载中心开发完成、真机验证通过后的**基线快照**（2937 个文件；`.git` 约 194MB）。`.gitignore` 排除 `build/`、`.gradle/`、`.cxx/` 与 `local.properties`；`app/libs`、`third_party/**/prebuilt` 里的 `.so/.a/.aar` 是 vendored 预编译产物，**故意入库**，删了会编不出包。改动前先 `git status` 确认干净，回滚用 `git diff 4e2474f -- 路径`。`app/build.gradle` 会把 `git rev-parse HEAD` 和工作区状态写进 `BuildConfig.GIT_REVISION` / `GIT_STATE`（`defaultConfig`，所有变体生效）；第五节验证所用的 17:08 APK 打于建库之前，字段还是 `unavailable`，之后重新构建才会带上真实提交号。
 - 下载中心入口链路：详情页 →「下载」图标 → `DownloadDialog` →「查看全部下载」→ `DownloadCenterActivity`。该 Activity **未导出**，`adb shell am start` 会被 `SecurityException` 拒绝，只能走 UI 链路（通知栏点击是另一个入口）。
 - 文案改一处不够：`download_*` 字符串同时存在于 `values/strings.xml`（英文）、`values-zh-rCN/strings.xml`、`values-zh-rTW/strings.xml`，新增/修改要三份一起改。
 - 界面构建方式不同：下载中心是 XML（`app/src/mobile/res/layout/activity_download_center.xml`）+ 代码动态加分组卡片；`DownloadDialog` 与本地播放提示条（`VideoActivity.setupLocalBar()`）完全是代码里拼 View，没有对应 XML，改样式要找 Java 而不是 layout。
@@ -131,5 +134,5 @@ cd /home/s/webtv
 1. 下载中心可读性：`下载中 / 已下载` tab 字号偏小，底部「全部开始 / 全部暂停 / 删除」三键在半透明背景 + 壁纸上对比度不足，需要加深色底或描边。
 2. 本地播放页「观看网络多线路完整版」需完整对齐可可影视：当前 `switchToNetwork()` 已能跳站点详情，交互与返回栈待细化。
 3. **严重**：《嫁金钗》本地缓存播放中，点选集里其他已下载集会播放失败并跳回首次点击的那一集；其他剧集正常。该剧已下载集为 `第18集.ts` / `陪看1.ts`（集名不规则），待排查：`Util.getNumber("陪看1")` 的解析与 `showLocal()` 排序、`findLocal()` 命中情况、播放失败后的自动切源回退逻辑。
-4. 下载弹窗集数按钮宽度与每行个数需统一（现由 `EpisodeGridLayoutPolicy.getMaxSpan()` 决定：横屏/平板 6 列、竖屏 4 列），按拇指可点区域（≥48dp）重排。
+4. 下载弹窗集数按钮宽度与每行个数需统一（`DownloadDialog.COLUMNS = 3`，下载中心胶囊为 `DownloadCenterActivity.CHIP_COLUMNS = 4`，详情页选集走 `EpisodeGridLayoutPolicy.getMaxSpan()`：横屏/平板 6 列、竖屏 4 列），按拇指可点区域（≥48dp）重排并收敛成一处配置。
 5. 已下载 tab 展开分组后，最后一行集数按钮会被底部操作条遮挡（列表缺少底部 padding）。
