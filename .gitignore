@@ -1,0 +1,19 @@
+# 构建产物与缓存（体积 1G+，均可由 gradlew 重新生成）
+build/
+.cxx/
+.gradle/
+.kotlin/
+
+# 本机配置：sdk.dir 与 Release 签名口令都在这里，禁止入库
+local.properties
+
+# 密钥载体
+*.jks
+*.keystore
+*.p12
+
+# IDE 与系统
+.idea/
+*.iml
+captures/
+.DS_Store
