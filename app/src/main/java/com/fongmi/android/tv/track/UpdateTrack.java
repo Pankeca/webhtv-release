@@ -117,6 +117,7 @@ public class UpdateTrack {
 
     private static void persist(List<UpdateTrack> items) {
         Prefers.put(KEY, gson().toJson(items));
+        com.fongmi.android.tv.playback.KeepCloudBackup.schedule(30_000);
     }
 
     private static Gson gson() {

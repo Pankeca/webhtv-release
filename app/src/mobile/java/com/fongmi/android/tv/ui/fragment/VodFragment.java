@@ -1,7 +1,9 @@
 package com.fongmi.android.tv.ui.fragment;
 
-import android.net.Uri;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.LayerDrawable;
 import android.text.TextUtils;
+import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -11,8 +13,8 @@ import android.view.ViewGroup;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.activity.result.ActivityResultLauncher;
-import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.core.content.ContextCompat;
+import androidx.core.graphics.drawable.DrawableCompat;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentManager;
 import androidx.fragment.app.FragmentStatePagerAdapter;
@@ -21,12 +23,10 @@ import androidx.viewbinding.ViewBinding;
 import androidx.viewpager.widget.PagerAdapter;
 import androidx.viewpager.widget.ViewPager;
 
-import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.Class;
 import com.fongmi.android.tv.bean.Config;
-import com.fongmi.android.tv.bean.Device;
 import com.fongmi.android.tv.bean.Result;
 import com.fongmi.android.tv.bean.Site;
 import com.fongmi.android.tv.bean.Value;
@@ -40,6 +40,7 @@ import com.fongmi.android.tv.impl.ConfigListener;
 import com.fongmi.android.tv.impl.FilterListener;
 import com.fongmi.android.tv.impl.SiteListener;
 import com.fongmi.android.tv.model.SiteViewModel;
+import com.fongmi.android.tv.setting.AccountStore;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.ui.activity.HomeActivity;
 import com.fongmi.android.tv.ui.activity.HistoryActivity;
@@ -49,15 +50,10 @@ import com.fongmi.android.tv.track.UpdateTrack;
 import com.fongmi.android.tv.ui.activity.SearchActivity;
 import com.fongmi.android.tv.ui.adapter.TypeAdapter;
 import com.fongmi.android.tv.ui.base.BaseFragment;
-import com.fongmi.android.tv.ui.dialog.ApkPushDialog;
-import com.fongmi.android.tv.ui.dialog.ApkPushMethodDialog;
-import com.fongmi.android.tv.ui.dialog.ApkPushUrlDialog;
+import com.fongmi.android.tv.ui.dialog.AccountDialog;
 import com.fongmi.android.tv.ui.dialog.FilterDialog;
 import com.fongmi.android.tv.ui.dialog.HistoryDialog;
 import com.fongmi.android.tv.ui.dialog.LinkDialog;
-import com.fongmi.android.tv.ui.dialog.OneKeySyncDialog;
-import com.fongmi.android.tv.ui.dialog.PushPlayDialog;
-import com.fongmi.android.tv.ui.dialog.PushPlayUrlDialog;
 import com.fongmi.android.tv.ui.dialog.ReceiveDialog;
 import com.fongmi.android.tv.ui.dialog.SiteDialog;
 import com.fongmi.android.tv.ui.dialog.TypeDialog;
@@ -80,8 +76,6 @@ import java.util.Optional;
 
 public class VodFragment extends BaseFragment implements ConfigListener, SiteListener, FilterListener, TypeAdapter.OnClickListener, HomeWebController.Listener {
 
-    private final ActivityResultLauncher<String[]> apkLauncher = registerForActivityResult(new ActivityResultContracts.OpenDocument(), this::onApkSelected);
-
     private FragmentVodBinding mBinding;
     private SiteViewModel mViewModel;
     private HomeWebController mWeb;
@@ -89,7 +83,6 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
     private Result mResult;
     private String mChromeMode = WebHomeChrome.NORMAL;
     private int mHomeWebTopMargin;
-    private Device pendingApkDevice;
 
     public static VodFragment newInstance() {
         return new VodFragment();
@@ -124,6 +117,7 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
         setTitle();
         setLogo();
         updateToolbarMenu();
+        updateAccountIcon();
     }
 
     @Override
@@ -142,7 +136,7 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
             MenuItem keep = mBinding.toolbar.getMenu().findItem(R.id.keep);
             if (keep != null && UpdateTrack.hasAnyUpdate()) keep.setTitle(keep.getTitle() + " \u2B24");
         });
-        mBinding.toolbar.post(this::setSearchLongClick);
+        mBinding.toolbar.post(this::setSearchAction);
         mBinding.appBar.addOnOffsetChangedListener((appBarLayout, verticalOffset) -> {
             int range = appBarLayout.getTotalScrollRange();
             if (range <= 0) return;
@@ -300,49 +294,10 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
         else if (item.getItemId() == R.id.download) DownloadCenterActivity.start(requireActivity());
         else if (item.getItemId() == R.id.search) SearchActivity.start(requireActivity());
         else if (item.getItemId() == R.id.history) HistoryActivity.start(requireActivity());
-        else if (item.getItemId() == R.id.sync) OneKeySyncDialog.create().show(requireActivity());
-        else if (item.getItemId() == R.id.push_apk) ApkPushDialog.create().listener(this::onApkDeviceSelected).show(requireActivity());
-        else if (item.getItemId() == R.id.push_play) PushPlayDialog.create().listener(this::onPushPlayDeviceSelected).show(requireActivity());
-        else if (item.getItemId() == R.id.enhance && homeActivity() != null) homeActivity().openEnhanceFromVod();
+        else if (item.getItemId() == R.id.account) AccountDialog.show(this, this::updateAccountIcon);
         else if (item.getItemId() == R.id.web_home_fullscreen) onWebHomeFullscreen();
         else return false;
         return true;
-    }
-
-    private void onApkSelected(Uri uri) {
-        Device device = pendingApkDevice;
-        pendingApkDevice = null;
-        if (uri != null && device != null) ApkPushDialog.create(device, uri).show(requireActivity());
-    }
-
-    private void onApkDeviceSelected(Device device) {
-        App.post(() -> {
-            if (!isAdded()) return;
-            ApkPushMethodDialog.create(device).listener(new ApkPushMethodDialog.Listener() {
-                @Override
-                public void onLocal(Device device) {
-                    selectLocalApk(device);
-                }
-
-                @Override
-                public void onLink(Device device) {
-                    ApkPushUrlDialog.create(device).show(requireActivity());
-                }
-            }).show(requireActivity());
-        });
-    }
-
-    private void selectLocalApk(Device device) {
-        pendingApkDevice = device;
-        App.post(() -> {
-            if (isAdded()) apkLauncher.launch(new String[]{"application/vnd.android.package-archive", "application/octet-stream"});
-        });
-    }
-
-    private void onPushPlayDeviceSelected(Device device) {
-        App.post(() -> {
-            if (isAdded()) PushPlayUrlDialog.create(device).show(requireActivity());
-        });
     }
 
     private void onWebHomeFullscreen() {
@@ -359,13 +314,42 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
         if (fullscreen != null) fullscreen.setVisible(Setting.isWebHomeFullscreen() && mWeb != null && mWeb.isVisible());
     }
 
-    private void setSearchLongClick() {
-        View search = mBinding.toolbar.findViewById(R.id.search);
+    private void setSearchAction() {
+        MenuItem item = mBinding.toolbar.getMenu().findItem(R.id.search);
+        View search = item == null ? null : item.getActionView();
         if (search == null) return;
+        search.setOnClickListener(view -> SearchActivity.start(requireActivity()));
         search.setOnLongClickListener(view -> {
             SearchActivity.start(requireActivity(), "", getHome().getKey());
             return true;
         });
+    }
+
+    /** 账号图标：未登录灰白 + 小红点，登录后变为黄色。 */
+    private void updateAccountIcon() {
+        if (mBinding == null || !isAdded()) return;
+        MenuItem item = mBinding.toolbar.getMenu().findItem(R.id.account);
+        if (item == null) return;
+        boolean login = AccountStore.isLogin();
+        Drawable person = ContextCompat.getDrawable(requireContext(), R.drawable.ic_menu_account);
+        if (person == null) return;
+        person = DrawableCompat.wrap(person).mutate();
+        DrawableCompat.setTint(person, ContextCompat.getColor(requireContext(), login ? R.color.account_online : R.color.white_60));
+        if (login) {
+            item.setIcon(person);
+            return;
+        }
+        Drawable dot = ContextCompat.getDrawable(requireContext(), R.drawable.shape_account_dot);
+        if (dot == null) {
+            item.setIcon(person);
+            return;
+        }
+        LayerDrawable layered = new LayerDrawable(new Drawable[]{person, dot});
+        int size = person.getIntrinsicWidth() > 0 ? person.getIntrinsicWidth() : ResUtil.dp2px(24);
+        int dotSize = Math.max(ResUtil.dp2px(6), Math.round(size * 0.34f));
+        layered.setLayerSize(1, dotSize, dotSize);
+        layered.setLayerGravity(1, Gravity.TOP | Gravity.END);
+        item.setIcon(layered);
     }
 
     private void showProgress() {
@@ -543,6 +527,7 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
     public void onResume() {
         super.onResume();
         if (mWeb != null) mWeb.onResume();
+        updateAccountIcon();
     }
 
     @Override

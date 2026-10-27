@@ -2,20 +2,25 @@ package com.fongmi.android.tv.ui.fragment;
 
 import android.content.Intent;
 import android.net.Uri;
+import android.text.TextUtils;
 import android.view.LayoutInflater;
+import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.viewbinding.ViewBinding;
 
+import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.R;
+import com.fongmi.android.tv.bean.Device;
 import com.fongmi.android.tv.gitcloud.GitCloudAccountStore;
 import com.fongmi.android.tv.playback.ViewingRecordSyncStore;
 import com.fongmi.android.tv.remote.RemoteStore;
-import com.fongmi.android.tv.setting.AccountStore;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.databinding.FragmentSettingEnhanceBinding;
 import com.fongmi.android.tv.setting.CustomCspSetting;
@@ -23,7 +28,9 @@ import com.fongmi.android.tv.setting.ProxySetting;
 import com.fongmi.android.tv.setting.SiteHealthStore;
 import com.fongmi.android.tv.ui.activity.HomeActivity;
 import com.fongmi.android.tv.ui.base.BaseFragment;
-import com.fongmi.android.tv.ui.dialog.AccountDialog;
+import com.fongmi.android.tv.ui.dialog.ApkPushDialog;
+import com.fongmi.android.tv.ui.dialog.ApkPushMethodDialog;
+import com.fongmi.android.tv.ui.dialog.ApkPushUrlDialog;
 import com.fongmi.android.tv.ui.dialog.CspWarmupDialog;
 import com.fongmi.android.tv.ui.dialog.CustomCspDialog;
 import com.fongmi.android.tv.ui.dialog.DebugLogDialog;
@@ -31,6 +38,8 @@ import com.fongmi.android.tv.ui.dialog.GitCloudDialog;
 import com.fongmi.android.tv.ui.dialog.LoginStateLearnDialog;
 import com.fongmi.android.tv.ui.dialog.ManagePageDialog;
 import com.fongmi.android.tv.ui.dialog.OneKeySyncDialog;
+import com.fongmi.android.tv.ui.dialog.PushPlayDialog;
+import com.fongmi.android.tv.ui.dialog.PushPlayUrlDialog;
 import com.fongmi.android.tv.ui.dialog.RemoteTrustDialog;
 import com.fongmi.android.tv.ui.dialog.ShellProxyDialog;
 import com.fongmi.android.tv.ui.dialog.SiteHealthDialog;
@@ -47,8 +56,13 @@ public class SettingEnhanceFragment extends BaseFragment {
 
     private static final String URL_GITHUB = "https://github.com/fish2018/webhtv";
     private static final String URL_CNB = "https://cnb.cool/fish2035/ext";
+    /** 连续点击标题 7 次才显示 GitHub / CNB 入口，避免普通用户误触。 */
+    private static final int REPO_TAP_COUNT = 7;
 
     private FragmentSettingEnhanceBinding mBinding;
+    private final ActivityResultLauncher<String[]> apkLauncher = registerForActivityResult(new ActivityResultContracts.OpenDocument(), this::onApkSelected);
+    private Device pendingApkDevice;
+    private int repoTaps;
 
     public static SettingEnhanceFragment newInstance() {
         return new SettingEnhanceFragment();
@@ -66,6 +80,7 @@ public class SettingEnhanceFragment extends BaseFragment {
     @Override
     protected void initView() {
         reorderItems();
+        setupRepoReveal();
         setText();
     }
 
@@ -104,8 +119,9 @@ public class SettingEnhanceFragment extends BaseFragment {
             else Notify.show(R.string.setting_custom_csp_permission_required);
         }));
         mBinding.loginState.setOnClickListener(view -> LoginStateLearnDialog.show(this, this::setText));
-        mBinding.account.setOnClickListener(view -> AccountDialog.show(this, this::setText));
         mBinding.oneKeySync.setOnClickListener(v -> OneKeySyncDialog.create().show(requireActivity()));
+        mBinding.pushApk.setOnClickListener(v -> ApkPushDialog.create().listener(this::onApkDeviceSelected).show(requireActivity()));
+        mBinding.pushPlay.setOnClickListener(v -> PushPlayDialog.create().listener(this::onPushPlayDeviceSelected).show(requireActivity()));
     }
 
     private void reorderItems() {
@@ -123,10 +139,11 @@ public class SettingEnhanceFragment extends BaseFragment {
                 mBinding.webHomeFullscreen,
                 mBinding.cspWarmup,
                 mBinding.playbackArtworkWall,
+                mBinding.pushApk,
+                mBinding.pushPlay,
                 mBinding.driveCheck,
                 mBinding.siteHealthSort,
                 mBinding.debugLog,
-                mBinding.account,
                 mBinding.playbackWebhook
         };
         for (View view : order) parent.removeView(view);
@@ -145,7 +162,8 @@ public class SettingEnhanceFragment extends BaseFragment {
         safeSet("webHomeFullscreen", mBinding.webHomeFullscreenText, () -> getSwitch(Setting.isWebHomeFullscreen()));
         safeSet("cspWarmup", mBinding.cspWarmupText, this::getCspWarmupText);
         safeSet("playbackArtworkWall", mBinding.playbackArtworkWallText, () -> getSwitch(Setting.isPlaybackArtworkWall()));
-        safeSet("account", mBinding.accountText, this::getAccountText);
+        safeSet("pushApk", mBinding.pushApkText, () -> getString(R.string.device_select));
+        safeSet("pushPlay", mBinding.pushPlayText, () -> getString(R.string.device_select));
         safeSet("playbackWebhook", mBinding.playbackWebhookText, () -> ViewingRecordSyncStore.summary(requireContext()));
         safeSet("managePage", mBinding.managePageText, () -> getString(R.string.manage_page_web));
         safeSet("remoteTrust", mBinding.remoteTrustText, () -> RemoteStore.summary(requireContext()));
@@ -161,11 +179,6 @@ public class SettingEnhanceFragment extends BaseFragment {
 
     private boolean canSetText() {
         return mBinding != null && isAdded() && getContext() != null;
-    }
-
-    private CharSequence getAccountText() {
-        if (AccountStore.isLogin()) return AccountStore.name();
-        return getString(R.string.account_state_logged_out);
     }
 
     private void setShellProxyText() {
@@ -268,12 +281,75 @@ public class SettingEnhanceFragment extends BaseFragment {
         return true;
     }
 
+    /** 默认隐藏仓库入口，连续点击标题 7 次后显示并持久化。 */
+    private void setupRepoReveal() {
+        applyRepoVisibility();
+        mBinding.toolbar.setOnClickListener(view -> onRepoTitleTap());
+        for (int i = 0; i < mBinding.toolbar.getChildCount(); i++) {
+            View child = mBinding.toolbar.getChildAt(i);
+            if (child instanceof TextView && !TextUtils.isEmpty(((TextView) child).getText())) child.setOnClickListener(view -> onRepoTitleTap());
+        }
+    }
+
+    private void applyRepoVisibility() {
+        boolean visible = Setting.isEnhanceRepoVisible();
+        MenuItem github = mBinding.toolbar.getMenu().findItem(R.id.githubRepo);
+        MenuItem cnb = mBinding.toolbar.getMenu().findItem(R.id.cnbRepo);
+        if (github != null) github.setVisible(visible);
+        if (cnb != null) cnb.setVisible(visible);
+    }
+
+    private void onRepoTitleTap() {
+        if (Setting.isEnhanceRepoVisible()) return;
+        if (++repoTaps < REPO_TAP_COUNT) return;
+        repoTaps = 0;
+        Setting.putEnhanceRepoVisible(true);
+        applyRepoVisibility();
+        Notify.show(R.string.setting_enhance_repo_revealed);
+    }
+
     private void openRepo(String url) {
         try {
             startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
         } catch (Exception e) {
             Notify.show(R.string.manage_page_no_browser);
         }
+    }
+
+    private void onApkSelected(Uri uri) {
+        Device device = pendingApkDevice;
+        pendingApkDevice = null;
+        if (uri != null && device != null && isAdded()) ApkPushDialog.create(device, uri).show(requireActivity());
+    }
+
+    private void onApkDeviceSelected(Device device) {
+        App.post(() -> {
+            if (!isAdded()) return;
+            ApkPushMethodDialog.create(device).listener(new ApkPushMethodDialog.Listener() {
+                @Override
+                public void onLocal(Device device) {
+                    selectLocalApk(device);
+                }
+
+                @Override
+                public void onLink(Device device) {
+                    ApkPushUrlDialog.create(device).show(requireActivity());
+                }
+            }).show(requireActivity());
+        });
+    }
+
+    private void selectLocalApk(Device device) {
+        pendingApkDevice = device;
+        App.post(() -> {
+            if (isAdded()) apkLauncher.launch(new String[]{"application/vnd.android.package-archive", "application/octet-stream"});
+        });
+    }
+
+    private void onPushPlayDeviceSelected(Device device) {
+        App.post(() -> {
+            if (isAdded()) PushPlayUrlDialog.create(device).show(requireActivity());
+        });
     }
 
     @Override

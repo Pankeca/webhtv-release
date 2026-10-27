@@ -1,8 +1,10 @@
 package com.fongmi.android.tv.api;
 
+import android.net.Uri;
 import android.text.TextUtils;
 
 import com.fongmi.android.tv.App;
+import com.fongmi.android.tv.BuildConfig;
 import com.fongmi.android.tv.setting.AccountStore;
 import com.github.catvod.net.OkHttp;
 import com.google.gson.JsonObject;
@@ -32,7 +34,7 @@ public class AuthApi {
     }
 
     public static String server() {
-        return normalize(AccountStore.server());
+        return normalize(AccountStore.effectiveServer());
     }
 
     public static void server(String server) {
@@ -70,6 +72,40 @@ public class AuthApi {
         return post("password", AccountStore.token(), body, callback);
     }
 
+    public static Future backupSave(String type, Object data, Callback callback) {
+        JsonObject body = new JsonObject();
+        body.addProperty("type", type);
+        body.addProperty("updatedAt", System.currentTimeMillis());
+        body.add("data", App.gson().toJsonTree(data));
+        return requestPath("POST", "/api/backup/save", AccountStore.token(), body, null, callback);
+    }
+
+    public static Future backupLoad(String type, Callback callback) {
+        return requestPath("GET", "/api/backup/load?type=" + Uri.encode(type), AccountStore.token(), null, null, callback);
+    }
+
+    public static Future publicList(Callback callback) {
+        return requestPath("GET", "/api/public/list", AccountStore.token(), null, null, callback);
+    }
+
+    public static Future publicGet(String key, Callback callback) {
+        return requestPath("GET", "/api/public/get?key=" + Uri.encode(key), AccountStore.token(), null, null, callback);
+    }
+
+    public static Future publicPut(String key, String content, Callback callback) {
+        JsonObject body = new JsonObject();
+        body.addProperty("key", key);
+        body.addProperty("content", content);
+        body.addProperty("updatedBy", AccountStore.name());
+        return requestPath("POST", "/api/public/put", AccountStore.token(), body, BuildConfig.ADMIN_CODE, callback);
+    }
+
+    public static Future publicDelete(String key, Callback callback) {
+        JsonObject body = new JsonObject();
+        body.addProperty("key", key);
+        return requestPath("POST", "/api/public/delete", AccountStore.token(), body, BuildConfig.ADMIN_CODE, callback);
+    }
+
     private static JsonObject body(String username, String password, String extra) {
         JsonObject object = new JsonObject();
         object.addProperty("username", username);
@@ -86,6 +122,10 @@ public class AuthApi {
     }
 
     private static Future request(String method, String action, String token, JsonObject body, Callback callback) {
+        return requestPath(method, "/api/auth/" + action, token, body, null, callback);
+    }
+
+    private static Future requestPath(String method, String path, String token, JsonObject body, String adminCode, Callback callback) {
         return Task.submit(() -> {
             String server = server();
             if (TextUtils.isEmpty(server)) {
@@ -93,9 +133,10 @@ public class AuthApi {
                 return;
             }
             try {
-                Request.Builder builder = new Request.Builder().url(server + "/api/auth/" + action);
+                Request.Builder builder = new Request.Builder().url(server + path);
                 if (token != null && !TextUtils.isEmpty(token)) builder.header("Authorization", "Bearer " + token);
-                if ("POST".equals(method)) builder.post(RequestBody.create(body.toString(), JSON));
+                if (!TextUtils.isEmpty(adminCode)) header(builder, "X-WebHTV-Admin", adminCode);
+                if ("POST".equals(method)) builder.post(RequestBody.create(body == null ? "{}" : body.toString(), JSON));
                 else builder.get();
                 Call call = OkHttp.client().newCall(builder.build());
                 try (Response response = call.execute()) {
@@ -115,6 +156,23 @@ public class AuthApi {
                 deliver(callback, null, e.getMessage() == null ? "网络请求失败" : e.getMessage());
             }
         });
+    }
+
+    private static void header(Request.Builder builder, String name, String value) {
+        boolean ascii = true;
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c < 0x20 || c > 0x7E) {
+                ascii = false;
+                break;
+            }
+        }
+        if (ascii) {
+            builder.header(name, value);
+        } else {
+            builder.header(name, Uri.encode(value));
+            builder.header(name + "-Encoding", "percent-utf-8");
+        }
     }
 
     private static JsonObject parse(String text) {

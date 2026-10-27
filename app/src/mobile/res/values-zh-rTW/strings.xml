@@ -52,6 +52,10 @@
 
     <!-- Detail -->
     <string name="detail_flag">線路</string>
+    <string name="detail_site_row">站點</string>
+    <string name="detail_site_switch">切換站點</string>
+    <string name="detail_site_episodes">更新至%1$d集</string>
+    <string name="detail_play_local">本地優先</string>
     <string name="detail_episode">選集</string>
     <string name="detail_quality">畫質</string>
     <string name="detail_content">簡介</string>

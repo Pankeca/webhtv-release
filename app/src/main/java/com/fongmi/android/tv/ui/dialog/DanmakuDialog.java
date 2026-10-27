@@ -14,6 +14,7 @@ import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentActivity;
 import androidx.viewbinding.ViewBinding;
 
+import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.bean.Danmaku;
 import com.fongmi.android.tv.databinding.DialogDanmakuBinding;
 import com.fongmi.android.tv.player.PlayerManager;
@@ -21,6 +22,7 @@ import com.fongmi.android.tv.setting.DanmakuSetting;
 import com.fongmi.android.tv.ui.adapter.DanmakuAdapter;
 import com.fongmi.android.tv.ui.custom.SpaceItemDecoration;
 import com.fongmi.android.tv.utils.FileChooser;
+import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.Util;
 
 public final class DanmakuDialog extends BaseBottomSheetDialog implements DanmakuAdapter.OnClickListener {
@@ -65,7 +67,8 @@ public final class DanmakuDialog extends BaseBottomSheetDialog implements Danmak
         binding.recycler.addItemDecoration(new SpaceItemDecoration(1, 16));
         binding.recycler.post(() -> binding.recycler.scrollToPosition(adapter.getSelected()));
         binding.recycler.setVisibility(adapter.getItemCount() == 0 ? View.GONE : View.VISIBLE);
-        binding.search.setVisibility(player.getMetadata() == null || !DanmakuSetting.hasValidApiUrl() ? View.GONE : View.VISIBLE);
+        // 在线搜索入口常驻：没配置弹幕接口时点进去会提示去设置里填写
+        binding.search.setVisibility(player.getMetadata() == null ? View.GONE : View.VISIBLE);
         binding.load.setChecked(DanmakuSetting.isLoad());
         updateLoadUi(DanmakuSetting.isLoad());
     }
@@ -92,6 +95,11 @@ public final class DanmakuDialog extends BaseBottomSheetDialog implements Danmak
     private void onSearch(View view) {
         FragmentActivity activity = getActivity();
         if (activity == null) return;
+        // 没配弹幕接口时给出提示，避免点搜索后没有任何反应
+        if (!DanmakuSetting.hasValidApiUrl()) {
+            Notify.show(R.string.danmaku_api_invalid);
+            return;
+        }
         dismissAllowingStateLoss();
         if (shouldUseInputDialog(activity)) DanmakuSearchInputDialog.create().player(player).restoreParent(true).show(activity);
         else DanmakuSearchDialog.create().player(player).restoreParent(true).show(activity);

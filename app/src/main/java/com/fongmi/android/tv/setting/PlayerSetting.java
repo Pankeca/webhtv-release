@@ -251,6 +251,15 @@ public class PlayerSetting {
         Prefers.put("player_auto_change", autoChange);
     }
 
+    /** 详情页「本地优先」开关：有下载缓存时先播本地，关掉则一律走在线线路。 */
+    public static boolean isPlayLocal() {
+        return Prefers.getBoolean("player_play_local", true);
+    }
+
+    public static void putPlayLocal(boolean value) {
+        Prefers.put("player_play_local", value);
+    }
+
     public static boolean isAutoPlay() {
         return Prefers.getBoolean("player_auto_play", true);
     }

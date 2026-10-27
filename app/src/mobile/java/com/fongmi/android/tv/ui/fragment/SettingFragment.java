@@ -24,10 +24,12 @@ import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.impl.ConfigListener;
 import com.fongmi.android.tv.impl.LiveListener;
 import com.fongmi.android.tv.impl.SiteListener;
+import com.fongmi.android.tv.setting.AccountStore;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.ui.activity.HomeActivity;
 import com.fongmi.android.tv.ui.base.BaseFragment;
 import com.fongmi.android.tv.ui.dialog.AboutDialog;
+import com.fongmi.android.tv.ui.dialog.AccountDialog;
 import com.fongmi.android.tv.ui.dialog.AppearanceDialog;
 import com.fongmi.android.tv.ui.dialog.ChoiceDialog;
 import com.fongmi.android.tv.ui.dialog.ConfigDialog;
@@ -90,6 +92,13 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
         mBinding.versionText.setText(AppVersion.fullName());
         setOtherText();
         setCacheText();
+        setAccountText();
+    }
+
+    /** 个人中心入口：显示当前登录账号名或未登录。 */
+    private void setAccountText() {
+        if (mBinding == null || getContext() == null) return;
+        mBinding.accountText.setText(AccountStore.isLogin() ? AccountStore.name() : getString(R.string.account_state_logged_out));
     }
 
     private void setOtherText() {
@@ -109,6 +118,7 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
     @Override
     protected void initEvent() {
         mBinding.vod.setOnClickListener(this::onVod);
+        mBinding.account.setOnClickListener(view -> AccountDialog.show(this, this::setAccountText));
         mBinding.doh.setOnClickListener(this::setDoh);
         mBinding.live.setOnClickListener(this::onLive);
         mBinding.wall.setOnClickListener(this::onWall);
@@ -357,6 +367,7 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
     public void onHiddenChanged(boolean hidden) {
         if (hidden) return;
         setCacheText();
+        setAccountText();
     }
 
     @Override

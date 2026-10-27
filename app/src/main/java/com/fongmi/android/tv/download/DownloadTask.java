@@ -17,6 +17,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -487,7 +488,14 @@ public class DownloadTask {
         File temp = new File(target.getAbsolutePath() + ".part");
         try (OutputStream out = new FileOutputStream(temp)) {
             for (int i = 0; i < maps.size(); i++) Files.copy(initFile(dir, i).toPath(), out);
-            for (int i = 0; i < segments.size(); i++) Files.copy(partFile(dir, i).toPath(), out);
+            List<File> parts = new ArrayList<>();
+            for (int i = 0; i < segments.size(); i++) parts.add(partFile(dir, i));
+            // TS 分块边界会插入时间戳回到 0 的短贴片，合并时按时间轴分组处理
+            if (m3u8.isFmp4()) {
+                for (File part : parts) Files.copy(part.toPath(), out);
+            } else {
+                TsTimeline.merge(parts, out);
+            }
         }
         Files.move(temp.toPath(), target.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
         File[] parts = dir.listFiles();

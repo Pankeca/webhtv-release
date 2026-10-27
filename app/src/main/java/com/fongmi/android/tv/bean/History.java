@@ -368,6 +368,11 @@ public class History implements Diffable<History> {
         return remaining >= 0 && remaining <= threshold;
     }
 
+    /** 进度已到达或超过时长（整剧共用进度时常见于切集），这种进度不能用于 seek，否则播放器会立刻进入 ENDED。 */
+    public boolean isPositionOvershoot(long duration) {
+        return getPosition() > 0 && duration > 0 && getPosition() >= duration;
+    }
+
     public void resetPlaybackPosition() {
         setPosition(C.TIME_UNSET);
         setDuration(C.TIME_UNSET);

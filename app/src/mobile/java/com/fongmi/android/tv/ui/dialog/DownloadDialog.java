@@ -25,6 +25,7 @@ import com.fongmi.android.tv.bean.Episode;
 import com.fongmi.android.tv.download.DownloadManager;
 import com.fongmi.android.tv.download.DownloadTask;
 import com.fongmi.android.tv.databinding.DialogListBinding;
+import com.fongmi.android.tv.ui.widget.EpisodeChipConfig;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.google.android.material.button.MaterialButton;
@@ -37,7 +38,6 @@ import java.util.List;
 
 public class DownloadDialog extends BaseAlertDialog implements com.fongmi.android.tv.download.DownloadTask.Listener {
 
-    private static final int COLUMNS = 3;
     private static final int COLOR_SELECT = 0xFF1A73E8;
     private static final int COLOR_DONE_TEXT = 0xFF188038;
     private static final int COLOR_DONE_TINT = 0xFFE6F4EA;
@@ -192,8 +192,8 @@ public class DownloadDialog extends BaseAlertDialog implements com.fongmi.androi
 
     private View grid() {
         GridLayout grid = new GridLayout(requireContext());
-        grid.setColumnCount(COLUMNS);
-        int pad = dp(3);
+        grid.setColumnCount(EpisodeChipConfig.COLUMNS);
+        int pad = dp(EpisodeChipConfig.GAP_DP);
         for (int viewIndex = 0; viewIndex < names.size(); viewIndex++) {
             int dataIndex = reverse ? names.size() - 1 - viewIndex : viewIndex;
             GridLayout.LayoutParams params = new GridLayout.LayoutParams();
@@ -214,6 +214,7 @@ public class DownloadDialog extends BaseAlertDialog implements com.fongmi.androi
         chip.setGravity(Gravity.CENTER_VERTICAL);
         chip.setBackground(roundBg(selected ? 0xFFE3EDFF : Color.WHITE, selected ? COLOR_SELECT : 0xFFDADCE0, dp(8)));
         chip.setPadding(dp(8), dp(8), dp(8), dp(8));
+        chip.setMinimumHeight(dp(EpisodeChipConfig.MIN_HEIGHT_DP));
         CheckBox box = new CheckBox(requireContext());
         box.setChecked(selected);
         box.setClickable(false);
@@ -221,7 +222,7 @@ public class DownloadDialog extends BaseAlertDialog implements com.fongmi.androi
         chip.addView(box, new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         String label = (downloaded ? "✓ " : "") + names.get(dataIndex);
-        MaterialTextView name = text(label, 13, downloaded ? COLOR_DONE_TEXT : Color.BLACK, downloaded);
+        MaterialTextView name = text(label, EpisodeChipConfig.TEXT_SP, downloaded ? COLOR_DONE_TEXT : Color.BLACK, downloaded);
         name.setSingleLine(true);
         name.setGravity(Gravity.CENTER);
         while (chipViews.size() <= dataIndex) chipViews.add(null);

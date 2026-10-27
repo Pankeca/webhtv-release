@@ -132,6 +132,7 @@ import com.fongmi.android.tv.ui.dialog.ScheduleDialog;
 import com.fongmi.android.tv.ui.adapter.ParseAdapter;
 import com.fongmi.android.tv.ui.adapter.QualityAdapter;
 import com.fongmi.android.tv.ui.adapter.QuickAdapter;
+import com.fongmi.android.tv.ui.adapter.SiteChipAdapter;
 import com.fongmi.android.tv.ui.base.ViewType;
 import com.fongmi.android.tv.ui.custom.AudioPlayerBackgroundDrawable;
 import com.fongmi.android.tv.ui.custom.CustomKeyDown;
@@ -168,6 +169,9 @@ import com.fongmi.android.tv.utils.Timer;
 import com.fongmi.android.tv.utils.Traffic;
 import com.fongmi.android.tv.utils.Util;
 import com.github.catvod.crawler.SpiderDebug;
+import com.google.android.flexbox.FlexDirection;
+import com.google.android.flexbox.FlexWrap;
+import com.google.android.flexbox.FlexboxLayoutManager;
 import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
@@ -181,13 +185,17 @@ import org.greenrobot.eventbus.ThreadMode;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class VideoActivity extends PlaybackActivity implements Clock.Callback, CustomKeyDown.Listener, TrackDialog.Listener, ControlDialog.Listener, DanmakuDialog.Host, FlagAdapter.OnClickListener, EpisodeAdapter.OnClickListener, EpisodeGroupAdapter.OnClickListener, QualityAdapter.OnClickListener, QuickAdapter.OnClickListener, ParseAdapter.OnClickListener, CastDialog.Listener, InfoDialog.Listener {
 
@@ -229,6 +237,27 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     private Observer<Result> mObserveSearch;
     private EpisodeAdapter mEpisodeAdapter;
     private LinearLayoutCompat mLocalBar;
+    private boolean mReturnFromNetwork;
+    private boolean mManualSite;
+    private LinearLayoutCompat mSiteRow;
+    private RecyclerView mSiteList;
+    private SiteChipAdapter mSiteAdapter;
+    /** 当前影片已铺开的同名站点，快搜分站点逐条回传时在这里累积。 */
+    private final List<Vod> mSiteVods = new ArrayList<>();
+    /** 每个站点已更新到第几集（取该站点集数最多的线路）。 */
+    private final Map<String, Integer> mSiteEpisodes = new HashMap<>();
+    /** 已经拉过详情的站点，避免同一站点重复请求。 */
+    private final Set<String> mPrefetchedSites = new HashSet<>();
+    /** 换片时递增，用来丢弃上一部影片的站点集数回包。 */
+    private int mSiteEpoch;
+    /** 是否处于「点站点换站」流程：只刷新线路和选集，不整页刷新。 */
+    private boolean mSiteSwitching;
+    /** 已经为哪个片名搜过站点，避免每次详情回包都重复搜索。 */
+    private String mSiteSearchKeyword = "";
+    /** 切换站点时暂存当前集名，新站点详情回来后仍停留在同一集。 */
+    private String mPendingEpisode = "";
+    /** 当前正在播放的影片，用于搜索后重建站点行时保留正在使用的站点。 */
+    private Vod mCurrentVod;
     private EpisodeGroupAdapter mEpisodeGroupAdapter;
     private SpaceItemDecoration mEpisodeDecoration;
     private QualityAdapter mQualityAdapter;
@@ -638,6 +667,11 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         mBinding.swipeLayout.setRefreshing(true);
         saveHistory();
         getIntent().putExtras(intent);
+        // 换成另一部影片，站点行要重新铺开
+        resetSites();
+        // 新的网络播放意图不带 local 标记时，必须把上一页的本地缓存标记清掉，
+        // 否则 checkId() 仍按本地模式处理，页面会卡在本地选集上。
+        if (!intent.hasExtra("local")) getIntent().removeExtra("local");
         setOrient();
         checkId();
     }
@@ -651,6 +685,8 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         mFrameParams = mBinding.video.getLayoutParams();
         mFrameHeight = mFrameParams.height;
         mBinding.swipeLayout.setEnabled(false);
+        // 站点行已经铺开全部可用站点，详情页不再需要单独的搜索按钮
+        mBinding.search.setVisibility(View.GONE);
         setupAudioStageOverlay();
         configureAudioLandscapeActions();
         mObserveDetail = this::setDetail;
@@ -999,6 +1035,12 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         mBinding.flag.addItemDecoration(new SpaceItemDecoration(8));
         mBinding.flag.setAdapter(mFlagAdapter = new FlagAdapter(this));
         mBinding.quick.setAdapter(mQuickAdapter = new QuickAdapter(this));
+        setupSiteRow();
+        // 「本地优先」开关：有下载缓存时先播本地，关掉则一律走在线线路
+        mBinding.playLocal.setChecked(PlayerSetting.isPlayLocal());
+        mBinding.playLocal.setOnCheckedChangeListener((button, checked) -> PlayerSetting.putPlayLocal(checked));
+        mBinding.playLocalText.setOnClickListener(view -> mBinding.playLocal.toggle());
+        updatePlayLocal();
         mBinding.episodeGroup.setHasFixedSize(true);
         mBinding.episodeGroup.setItemAnimator(null);
         mBinding.episodeGroup.setAdapter(mEpisodeGroupAdapter = new EpisodeGroupAdapter(this));
@@ -1285,17 +1327,26 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
             tasks.add(task);
         }
         if (tasks.isEmpty()) {
+            logCache("showLocal empty vod=[%s]", vodName);
             Notify.show(R.string.download_center_empty);
             finish();
             return;
         }
-        tasks.sort(java.util.Comparator.comparingInt(task -> Util.getNumber(task.getEpisodeName())));
         Vod item = new Vod();
         item.setName(vodName);
         item.setPic(getPic());
         Flag flag = new Flag(getString(R.string.download_local_flag));
         for (DownloadTask task : tasks) flag.getEpisodes().add(Episode.create(task.getEpisodeName(), task.getEpisodeUrl()));
         item.setFlags(java.util.Collections.singletonList(flag));
+        StringBuilder episodes = new StringBuilder();
+        for (int i = 0; i < tasks.size(); i++) {
+            DownloadTask task = tasks.get(i);
+            episodes.append('[').append(i).append(']').append(task.getEpisodeName())
+                    .append(" num=").append(Util.getNumber(task.getEpisodeName()))
+                    .append(" file=").append(DownloadTask.findLocal(task.getVodName(), task.getEpisodeName()))
+                    .append(" url=").append(task.getEpisodeUrl()).append(' ');
+        }
+        logCache("showLocal vod=[%s] mark=[%s] count=%d %s", vodName, getMark(), tasks.size(), episodes);
         setDetail(item);
         mBinding.download.setVisibility(View.GONE);
         setupLocalBar();
@@ -1362,9 +1413,183 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
             Notify.show(R.string.download_network_missing);
             return;
         }
-        if (!TextUtils.isEmpty(id)) start(this, key, id, getName(), getPic());
-        else start(this, key, "", getName(), getPic());
-        finish();
+        // 带上当前正在看的集，切到网络版后仍停留在同一集。
+        // VideoActivity 是 singleTop，直接 start 会复用本页（onNewIntent 还会保留 local=true），
+        // 所以这里用独立实例打开网络页，本地缓存页留在返回栈里。
+        saveHistory();
+        mReturnFromNetwork = true;
+        String episode = getEpisode() == null ? getMark() : getEpisode().getName();
+        String networkId = TextUtils.isEmpty(id) ? "" : id;
+        NetworkVideoActivity.start(this, key, networkId, getName(), getPic(), episode);
+    }
+
+    /**
+     * 详情页「站点」行：平铺当前影片在所有订阅源里的同名站点，点谁就换成谁的线路和集数。
+     * 用代码拼 View 而不是改 layout，避免 activity_video 的四个布局变体（竖/横/平板）漏改。
+     */
+    private void setupSiteRow() {
+        if (mSiteRow != null) return;
+        ViewGroup parent = (ViewGroup) mBinding.flag.getParent();
+        int index = parent.indexOfChild(mBinding.flag);
+        if (index > 0) index -= 1;
+
+        LinearLayoutCompat row = new LinearLayoutCompat(this);
+        row.setOrientation(LinearLayoutCompat.VERTICAL);
+        row.setPadding(dp(16), dp(16), dp(16), 0);
+        row.setVisibility(View.GONE);
+
+        LinearLayoutCompat header = new LinearLayoutCompat(this);
+        header.setOrientation(LinearLayoutCompat.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView label = new TextView(this);
+        label.setText(R.string.detail_site_row);
+        label.setTextSize(16);
+        label.setTextColor(Color.WHITE);
+        header.addView(label, new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        row.addView(header, new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        RecyclerView list = new RecyclerView(this);
+        // 站点全部平铺（自动换行），不再用横向滚动把后面的站点藏起来
+        FlexboxLayoutManager manager = new FlexboxLayoutManager(this, FlexDirection.ROW);
+        manager.setFlexWrap(FlexWrap.WRAP);
+        list.setLayoutManager(manager);
+        list.setItemAnimator(null);
+        list.setClipToPadding(false);
+        list.setPadding(0, dp(8), 0, 0);
+        list.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        list.setAdapter(mSiteAdapter = new SiteChipAdapter(this::onItemClick));
+        row.addView(list, new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        parent.addView(row, index, new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        mSiteRow = row;
+        mSiteList = list;
+    }
+
+    /** 网络播放页才展示站点行；本地缓存页用顶部的「观看网络多线路完整版」入口。 */
+    private void updateSiteRow() {
+        if (mSiteRow == null) return;
+        boolean visible = !isLocalMode() && mSiteAdapter != null && !mSiteAdapter.isEmpty();
+        mSiteRow.setVisibility(visible ? View.VISIBLE : View.GONE);
+        updatePlayLocal();
+        if (mSiteAdapter == null) return;
+        mSiteAdapter.setSelectedKey(getKey());
+        mSiteList.setVisibility(mSiteAdapter.isEmpty() ? View.GONE : View.VISIBLE);
+    }
+
+    /** 「本地优先」开关只在网络播放页有意义，本地缓存页始终播本地。 */
+    private void updatePlayLocal() {
+        boolean visible = !isLocalMode();
+        mBinding.playLocal.setVisibility(visible ? View.VISIBLE : View.GONE);
+        mBinding.playLocalText.setVisibility(visible ? View.VISIBLE : View.GONE);
+        if (visible) mBinding.playLocal.setChecked(PlayerSetting.isPlayLocal());
+    }
+
+    /** 把站点放进站点行（同一站点只留一颗胶囊）。 */
+    private void collectSite(Vod item) {
+        if (item == null || TextUtils.isEmpty(item.getSiteKey())) return;
+        if (!containsSite(item.getSiteKey())) mSiteVods.add(item);
+        // 当前站点已经有详情，直接用「集数最多的线路」作为准确集数
+        int count = UpdateTrack.countEpisodes(item.getFlags());
+        if (count > siteEpisodes(item.getSiteKey())) {
+            mSiteEpisodes.put(item.getSiteKey(), count);
+            mPrefetchedSites.add(item.getSiteKey());
+        }
+        // 站点已存在时也要刷新，否则换站后选中高亮不会跟着变
+        syncSiteChips();
+    }
+
+    /** 站点按站点 key 去重：不同站点可能复用相同的影片 id，不能用 Vod.equals 判重。 */
+    private boolean containsSite(String siteKey) {
+        if (TextUtils.isEmpty(siteKey)) return true;
+        for (Vod vod : mSiteVods) if (TextUtils.equals(vod.getSiteKey(), siteKey)) return true;
+        return false;
+    }
+
+    /** 站点行数据来自累积的站点列表，快搜每回来一个站点就整行刷新一次。 */
+    private void syncSiteChips() {
+        if (mSiteAdapter == null) return;
+        // 先同步选中项，setItems 才能把正在使用的站点排到最前面
+        mSiteAdapter.setSelectedKey(getKey());
+        mSiteAdapter.setItems(mSiteVods);
+        mSiteAdapter.setEpisodeCounts(mSiteEpisodes);
+        updateSiteRow();
+    }
+
+    /** 用搜索结果的「更新至第N集」先占位，避免等详情回包时站点没有集数。 */
+    private void collectSiteCounts(List<Vod> items) {
+        if (items == null) return;
+        boolean changed = false;
+        for (Vod item : items) {
+            String key = item == null ? "" : item.getSiteKey();
+            if (TextUtils.isEmpty(key)) continue;
+            int count = parseEpisodeCount(item.getRemarks());
+            if (count > siteEpisodes(key)) {
+                mSiteEpisodes.put(key, count);
+                changed = true;
+            }
+        }
+        if (changed) syncSiteChips();
+    }
+
+    private int siteEpisodes(String siteKey) {
+        Integer count = mSiteEpisodes.get(siteKey);
+        return count == null ? 0 : count;
+    }
+
+    /** 「更新至第19集」「全40集」取集数；「HD」「4K」这类没有集数的备注返回 0。 */
+    private int parseEpisodeCount(String text) {
+        if (TextUtils.isEmpty(text)) return 0;
+        Matcher matcher = Pattern.compile("(\\d+)\\s*[集话回]").matcher(text);
+        if (!matcher.find()) return 0;
+        try {
+            return Integer.parseInt(matcher.group(1));
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    /** 后台逐个站点拉详情，用「集数最多的线路」校准站点集数，和可可影视一致。 */
+    private void prefetchSiteEpisodes(List<Vod> items) {
+        if (items == null) return;
+        int epoch = mSiteEpoch;
+        for (Vod item : items) {
+            String key = item == null ? "" : item.getSiteKey();
+            String id = item == null ? "" : item.getId();
+            if (TextUtils.isEmpty(key) || TextUtils.isEmpty(id)) continue;
+            if (!mPrefetchedSites.add(key)) continue;
+            Task.submitLarge(() -> {
+                int count = 0;
+                try {
+                    Result result = SiteApi.detailContent(key, id);
+                    if (result != null && result.getVod() != null) count = UpdateTrack.countEpisodes(result.getVod().getFlags());
+                } catch (Throwable ignored) {
+                }
+                if (count <= 0) return;
+                int episodes = count;
+                App.post(() -> {
+                    if (epoch != mSiteEpoch || episodes <= siteEpisodes(key)) return;
+                    mSiteEpisodes.put(key, episodes);
+                    syncSiteChips();
+                });
+            });
+        }
+    }
+
+    /** 手动换片名搜索后，站点行应该重新铺开，但不能把正在使用的站点清掉。 */
+    private void resetSites() {
+        mSiteEpoch++;
+        mSiteVods.clear();
+        mSiteEpisodes.clear();
+        mPrefetchedSites.clear();
+        mSiteSearchKeyword = "";
+        if (!isLocalMode() && mCurrentVod != null && !TextUtils.isEmpty(mCurrentVod.getSiteKey())) mSiteVods.add(mCurrentVod);
+        syncSiteChips();
+    }
+
+    /** 本地缓存播放链路诊断日志（需在设置中开启调试日志后才会输出）。 */
+    private void logCache(String message, Object... args) {
+        SpiderDebug.log("video-flow", message, args);
     }
 
     private int dp(int value) {
@@ -1384,18 +1609,33 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
 
     private void getDetail(Vod item) {
         revealManualSearch = false;
-        if (!isAutoMode()) mViewModel.stopSearch();
+        // 只有同名影片换站点才走局部刷新；从搜索结果点进另一部影片仍然整页刷新
+        String current = mBinding.name.getText() == null ? "" : mBinding.name.getText().toString();
+        mSiteSwitching = TextUtils.equals(current, item.getName());
+        // 记住当前集名，新站点详情回来后仍停在同名集数
+        mPendingEpisode = getEpisode() == null ? "" : getEpisode().getName();
         saveHistory();
         getIntent().putExtra("key", item.getSiteKey());
         getIntent().putExtra("pic", item.getPic());
         getIntent().putExtra("id", item.getId());
         mBinding.swipeLayout.setRefreshing(true);
         mBinding.swipeLayout.setEnabled(false);
-        mBinding.scroll.scrollTo(0, 0);
         mClock.setCallback(null);
         clearLyrics();
+        if (!mSiteSwitching) {
+            // 换片子才清空整页并显示 loading，同名换站点保持当前画面
+            mBinding.scroll.scrollTo(0, 0);
+            mFlagAdapter.addAll(new ArrayList<>());
+            mEpisodeAdapter.addAll(new ArrayList<>());
+            mQualityAdapter.addAll(Result.empty());
+            mBinding.flag.setVisibility(View.GONE);
+            mBinding.episode.setVisibility(View.GONE);
+            mBinding.episodeGroup.setVisibility(View.GONE);
+            setQualityVisible(false);
+            mBinding.progressLayout.showProgress();
+        }
         updateNavigationKey();
-        if (service() != null) {
+        if (!mSiteSwitching && service() != null) {
             player().reset();
             player().stop();
         }
@@ -1407,8 +1647,11 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         SpiderDebug.log("video-flow", "detail finish cost=%dms empty=%s msg=%s", cost, result.getList().isEmpty(), result.getMsg());
         recordDetailHealth(result, cost);
         mBinding.swipeLayout.setRefreshing(false);
-        if (result.getList().isEmpty()) setEmpty(result.hasMsg());
-        else setDetail(result.getVod());
+        if (result.getList().isEmpty()) {
+            // 换站失败：清掉换站标记，后续点集数按普通播放处理
+            mSiteSwitching = false;
+            setEmpty(result.hasMsg());
+        } else setDetail(result.getVod());
         Notify.show(result.getMsg());
     }
 
@@ -1435,20 +1678,62 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
             mPendingDetailVod = item;
             return;
         }
-        item.checkPic(getPic());
-        item.checkName(getName());
-        item.checkContent(getContent());
-        mBinding.name.setText(item.getName());
+        // 换站只更新站源/线路/选集，片名、海报、简介、下载按钮等保持不动，也不跳回页首
+        boolean switching = mSiteSwitching;
+        mSiteSwitching = false;
+        mManualSite = false;
+        if (!switching) {
+            item.checkPic(getPic());
+            item.checkName(getName());
+            item.checkContent(getContent());
+            mBinding.name.setText(item.getName());
+        }
         mFlagAdapter.addAll(item.getFlags());
         UpdateTrack.markSeen(getHistoryKey(), UpdateTrack.countEpisodes(item.getFlags()));
         App.removeCallbacks(mR4);
         checkHistory(item);
+        // 切站时优先保留原集名（该站点有这个集就接着看，没有则回落到默认集）
+        applyPendingEpisode(item.getFlags());
         setAudioStageVisible(shouldUseImmersiveAudio());
         mBinding.progressLayout.showContent();
         checkFlag(item);
-        checkKeepImg();
-        setText(item);
-        updateKeep();
+        if (switching) setText(mBinding.site, R.string.detail_site, getSite().getName());
+        else {
+            checkKeepImg();
+            setText(item);
+            updateKeep();
+        }
+        // 详情 Vod 一般不带站点信息，补上当前站点，才能作为第一颗胶囊显示并选中
+        if (!isLocalMode()) {
+            if (item.getSite() == null && getSite() != null) item.setSite(getSite());
+            mCurrentVod = item;
+            collectSite(item);
+        }
+        // 进入网络详情页即后台快搜同名站点，把订阅源的所有站点铺开（参考可可影视的站点列表）
+        searchSites(item.getName());
+    }
+
+    /** 切站后把集数对齐回原集，避免换站就跳回第 1 集。 */
+    private void applyPendingEpisode(List<Flag> flags) {
+        if (TextUtils.isEmpty(mPendingEpisode) || mHistory == null) return;
+        String episode = mPendingEpisode;
+        mPendingEpisode = "";
+        // 新站点没有这一集时不做覆盖，让它按自己的记录或首集播放
+        if (!hasEpisode(flags, episode)) return;
+        if (TextUtils.equals(episode, mHistory.getVodRemarks()) && !TextUtils.isEmpty(mHistory.getEpisodeUrl())) return;
+        mHistory.setVodRemarks(episode);
+        mHistory.setEpisodeUrl("");
+        mHistory.setPosition(C.TIME_UNSET);
+        mHistory.setDuration(C.TIME_UNSET);
+    }
+
+    private boolean hasEpisode(List<Flag> flags, String name) {
+        if (flags == null) return false;
+        for (Flag flag : flags) {
+            if (flag.getEpisodes().size() <= 1) return true;
+            if (flag.find(name, true) != null) return true;
+        }
+        return false;
     }
 
     private void setText(Vod item) {
@@ -1498,18 +1783,27 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
 
     private void getPlayer(Flag flag, Episode episode) {
         String vodName = mBinding.name.getText().toString();
+        // 网络页关掉「本地优先」时一律走在线线路；本地缓存页始终播本地
+        boolean forceOnline = !isLocalMode() && !PlayerSetting.isPlayLocal();
         File local = DownloadTask.findLocal(vodName, episode.getName());
-        if (local != null) {
+        logCache("getPlayer ep=[%s] localMode=%b vodName=[%s] local=[%s] forceOnline=%b historyEp=[%s] flag=[%s]",
+                episode.getName(), isLocalMode(), vodName, local, forceOnline,
+                mHistory == null || mHistory.getEpisode() == null ? "null" : mHistory.getEpisode().getName(),
+                flag == null ? "null" : flag.getFlag());
+        if (local != null && !forceOnline) {
             Notify.show(R.string.download_play_local);
             com.fongmi.android.tv.bean.Result localResult = new com.fongmi.android.tv.bean.Result();
             // file:// 会被部分内核数据源当网络地址连接，统一转成本地 HTTP 服务直链
             localResult.setPlayUrl(com.fongmi.android.tv.utils.UrlUtil.convert("file://" + local.getAbsolutePath()));
             mBinding.control.title.setText(getString(R.string.detail_title, mBinding.name.getText(), episode.getName()));
+            // 本地播放先整理历史：换集时清零进度，避免沿用上一集位置后 seek 越界被判为播放结束
+            prepareLocalHistory(episode);
             // 超时参数必须为正常值，传 0 会立即触发 onPlaybackTimeout 并走到自动切源兜底
             startPlayer(getHistoryKey(), localResult, false, getSite().getTimeout(), buildMetadata());
             return;
         }
         // 记录里是“已完成”但文件已被删掉：把记录标成缺失并明确提示，避免用户以为还在下载缓存
+        logCache("getPlayer miss local ep=[%s] localMode=%b url=[%s]", episode.getName(), isLocalMode(), episode.getUrl());
         DownloadTask record = DownloadManager.get().find(vodName, episode.getName());
         if (record != null && (record.getState() == DownloadTask.State.DONE || record.getState() == DownloadTask.State.MISSING)) {
             DownloadManager.get().reconcile();
@@ -1613,6 +1907,9 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
 
     @Override
     public void onItemClick(Episode item) {
+        logCache("click ep=[%s] localMode=%b selected=%b local=[%s]",
+                item.getName(), isLocalMode(), item.isSelected(),
+                DownloadTask.findLocal(mBinding.name.getText().toString(), item.getName()));
         if (shouldEnterFullscreen(item)) return;
         syncCurrentAudioPlaylistMetadata();
         Flag flag = getFlag();
@@ -1638,7 +1935,10 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
 
     @Override
     public void onItemClick(Vod item) {
+        // 手动点站点：关掉自动换源链，站点不可用时只提示，不自动往下一个站点跳
+        mManualSite = true;
         setAutoMode(false);
+        setInitAuto(false);
         applySearchArtwork(item);
         getDetail(item);
     }
@@ -1775,6 +2075,8 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
 
     private void seamless(Flag flag) {
         Episode episode = getMark().isEmpty() ? flag.find(mHistory.getEpisode(), true) : flag.find(mHistory.getVodRemarks(), false);
+        // 历史集在新站点不存在时回落到首集，换站后总能播起来，避免详情页空白
+        if (episode == null && !flag.getEpisodes().isEmpty()) episode = flag.getEpisodes().get(0);
         setQualityVisible(episode != null && episode.isSelected() && mQualityAdapter.getItemCount() > 1);
         if (episode == null || episode.isSelected()) return;
         mHistory.setVodRemarks(episode.getName());
@@ -1797,6 +2099,12 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
 
     private void onName() {
         String name = mBinding.name.getText().toString();
+        // 用户主动搜索时同样不做自动换源，避免详情失败后一路切到站点列表最后一个
+        mManualSite = true;
+        setAutoMode(false);
+        setInitAuto(false);
+        mViewModel.stopSearch();
+        resetSites();
         Notify.show(getString(R.string.detail_search, name));
         showQuickSearch(name);
         initSearch(name, false);
@@ -1980,6 +2288,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     }
 
     private void onQuickSearch(String keyword) {
+        resetSites();
         initSearch(keyword, false);
     }
 
@@ -2096,6 +2405,8 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     private void checkNext(boolean notify) {
         setR1Callback();
         Episode item = getAdjacentEpisode(1);
+        logCache("checkNext notify=%b current=[%s] next=[%s] selected=%b", notify,
+                getEpisode() == null ? "null" : getEpisode().getName(), item.getName(), item.isSelected());
         if (SpiderDebug.isEnabled()) SpiderDebug.log("audio-auto-next", "fallback next notify=%s selected=%s name=%s adapter=%d", notify, item.isSelected(), item.getName(), mEpisodeAdapter.getItemCount());
         if (!item.isSelected()) onItemClick(item);
         else if (notify) Notify.show(R.string.error_play_next);
@@ -4067,6 +4378,9 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         if (mFlagAdapter.isEmpty()) return;
         if (mEpisodeAdapter.isEmpty()) return;
         Flag flag = getFlag();
+        logCache("refresh ep=[%s] localMode=%b flagPos=%d epPos=%d",
+                getEpisode() == null ? "null" : getEpisode().getName(), isLocalMode(),
+                mFlagAdapter.getPosition(), mEpisodeAdapter.getPosition());
         if (flag != null) getPlayer(flag, getEpisode());
     }
 
@@ -4603,7 +4917,15 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         mHistory = History.find(getHistoryKey());
         mHistory = mHistory == null ? createHistory(item) : mHistory;
         if (!TextUtils.isEmpty(getWallPic())) mHistory.setWallPic(getWallPic());
-        if (!TextUtils.isEmpty(getMark())) mHistory.setVodRemarks(getMark());
+        if (!TextUtils.isEmpty(getMark())) {
+            // 整剧共用一个历史进度：换集时必须清掉上一集的位置，否则会 seek 到新集时长之外并被判定为播放结束
+            boolean sameEpisode = mHistory.getEpisode() != null && TextUtils.equals(mHistory.getEpisode().getName(), getMark());
+            mHistory.setVodRemarks(getMark());
+            if (!sameEpisode) {
+                mHistory.setPosition(C.TIME_UNSET);
+                mHistory.setDuration(C.TIME_UNSET);
+            }
+        }
         if (Setting.isIncognito() && mHistory.getKey().equals(getHistoryKey())) mHistory.delete();
         mBinding.control.action.opening.setText(mHistory.getOpening() <= 0 ? getString(R.string.play_op) : Util.timeMs(mHistory.getOpening()));
         mBinding.control.action.ending.setText(mHistory.getEnding() <= 0 ? getString(R.string.play_ed) : Util.timeMs(mHistory.getEnding()));
@@ -4682,6 +5004,21 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         if (mHistory == null || Setting.isIncognito()) return;
         History history = mHistory.copy();
         Task.execute(history::save);
+    }
+
+    /** 本地缓存专用：切换集数时清空整剧共用的进度，避免把上一集位置 seek 到新集里。 */
+    private void prepareLocalHistory(Episode item) {
+        String stored = mHistory.getEpisode() == null ? "" : mHistory.getEpisode().getName();
+        if (!TextUtils.equals(stored, item.getName())) {
+            if (service() != null) PlaybackEventCollector.get().onStop(player());
+            mHistory.setPosition(C.TIME_UNSET);
+            mHistory.setDuration(C.TIME_UNSET);
+        }
+        Flag flag = getFlag();
+        mHistory.setVodFlag(flag == null ? "" : flag.getFlag());
+        mHistory.setVodRemarks(item.getName());
+        mHistory.setEpisodeUrl(item.getUrl());
+        PlaybackEventCollector.get().updateHistory(mHistory);
     }
 
     private void updateHistory(Episode item) {
@@ -5959,6 +6296,10 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     @Override
     protected void onError(String msg) {
         recordPlayHealth(false, msg);
+        logCache("onError msg=[%s] localMode=%b ep=[%s] historyEp=[%s] url=[%s]",
+                msg, isLocalMode(), getEpisode() == null ? "null" : getEpisode().getName(),
+                mHistory == null || mHistory.getEpisode() == null ? "null" : mHistory.getEpisode().getName(),
+                getEpisode() == null ? "" : getEpisode().getUrl());
         mBinding.swipeLayout.setEnabled(true);
         Track.delete(player().getKey());
         mClock.setCallback(null);
@@ -5989,6 +6330,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
 
     @Override
     protected void onStateChanged(int state) {
+        logCache("stateChanged=%d ep=[%s]", state, getEpisode() == null ? "null" : getEpisode().getName());
         debugPlaybackControl("stateChanged=" + state);
         debugLyricsLoop("stateChanged=" + state, true);
         switch (state) {
@@ -6159,6 +6501,14 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
             syncHistory();
         }
         long position = Math.max(mHistory.getOpening(), mHistory.getPosition());
+        long duration = player().getDuration() > 0 ? player().getDuration() : mHistory.getDuration();
+        logCache("setPosition historyPos=%d opening=%d duration=%d ep=[%s]", mHistory.getPosition(), mHistory.getOpening(), duration, mHistory.getEpisode() == null ? "null" : mHistory.getEpisode().getName());
+        // 进度超出时长（常见于上一集没播完就切集）会让播放器立刻进入 ENDED 并自动跳下一集，必须清掉
+        if (mHistory.isPositionOvershoot(duration)) {
+            logCache("setPosition reset overshoot position=%d duration=%d", position, duration);
+            mHistory.resetPlaybackPosition();
+            return;
+        }
         if (position > 0) player().seekTo(position);
     }
 
@@ -6200,6 +6550,9 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     }
 
     private void checkEnded(boolean notify) {
+        logCache("checkEnded notify=%b ep=[%s] nextEp=[%s]", notify,
+                getEpisode() == null ? "null" : getEpisode().getName(),
+                getAdjacentEpisode(1) == null ? "null" : getAdjacentEpisode(1).getName());
         if (SpiderDebug.isEnabled()) SpiderDebug.log("audio-auto-next", "checkEnded notify=%s audioStage=%s adapter=%d", notify, mAudioStageVisible, mEpisodeAdapter.getItemCount());
         if (showKaraokeResultIfNeeded(notify ? KARAOKE_RESULT_ACTION_NEXT : KARAOKE_RESULT_ACTION_NEXT_SILENT)) return;
         if (mAudioStageVisible && playNextAudioPlaylistEntry()) return;
@@ -6302,6 +6655,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     private void startFlow() {
         if (!PlayerSetting.isAutoChange()) return;
         if (!getSite().isChangeable()) return;
+        logCache("startFlow localMode=%b flagPos=%d", isLocalMode(), mFlagAdapter.getPosition());
         if (isUseParse()) checkParse();
         else checkFlag();
     }
@@ -6327,9 +6681,12 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     }
 
     private void checkSearch(boolean force) {
+        // 手动切换站点期间不做自动换源，否则详情请求失败会一路切到站点列表最后一个
+        if (mManualSite) return;
         if (!force && !PlayerSetting.isAutoChange()) return;
-        if (mQuickAdapter.isEmpty()) initSearch(mBinding.name.getText().toString(), true);
-        else if (isAutoMode() || force) nextSite();
+        // 站点行自己搜过一轮后 QuickAdapter 可能已有数据，但那是手动搜索，必须重新按自动模式搜
+        if (mQuickAdapter.isEmpty() || !isAutoMode()) initSearch(mBinding.name.getText().toString(), true);
+        else nextSite();
     }
 
     private void initSearch(String keyword, boolean auto) {
@@ -6346,6 +6703,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
 
     private void startSearch(String keyword) {
         mQuickSearchKeyword = keyword;
+        mSiteSearchKeyword = keyword;
         mQuickAdapter.clear();
         mBinding.quick.setVisibility(View.GONE);
         if (isQuickSearchVisible()) mQuickSearchDialog.clear();
@@ -6355,11 +6713,25 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         mViewModel.searchContent(sites, keyword, true);
     }
 
+    /** 进入网络详情页后自动铺开同名站点，站点行不再依赖「切换站点」面板。 */
+    private void searchSites(String keyword) {
+        if (isLocalMode() || isAutoMode() || TextUtils.isEmpty(keyword)) return;
+        if (TextUtils.equals(keyword, mSiteSearchKeyword)) return;
+        initSearch(keyword, false);
+    }
+
     private void setSearch(Result result) {
-        List<Vod> items = result.getList();
+        // getList 可能是只读的空列表，先拷一份再过滤
+        List<Vod> items = new ArrayList<>(result.getList());
         items.removeIf(this::mismatch);
         mBinding.quick.setVisibility(View.GONE);
         mQuickAdapter.addAll(items);
+        // 快搜结果按站点逐条回传，站点行按累积结果整行刷新，才能把所有站点都铺开
+        for (Vod item : items) if (!containsSite(item.getSiteKey())) mSiteVods.add(item);
+        // 先用搜索里的更新集数占位，再后台拉每个站点的详情校准
+        collectSiteCounts(items);
+        prefetchSiteEpisodes(items);
+        syncSiteChips();
         if (isQuickSearchVisible()) mQuickSearchDialog.addAll(items);
         if (revealManualSearch && !items.isEmpty()) revealManualSearch = false;
         if (isInitAuto() && PlayerSetting.isAutoChange()) nextSite();
@@ -6372,7 +6744,8 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     }
 
     private boolean mismatch(Vod item) {
-        if (getId().equals(item.getId())) return true;
+        // 只过滤当前站点自身的结果；不同站点可能复用同一个 id，不能只按 id 判重
+        if (TextUtils.equals(getKey(), item.getSiteKey()) && getId().equals(item.getId())) return true;
         if (mBroken.contains(item.getId())) return true;
         String keyword = TextUtils.isEmpty(mQuickSearchKeyword) ? mBinding.name.getText().toString() : mQuickSearchKeyword;
         if (isAutoMode()) return !item.getName().equals(keyword);
@@ -6678,6 +7051,14 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         syncKaraokePosition();
         // 返回详情页时刷新集数上的已下载标记
         if (mEpisodeAdapter != null) mEpisodeAdapter.notifyDataSetChanged();
+        // 从网络版返回：共享播放器已被网络页重置成空，需要重新挂载本地缓存并回到上次进度
+        if (mReturnFromNetwork) {
+            mReturnFromNetwork = false;
+            if (isLocalMode() && getEpisode() != null && service() != null && player().isEmpty()) {
+                Notify.show(R.string.download_play_local);
+                getPlayer(getFlag(), getEpisode());
+            }
+        }
     }
 
     @Override

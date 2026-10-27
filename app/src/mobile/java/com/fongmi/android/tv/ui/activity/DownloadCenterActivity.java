@@ -2,13 +2,16 @@ package com.fongmi.android.tv.ui.activity;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.content.res.ColorStateList;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.animation.DecelerateInterpolator;
 import android.widget.GridLayout;
 import android.widget.CheckBox;
 import android.widget.ImageView;
@@ -20,15 +23,16 @@ import androidx.viewbinding.ViewBinding;
 
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.R;
+import com.fongmi.android.tv.bean.History;
 import com.fongmi.android.tv.download.DownloadManager;
 import com.fongmi.android.tv.download.DownloadTask;
 import com.fongmi.android.tv.databinding.ActivityDownloadCenterBinding;
 import com.fongmi.android.tv.ui.base.BaseActivity;
+import com.fongmi.android.tv.ui.widget.EpisodeChipConfig;
 import com.fongmi.android.tv.utils.ImgUtil;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.Task;
-import com.google.android.material.color.MaterialColors;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.tabs.TabLayout;
 
@@ -46,11 +50,21 @@ import java.util.Set;
  */
 public class DownloadCenterActivity extends BaseActivity implements DownloadTask.Listener {
 
-    private static final int COLOR_DONE = 0xFF188038;
-    private static final int COLOR_DONE_BG = 0xFFE6F4EA;
-    private static final int COLOR_ERROR = 0xFFB3261E;
-    private static final int COLOR_ERROR_BG = 0xFFFCE8E6;
-    private static final int CHIP_COLUMNS = 4;
+    // 下载中心固定使用深色配色：不跟随系统明暗主题，避免白底卡片与背景割裂
+    private static final int COLOR_TEXT = 0xFFF3F0FA;
+    private static final int COLOR_TEXT_DIM = 0xFFA9A2C0;
+    private static final int COLOR_ACCENT = 0xFFFF6B72;
+    private static final int COLOR_RUNNING = 0xFF8AB4FF;
+    private static final int COLOR_DONE = 0xFF6FDD8B;
+    private static final int COLOR_DONE_BG = 0xFF17301F;
+    private static final int COLOR_ERROR = 0xFFFF8A80;
+    private static final int COLOR_ERROR_BG = 0xFF3A1D1D;
+    private static final int COLOR_CARD = 0xFF201C32;
+    private static final int COLOR_CARD_BORDER = 0x26FFFFFF;
+    private static final int COLOR_CHIP = 0xFF2A2540;
+    private static final int COLOR_CHIP_SELECTED = 0xFF3B2E58;
+    private static final int CHIP_TEXT_SP = 13;
+    private static final int CHIP_MIN_HEIGHT_DP = 46;
 
     private ActivityDownloadCenterBinding mBinding;
     private final Set<String> selected = new HashSet<>();
@@ -58,9 +72,18 @@ public class DownloadCenterActivity extends BaseActivity implements DownloadTask
     private final Map<String, TextView> chipLabels = new LinkedHashMap<>();
     private final Map<String, LinearLayoutCompat> chipViews = new LinkedHashMap<>();
     private final Map<String, TextView> groupSummaries = new LinkedHashMap<>();
+    /** 每部剧已下载文件的占用空间（字节），render 时刷新一次，避免进度刷新时反复扫盘。 */
+    private final Map<String, Long> groupSizes = new LinkedHashMap<>();
+    /** 已观看进度：key = 剧名|集名，value = 百分比；仅本地/在线历史中 position>0 的集数。 */
+    private final Map<String, Integer> watchPercents = new LinkedHashMap<>();
     private String renderSignature = "";
     private long storageAt;
+    private long usedBytes = -1;
+    private long freeBytes = -1;
     private int tabIndex;
+    private float downX;
+    private float downY;
+    private boolean swipeCandidate;
 
     public static void start(Activity activity) {
         activity.startActivity(new Intent(activity, DownloadCenterActivity.class));
@@ -126,6 +149,54 @@ public class DownloadCenterActivity extends BaseActivity implements DownloadTask
         DownloadManager.get().addListener(this);
     }
 
+    /** 左右滑动切换页签：仅在明显横向拖动时接管手势，不影响列表纵向滚动和剧集点击。 */
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent event) {
+        switch (event.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                downX = event.getX();
+                downY = event.getY();
+                swipeCandidate = false;
+                break;
+            case MotionEvent.ACTION_MOVE:
+                if (!swipeCandidate) {
+                    float dx = event.getX() - downX;
+                    float dy = event.getY() - downY;
+                    swipeCandidate = Math.abs(dx) > dp(24) && Math.abs(dx) > Math.abs(dy) * 1.6f;
+                }
+                break;
+            case MotionEvent.ACTION_UP:
+                float dx = event.getX() - downX;
+                float dy = event.getY() - downY;
+                if (swipeCandidate && Math.abs(dx) > dp(48) && Math.abs(dx) > Math.abs(dy)) {
+                    MotionEvent cancel = MotionEvent.obtain(event);
+                    cancel.setAction(MotionEvent.ACTION_CANCEL);
+                    super.dispatchTouchEvent(cancel);
+                    cancel.recycle();
+                    swipeTab(dx < 0 ? 1 : -1);
+                    swipeCandidate = false;
+                    return true;
+                }
+                swipeCandidate = false;
+                break;
+            case MotionEvent.ACTION_CANCEL:
+                swipeCandidate = false;
+                break;
+        }
+        return super.dispatchTouchEvent(event);
+    }
+
+    private void swipeTab(int direction) {
+        int target = tabIndex + direction;
+        if (target < 0 || target > 1) return;
+        mBinding.tabs.selectTab(mBinding.tabs.getTabAt(target));
+        View content = mBinding.scroll;
+        if (content.getVisibility() != View.VISIBLE || content.getWidth() == 0) return;
+        content.setTranslationX(direction * content.getWidth() * 0.15f);
+        content.setAlpha(0.35f);
+        content.animate().translationX(0f).alpha(1f).setDuration(180).setInterpolator(new DecelerateInterpolator()).start();
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
@@ -171,6 +242,8 @@ public class DownloadCenterActivity extends BaseActivity implements DownloadTask
         chipLabels.clear();
         chipViews.clear();
         groupSummaries.clear();
+        groupSizes.clear();
+        watchPercents.clear();
         mBinding.empty.setVisibility(visible.isEmpty() ? View.VISIBLE : View.GONE);
         mBinding.scroll.setVisibility(visible.isEmpty() ? View.GONE : View.VISIBLE);
         mBinding.content.removeAllViews();
@@ -181,6 +254,8 @@ public class DownloadCenterActivity extends BaseActivity implements DownloadTask
         selected.retainAll(alive);
 
         Map<String, List<DownloadTask>> groups = groupsOf(visible);
+        refreshGroupSizes(groups);
+        refreshWatchPercents(groups);
         for (Map.Entry<String, List<DownloadTask>> entry : groups.entrySet()) mBinding.content.addView(groupCard(entry.getKey(), entry.getValue()));
 
         mBinding.selectAll.setChecked(!visible.isEmpty() && selected.size() >= visible.size());
@@ -192,14 +267,56 @@ public class DownloadCenterActivity extends BaseActivity implements DownloadTask
         mBinding.pauseAll.setVisibility(tabIndex == 0 ? View.VISIBLE : View.GONE);
         mBinding.delete.setVisibility(View.VISIBLE);
         updateTabTitles();
+        refreshStats();
         renderSignature = signature();
         updateStorage();
+    }
+
+    /** 顶部总览：已下载集数 / 总占用 / 可用空间。 */
+    private void refreshStats() {
+        int done = 0;
+        for (DownloadTask task : DownloadManager.get().tasks()) if (task.getState() == DownloadTask.State.DONE) done++;
+        mBinding.statDoneValue.setText(String.valueOf(done));
+        mBinding.statUsedValue.setText(usedBytes >= 0 ? DownloadTask.formatSize(usedBytes) : "—");
+        mBinding.statFreeValue.setText(freeBytes >= 0 ? DownloadTask.formatSize(freeBytes) : "—");
     }
 
     private Map<String, List<DownloadTask>> groupsOf(List<DownloadTask> tasks) {
         Map<String, List<DownloadTask>> groups = new LinkedHashMap<>();
         for (DownloadTask task : tasks) groups.computeIfAbsent(task.getVodName(), key -> new ArrayList<>()).add(task);
         return groups;
+    }
+
+    /** 统计每部剧已下载集数的实际占用空间。 */
+    private void refreshGroupSizes(Map<String, List<DownloadTask>> groups) {
+        for (Map.Entry<String, List<DownloadTask>> entry : groups.entrySet()) {
+            long total = 0;
+            for (DownloadTask task : entry.getValue()) {
+                if (task.getState() != DownloadTask.State.DONE) continue;
+                File file = DownloadTask.findLocal(task.getVodName(), task.getEpisodeName());
+                if (file != null) total += file.length();
+            }
+            groupSizes.put(entry.getKey(), total);
+        }
+    }
+
+    /** 读取观看进度：播放过且 position>0 的集数记为观看至百分比，其余视为未观看。 */
+    private void refreshWatchPercents(Map<String, List<DownloadTask>> groups) {
+        for (String vodName : groups.keySet()) {
+            try {
+                for (History history : History.findByName(vodName)) {
+                    if (history.getPosition() <= 0 || history.getDuration() <= 0) continue;
+                    int percent = (int) Math.min(100, Math.round(history.getPosition() * 100f / history.getDuration()));
+                    if (percent <= 0) continue;
+                    watchPercents.put(watchKey(vodName, history.getVodRemarks()), percent);
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    private String watchKey(String vodName, String episodeName) {
+        return vodName + "|" + episodeName;
     }
 
     /** 视图结构签名：任务 id、状态和展开状态。仅进度变化时保持相同。 */
@@ -243,6 +360,8 @@ public class DownloadCenterActivity extends BaseActivity implements DownloadTask
             }
         }
         String text = getString(R.string.download_group_summary, items.size(), done);
+        long size = groupSizes.getOrDefault(items.get(0).getVodName(), 0L);
+        if (size > 0) text += " · " + DownloadTask.formatSize(size);
         if (speed > 0) {
             text += " · " + DownloadTask.formatSpeed(speed);
             if (eta > 0) text += " · " + getString(R.string.download_eta, DownloadTask.formatEta(eta));
@@ -258,9 +377,11 @@ public class DownloadCenterActivity extends BaseActivity implements DownloadTask
         Task.submit(() -> {
             long used = sizeOf(root);
             long free = root.getUsableSpace();
-            String text = getString(R.string.download_storage_usage, DownloadTask.formatSize(used), DownloadTask.formatSize(free));
             App.post(() -> {
-                if (mBinding != null && !isFinishing() && !isDestroyed()) mBinding.toolbar.setSubtitle(text);
+                if (mBinding == null || isFinishing() || isDestroyed()) return;
+                usedBytes = used;
+                freeBytes = free;
+                refreshStats();
             });
         });
     }
@@ -294,7 +415,7 @@ public class DownloadCenterActivity extends BaseActivity implements DownloadTask
         DownloadTask first = items.get(0);
         LinearLayoutCompat card = new LinearLayoutCompat(this);
         card.setOrientation(LinearLayoutCompat.VERTICAL);
-        card.setPadding(dp(10), dp(10), dp(10), dp(10));
+        card.setPadding(dp(12), dp(12), dp(12), dp(12));
         card.setBackground(cardBackground());
         LinearLayoutCompat.LayoutParams cardParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         cardParams.bottomMargin = dp(8);
@@ -307,22 +428,22 @@ public class DownloadCenterActivity extends BaseActivity implements DownloadTask
         ImageView cover = new ImageView(this);
         cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
         ImgUtil.load(vodName, first.getVodPic(), cover, true);
-        header.addView(cover, new LinearLayoutCompat.LayoutParams(dp(56), dp(78)));
+        header.addView(cover, new LinearLayoutCompat.LayoutParams(dp(58), dp(80)));
 
         LinearLayoutCompat info = new LinearLayoutCompat(this);
         info.setOrientation(LinearLayoutCompat.VERTICAL);
-        info.setPadding(dp(10), 0, dp(8), 0);
+        info.setPadding(dp(12), 0, dp(8), 0);
         info.setLayoutParams(new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        TextView name = text(vodName, 16, colorOnSurface(), true);
+        TextView name = text(vodName, 18, COLOR_TEXT, true);
         name.setSingleLine(true);
         name.setEllipsize(TextUtils.TruncateAt.END);
         info.addView(name);
 
         int done = 0;
         for (DownloadTask task : items) if (task.getState() == DownloadTask.State.DONE) done++;
-        TextView summary = text(groupSummaryText(items), 13, colorOnSurfaceVariant(), false);
-        summary.setPadding(0, dp(2), 0, 0);
+        TextView summary = text(groupSummaryText(items), 15, COLOR_TEXT_DIM, false);
+        summary.setPadding(0, dp(3), 0, 0);
         info.addView(summary);
         groupSummaries.put(vodName, summary);
         header.addView(info);
@@ -332,7 +453,9 @@ public class DownloadCenterActivity extends BaseActivity implements DownloadTask
         for (DownloadTask task : items) if (!selected.contains(task.getId())) groupAll = false;
         CheckBox groupSelect = new CheckBox(this);
         groupSelect.setText(R.string.download_select_all);
-        groupSelect.setTextSize(12);
+        groupSelect.setTextSize(14);
+        groupSelect.setTextColor(COLOR_TEXT);
+        groupSelect.setButtonTintList(ColorStateList.valueOf(COLOR_TEXT));
         groupSelect.setChecked(groupAll);
         groupSelect.setMinWidth(0);
         groupSelect.setMinimumWidth(0);
@@ -341,7 +464,7 @@ public class DownloadCenterActivity extends BaseActivity implements DownloadTask
         header.addView(groupSelect);
 
         boolean expand = isExpanded(vodName, items.size());
-        TextView toggle = text(getString(expand ? R.string.download_collapse : R.string.download_expand), 13, colorPrimary(), false);
+        TextView toggle = text(getString(expand ? R.string.download_collapse : R.string.download_expand), 15, COLOR_ACCENT, false);
         toggle.setPadding(dp(8), dp(6), 0, dp(6));
         toggle.setOnClickListener(view -> {
             expanded.put(vodName, !isExpanded(vodName, items.size()));
@@ -382,11 +505,11 @@ public class DownloadCenterActivity extends BaseActivity implements DownloadTask
 
     private View chipGrid(List<DownloadTask> items) {
         GridLayout grid = new GridLayout(this);
-        grid.setColumnCount(CHIP_COLUMNS);
+        grid.setColumnCount(EpisodeChipConfig.COLUMNS);
         LinearLayoutCompat.LayoutParams params = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         params.topMargin = dp(8);
         grid.setLayoutParams(params);
-        int pad = dp(3);
+        int pad = dp(EpisodeChipConfig.GAP_DP);
         for (DownloadTask task : items) {
             GridLayout.LayoutParams chipParams = new GridLayout.LayoutParams();
             chipParams.width = 0;
@@ -403,10 +526,11 @@ public class DownloadCenterActivity extends BaseActivity implements DownloadTask
         LinearLayoutCompat chip = new LinearLayoutCompat(this);
         chip.setOrientation(LinearLayoutCompat.HORIZONTAL);
         chip.setGravity(Gravity.CENTER);
-        chip.setPadding(dp(6), dp(8), dp(6), dp(8));
+        chip.setPadding(dp(4), dp(6), dp(4), dp(6));
+        chip.setMinimumHeight(dp(CHIP_MIN_HEIGHT_DP));
         chip.setBackground(chipBackground(task, isSelected));
 
-        TextView label = text(chipLabel(task), 13, chipTextColor(task), task.getState() == DownloadTask.State.DONE);
+        TextView label = text(chipLabel(task), CHIP_TEXT_SP, chipTextColor(task), task.getState() == DownloadTask.State.DONE);
         label.setSingleLine(true);
         label.setEllipsize(TextUtils.TruncateAt.END);
         label.setGravity(Gravity.CENTER);
@@ -416,8 +540,9 @@ public class DownloadCenterActivity extends BaseActivity implements DownloadTask
 
         // 未进入多选模式时，右侧 × 直接删除单集
         if (selected.isEmpty()) {
-            TextView close = text("×", 16, colorOnSurfaceVariant(), false);
-            close.setPadding(dp(6), 0, dp(2), 0);
+            TextView close = text("×", 15, COLOR_TEXT_DIM, false);
+            close.setGravity(Gravity.CENTER);
+            close.setPadding(dp(6), dp(4), dp(6), dp(4));
             close.setOnClickListener(view -> confirmDelete(task));
             chip.addView(close, new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         }
@@ -503,7 +628,9 @@ public class DownloadCenterActivity extends BaseActivity implements DownloadTask
         String name = task.getEpisodeName();
         switch (task.getState()) {
             case DONE:
-                return "✓ " + name;
+                // 已下载集数不再加 ✔，改为显示观看进度：观看至 % 或 未观看
+                Integer percent = watchPercents.get(watchKey(task.getVodName(), task.getEpisodeName()));
+                return name + " · " + (percent != null && percent > 0 ? getString(R.string.download_watched_to, percent) : getString(R.string.download_unwatched));
             case RUNNING:
                 return name + " " + task.getProgress() + "%" + (task.getSpeed() > 0 ? " · " + DownloadTask.formatSpeed(task.getSpeed()) : "");
             case WAITING:
@@ -525,26 +652,26 @@ public class DownloadCenterActivity extends BaseActivity implements DownloadTask
             case MISSING:
                 return COLOR_ERROR;
             case CANCELED:
-                return colorOnSurfaceVariant();
+                return COLOR_TEXT_DIM;
             default:
-                return colorPrimary();
+                return COLOR_RUNNING;
         }
     }
 
     private GradientDrawable chipBackground(DownloadTask task, boolean isSelected) {
         GradientDrawable drawable = new GradientDrawable();
         if (isSelected) {
-            drawable.setColor(colorPrimaryContainer());
-            drawable.setStroke(dp(2), colorPrimary());
+            drawable.setColor(COLOR_CHIP_SELECTED);
+            drawable.setStroke(dp(2), COLOR_ACCENT);
         } else if (task.getState() == DownloadTask.State.DONE) {
             drawable.setColor(COLOR_DONE_BG);
-            drawable.setStroke(dp(1), 0x33188038);
+            drawable.setStroke(dp(1), 0x336FDD8B);
         } else if (task.getState() == DownloadTask.State.FAILED || task.getState() == DownloadTask.State.MISSING) {
             drawable.setColor(COLOR_ERROR_BG);
-            drawable.setStroke(dp(1), 0x33B3261E);
+            drawable.setStroke(dp(1), 0x33FF8A80);
         } else {
-            drawable.setColor(colorSurfaceVariant());
-            drawable.setStroke(dp(1), colorOutline());
+            drawable.setColor(COLOR_CHIP);
+            drawable.setStroke(dp(1), 0x33FFFFFF);
         }
         drawable.setCornerRadius(dp(8));
         return drawable;
@@ -552,9 +679,9 @@ public class DownloadCenterActivity extends BaseActivity implements DownloadTask
 
     private GradientDrawable cardBackground() {
         GradientDrawable drawable = new GradientDrawable();
-        drawable.setColor(colorSurface());
-        drawable.setStroke(dp(1), colorOutline());
-        drawable.setCornerRadius(dp(12));
+        drawable.setColor(COLOR_CARD);
+        drawable.setStroke(dp(1), COLOR_CARD_BORDER);
+        drawable.setCornerRadius(dp(14));
         return drawable;
     }
 
@@ -565,38 +692,6 @@ public class DownloadCenterActivity extends BaseActivity implements DownloadTask
         view.setTextSize(sp);
         if (bold) view.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         return view;
-    }
-
-    private int attr(int resId) {
-        return MaterialColors.getColor(mBinding.getRoot(), resId);
-    }
-
-    private int colorPrimary() {
-        return attr(androidx.appcompat.R.attr.colorPrimary);
-    }
-
-    private int colorPrimaryContainer() {
-        return attr(com.google.android.material.R.attr.colorPrimaryContainer);
-    }
-
-    private int colorSurface() {
-        return attr(com.google.android.material.R.attr.colorSurface);
-    }
-
-    private int colorSurfaceVariant() {
-        return attr(com.google.android.material.R.attr.colorSurfaceVariant);
-    }
-
-    private int colorOnSurface() {
-        return attr(com.google.android.material.R.attr.colorOnSurface);
-    }
-
-    private int colorOnSurfaceVariant() {
-        return attr(com.google.android.material.R.attr.colorOnSurfaceVariant);
-    }
-
-    private int colorOutline() {
-        return attr(com.google.android.material.R.attr.colorOutline);
     }
 
     private int dp(int value) {

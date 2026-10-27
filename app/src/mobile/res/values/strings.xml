@@ -52,6 +52,10 @@
 
     <!-- Detail -->
     <string name="detail_flag">Flag</string>
+    <string name="detail_site_row">Site</string>
+    <string name="detail_site_switch">Switch site</string>
+    <string name="detail_site_episodes">%1$d episodes</string>
+    <string name="detail_play_local">Local first</string>
     <string name="detail_episode">Episode</string>
     <string name="detail_quality">Quality</string>
     <string name="detail_content">Summary</string>

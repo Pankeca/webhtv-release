@@ -60,8 +60,8 @@ public class SettingDanmakuFragment extends BaseFragment implements DanmakuListe
     }
 
     private void updateApiVisibility() {
-        boolean load = DanmakuSetting.isLoad();
-        mBinding.danmakuApi.setVisibility(load ? View.VISIBLE : View.GONE);
+        // 弹幕地址始终可见：没开弹幕加载时也能先配好在线搜索用的接口地址
+        mBinding.danmakuApi.setVisibility(View.VISIBLE);
         updateAutoVisibility();
     }
 

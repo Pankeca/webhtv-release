@@ -4,6 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="@drawable/bg_download_center"
     android:fitsSystemWindows="true"
     android:orientation="vertical">
 
@@ -12,45 +13,155 @@
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
         app:navigationIconTint="@android:color/white"
+        app:subtitleTextColor="#B3FFFFFF"
         app:title="@string/download_center_title"
-        app:titleTextAppearance="@style/ToolbarTextAppearance" />
+        app:titleTextAppearance="@style/ToolbarTextAppearance"
+        app:titleTextColor="@android:color/white" />
 
     <androidx.appcompat.widget.LinearLayoutCompat
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
-        android:orientation="horizontal">
+        android:orientation="horizontal"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp">
 
         <com.google.android.material.tabs.TabLayout
             android:id="@+id/tabs"
             android:layout_width="0dp"
-            android:layout_height="46dp"
+            android:layout_height="54dp"
             android:layout_weight="1"
             android:background="@color/transparent"
-            app:tabIndicatorColor="?attr/colorPrimary"
-            app:tabIndicatorFullWidth="false"
-            app:tabIndicatorHeight="2dp"
-            app:tabMode="fixed"
             app:tabGravity="fill"
-            app:tabSelectedTextColor="?attr/colorPrimary"
+            app:tabIndicatorColor="#FFFF6B72"
+            app:tabIndicatorFullWidth="false"
+            app:tabIndicatorHeight="3dp"
+            app:tabMode="fixed"
+            app:tabSelectedTextColor="#FFFF6B72"
             app:tabTextAppearance="@style/TextAppearance.WebHTV.DownloadTab"
-            app:tabTextColor="?attr/colorOnSurfaceVariant" />
+            app:tabTextColor="#FFABA6C2" />
 
         <com.google.android.material.textview.MaterialTextView
             android:id="@+id/expandAll"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:paddingStart="8dp"
-            android:paddingTop="6dp"
+            android:paddingStart="10dp"
+            android:paddingTop="8dp"
             android:paddingEnd="12dp"
-            android:paddingBottom="6dp"
+            android:paddingBottom="8dp"
             android:text="@string/download_expand_all"
-            android:textColor="?attr/colorPrimary"
-            android:textSize="13sp" />
+            android:textColor="#FFFF8A90"
+            android:textSize="15sp" />
+
+    </androidx.appcompat.widget.LinearLayoutCompat>
+
+    <!-- 总览：已下载集数 / 总占用 / 可用空间 -->
+    <androidx.appcompat.widget.LinearLayoutCompat
+        android:id="@+id/stats"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="14dp"
+        android:layout_marginTop="2dp"
+        android:layout_marginEnd="14dp"
+        android:layout_marginBottom="10dp"
+        android:background="@drawable/bg_download_stats"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingTop="14dp"
+        android:paddingBottom="14dp">
+
+        <androidx.appcompat.widget.LinearLayoutCompat
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="vertical">
+
+            <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/statDoneValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#FFFFFFFF"
+                android:textSize="22sp"
+                android:textStyle="bold"
+                tools:text="12" />
+
+            <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/statDoneLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="@string/download_stats_done"
+                android:textColor="#FFA9A2C0"
+                android:textSize="13sp" />
+        </androidx.appcompat.widget.LinearLayoutCompat>
+
+        <View
+            android:layout_width="1dp"
+            android:layout_height="26dp"
+            android:background="#26FFFFFF" />
+
+        <androidx.appcompat.widget.LinearLayoutCompat
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="vertical">
+
+            <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/statUsedValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#FFFFFFFF"
+                android:textSize="22sp"
+                android:textStyle="bold"
+                tools:text="758.1MB" />
+
+            <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/statUsedLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="@string/download_stats_used"
+                android:textColor="#FFA9A2C0"
+                android:textSize="13sp" />
+        </androidx.appcompat.widget.LinearLayoutCompat>
+
+        <View
+            android:layout_width="1dp"
+            android:layout_height="26dp"
+            android:background="#26FFFFFF" />
+
+        <androidx.appcompat.widget.LinearLayoutCompat
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="vertical">
+
+            <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/statFreeValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#FFFFFFFF"
+                android:textSize="22sp"
+                android:textStyle="bold"
+                tools:text="68.75GB" />
+
+            <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/statFreeLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="@string/download_stats_free"
+                android:textColor="#FFA9A2C0"
+                android:textSize="13sp" />
+        </androidx.appcompat.widget.LinearLayoutCompat>
 
     </androidx.appcompat.widget.LinearLayoutCompat>
 
     <FrameLayout
+        android:id="@+id/swipeArea"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1">
@@ -59,15 +170,15 @@
             android:id="@+id/scroll"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp">
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp">
 
             <androidx.appcompat.widget.LinearLayoutCompat
                 android:id="@+id/content"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:paddingBottom="8dp" />
+                android:paddingBottom="16dp" />
 
         </androidx.core.widget.NestedScrollView>
 
@@ -77,8 +188,8 @@
             android:layout_height="wrap_content"
             android:layout_gravity="center"
             android:text="@string/download_center_empty"
-            android:textColor="?attr/colorOnSurfaceVariant"
-            android:textSize="15sp"
+            android:textColor="#FF8E88A8"
+            android:textSize="16sp"
             android:visibility="gone"
             tools:visibility="visible" />
 
@@ -88,66 +199,80 @@
         android:id="@+id/bottomBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:background="@drawable/bg_download_bottom_bar"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingStart="8dp"
-        android:paddingTop="4dp"
-        android:paddingEnd="8dp"
-        android:paddingBottom="30dp">
+        android:paddingStart="14dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="14dp"
+        android:paddingBottom="28dp">
+
+        <!-- 占位把按钮推到右侧：已下载页只剩"删除/全选"时也不会被拉伸成整行 -->
+        <Space
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/startAll"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="42dp"
+            android:layout_marginStart="6dp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:minWidth="92dp"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:singleLine="true"
+            android:text="@string/download_action_start_all"
+            android:textColor="#FFE8E4F5"
+            android:textSize="14sp"
+            app:strokeColor="#4DFFFFFF" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/pauseAll"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="42dp"
+            android:layout_marginStart="6dp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:minWidth="92dp"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:singleLine="true"
+            android:text="@string/download_action_pause_all"
+            android:textColor="#FFE8E4F5"
+            android:textSize="14sp"
+            app:strokeColor="#4DFFFFFF" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/delete"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="42dp"
+            android:layout_marginStart="6dp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:minWidth="92dp"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:singleLine="true"
+            android:text="@string/download_delete"
+            android:textColor="#FFFF8A90"
+            android:textSize="14sp"
+            app:strokeColor="#66FF6B72" />
 
         <CheckBox
             android:id="@+id/selectAll"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:buttonTint="#FFE8E4F5"
             android:text="@string/download_select_all"
-            android:textSize="14sp" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/startAll"
-            style="?attr/materialButtonOutlinedStyle"
-            android:layout_width="0dp"
-            android:layout_height="40dp"
-            android:layout_weight="1"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:minWidth="0dp"
-            android:paddingStart="2dp"
-            android:paddingEnd="2dp"
-            android:singleLine="true"
-            android:text="@string/download_action_start_all"
-            android:textSize="12sp" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/pauseAll"
-            style="?attr/materialButtonOutlinedStyle"
-            android:layout_width="0dp"
-            android:layout_height="40dp"
-            android:layout_weight="1"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:minWidth="0dp"
-            android:paddingStart="2dp"
-            android:paddingEnd="2dp"
-            android:singleLine="true"
-            android:text="@string/download_action_pause_all"
-            android:textSize="12sp" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/delete"
-            style="?attr/materialButtonOutlinedStyle"
-            android:layout_width="0dp"
-            android:layout_height="40dp"
-            android:layout_weight="1"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:minWidth="0dp"
-            android:paddingStart="2dp"
-            android:paddingEnd="2dp"
-            android:singleLine="true"
-            android:text="@string/download_delete"
-            android:textColor="#FFB3261E"
-            android:textSize="12sp"
-            app:strokeColor="#66B3261E" />
+            android:textColor="#FFE8E4F5"
+            android:textSize="15sp" />
 
     </androidx.appcompat.widget.LinearLayoutCompat>
 

@@ -515,6 +515,15 @@ public class Setting {
         Prefers.put("playback_artwork_wall", artworkWall);
     }
 
+    /** 增强功能页的 GitHub / CNB 入口是否已通过连续点击标题解锁。 */
+    public static boolean isEnhanceRepoVisible() {
+        return Prefers.getBoolean("enhance_repo_visible", false);
+    }
+
+    public static void putEnhanceRepoVisible(boolean visible) {
+        Prefers.put("enhance_repo_visible", visible);
+    }
+
     public static boolean isCspWarmup() {
         return getCspWarmupMode() != CSP_WARMUP_DISABLED;
     }

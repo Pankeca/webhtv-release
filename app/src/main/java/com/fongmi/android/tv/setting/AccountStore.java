@@ -2,6 +2,7 @@ package com.fongmi.android.tv.setting;
 
 import android.text.TextUtils;
 
+import com.fongmi.android.tv.BuildConfig;
 import com.github.catvod.utils.Prefers;
 
 public final class AccountStore {
@@ -21,6 +22,16 @@ public final class AccountStore {
 
     public static void server(String server) {
         Prefers.put(KEY_SERVER, server == null ? "" : server.trim());
+    }
+
+    /** 管理员可覆盖；普通用户直接使用安装包内置的默认服务地址。 */
+    public static String effectiveServer() {
+        String custom = server();
+        return TextUtils.isEmpty(custom) ? BuildConfig.DEFAULT_CLOUD_SERVER.trim() : custom;
+    }
+
+    public static boolean hasServerOverride() {
+        return !TextUtils.isEmpty(server());
     }
 
     public static boolean isLogin() {

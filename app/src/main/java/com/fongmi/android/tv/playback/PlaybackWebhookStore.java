@@ -52,6 +52,7 @@ public final class PlaybackWebhookStore {
     }
 
     public static synchronized void markSuccess(String id) {
+        if ("cloud-webhook".equals(id)) com.fongmi.android.tv.setting.CloudSyncStore.markHistoryBackup();
         List<WebhookConfig> configs = list();
         for (WebhookConfig config : configs) {
             if (!config.id.equals(id)) continue;

@@ -717,6 +717,26 @@
                             android:textColor="@color/white"
                             android:textSize="16sp" />
 
+                        <androidx.appcompat.widget.SwitchCompat
+                            android:id="@+id/playLocal"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="12dp"
+                            android:checked="true"
+                            android:minWidth="0dp"
+                            android:minHeight="0dp"
+                            tools:checked="true" />
+
+                        <com.google.android.material.textview.MaterialTextView
+                            android:id="@+id/playLocalText"
+                            style="@style/Video.ContextText"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="4dp"
+                            android:text="@string/detail_play_local"
+                            android:textColor="@color/white"
+                            android:textSize="13sp" />
+
                         <androidx.appcompat.widget.AppCompatImageView
                             android:id="@+id/reverse"
                             android:layout_width="20dp"

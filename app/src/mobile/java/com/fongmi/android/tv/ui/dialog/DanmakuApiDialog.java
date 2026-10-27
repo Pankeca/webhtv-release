@@ -35,6 +35,8 @@ public class DanmakuApiDialog extends BaseAlertDialog {
     protected void initView() {
         String text;
         binding.text.setText(text = DanmakuSetting.getEffectiveApiUrl());
+        // 复用 UA 弹窗的输入框，把浮动标签改成弹幕接口的写法示例
+        binding.input.setHint(R.string.danmaku_api_hint);
         binding.text.setSelection(TextUtils.isEmpty(text) ? 0 : text.length());
     }
 

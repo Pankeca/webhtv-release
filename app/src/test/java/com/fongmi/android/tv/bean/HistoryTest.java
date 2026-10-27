@@ -66,6 +66,29 @@ public class HistoryTest {
         assertFalse(history.isSameContent(updated));
     }
 
+    @Test
+    public void isPositionOvershoot_detectsPositionBeyondDuration() {
+        History history = coverHistory();
+        history.setPosition(429364);
+
+        assertTrue(history.isPositionOvershoot(429314));
+    }
+
+    @Test
+    public void isPositionOvershoot_keepsValidResumePosition() {
+        History history = coverHistory();
+
+        assertFalse(history.isPositionOvershoot(120000));
+    }
+
+    @Test
+    public void isPositionOvershoot_keepsPositionWhenDurationUnknown() {
+        History history = coverHistory();
+        history.setPosition(429364);
+
+        assertFalse(history.isPositionOvershoot(0));
+    }
+
     private static History coverHistory() {
         History history = new History();
         history.setKey("test@@@cover");
