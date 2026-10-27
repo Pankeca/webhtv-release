@@ -40,6 +40,8 @@ android {
         targetSdk libs.versions.targetSdk.get().toInteger()
         versionCode 560
         versionName "5.6.0"
+        buildConfigField "String", "DEFAULT_CLOUD_SERVER", "\"${(project.findProperty('webhtvCloudServer') ?: 'https://sync.940214.xyz').toString().replace('\\', '\\\\').replace('\"', '\\\"')}\""
+        buildConfigField "String", "ADMIN_CODE", "\"${(project.findProperty('webhtvAdminCode') ?: 'webhtv').toString().replace('\\', '\\\\').replace('\"', '\\\"')}\""
         buildConfigField "String", "BUILD_TIME", "\"${buildTime}\""
         buildConfigField "String", "BUILD_TAG", "\"${releaseTag}\""
         buildConfigField "String", "GIT_REVISION", "\"${gitRevision}\""
