@@ -43,16 +43,50 @@ public final class AboutDialog {
                 String version = android.text.TextUtils.isEmpty(update.versionName) ? AppVersion.stripPrefix(update.name) : update.versionName;
                 binding.updateHint.setText(activity.getString(R.string.about_update_available, version));
                 binding.updateHint.setVisibility(android.view.View.VISIBLE);
-                binding.updateHint.setOnClickListener(v2 -> {
-                    dialog.dismiss();
-                    Updater.create().downloadStable(activity);
-                });
+                binding.updateHint.setOnClickListener(v2 -> startUpdate(activity, dialog, binding));
             });
         });
         dialog.setCanceledOnTouchOutside(false);
         dialog.show();
         configureWindow(activity, dialog);
         binding.confirm.requestFocus();
+    }
+
+    /** 点击更新提示后直接下载稳定版，并用进度条展示下载进度。 */
+    private static void startUpdate(FragmentActivity activity, Dialog dialog, DialogAboutBinding binding) {
+        binding.updateHint.setEnabled(false);
+        binding.updateHint.setVisibility(android.view.View.GONE);
+        binding.updateProgressWrap.setVisibility(android.view.View.VISIBLE);
+        binding.updateProgress.setVisibility(android.view.View.VISIBLE);
+        binding.updateProgress.setProgress(0);
+        binding.updateStatus.setText(R.string.update_downloading_start);
+        Updater.create().downloadStable(activity, new Updater.DownloadListener() {
+            @Override
+            public void onProgress(int progress, long bytes, long total, long speed, long elapsed) {
+                if (!dialog.isShowing()) return;
+                binding.updateProgress.setProgress(Math.max(0, Math.min(100, progress)));
+                if (total > 0) {
+                    String size = android.text.format.Formatter.formatFileSize(activity, bytes) + " / " + android.text.format.Formatter.formatFileSize(activity, total);
+                    binding.updateStatus.setText(activity.getString(R.string.update_downloading_progress, progress, size));
+                } else {
+                    binding.updateStatus.setText(activity.getString(R.string.update_downloading_percent, progress));
+                }
+            }
+
+            @Override
+            public void onComplete() {
+                if (dialog.isShowing()) dialog.dismiss();
+            }
+
+            @Override
+            public void onError(String message) {
+                if (!dialog.isShowing()) return;
+                binding.updateProgress.setVisibility(android.view.View.GONE);
+                binding.updateStatus.setText(message);
+                binding.updateHint.setEnabled(true);
+                binding.updateHint.setVisibility(android.view.View.VISIBLE);
+            }
+        });
     }
 
     private static void configureContentHeight(FragmentActivity activity, DialogAboutBinding binding) {

@@ -67,6 +67,8 @@ public class DownloadCenterActivity extends BaseActivity implements DownloadTask
     private static final int CHIP_MIN_HEIGHT_DP = 46;
 
     private ActivityDownloadCenterBinding mBinding;
+    private final TextView[] tabLabels = new TextView[2];
+    private final TextView[] tabCounts = new TextView[2];
     private final Set<String> selected = new HashSet<>();
     private final Map<String, Boolean> expanded = new LinkedHashMap<>();
     private final Map<String, TextView> chipLabels = new LinkedHashMap<>();
@@ -81,6 +83,7 @@ public class DownloadCenterActivity extends BaseActivity implements DownloadTask
     private long usedBytes = -1;
     private long freeBytes = -1;
     private int tabIndex;
+    private int bottomTab = -1;
     private float downX;
     private float downY;
     private boolean swipeCandidate;
@@ -222,9 +225,35 @@ public class DownloadCenterActivity extends BaseActivity implements DownloadTask
     }
 
     private void initTabs() {
-        mBinding.tabs.addTab(mBinding.tabs.newTab().setText(R.string.download_tab_active));
-        mBinding.tabs.addTab(mBinding.tabs.newTab().setText(R.string.download_tab_done));
+        addTab(0, R.string.download_tab_active);
+        addTab(1, R.string.download_tab_done);
         mBinding.tabs.selectTab(mBinding.tabs.getTabAt(0));
+    }
+
+    /** 自定义页签：文字固定宽度、数量固定槽位，切换或数量变化时文字不会左右偏移。 */
+    private void addTab(int index, int titleRes) {
+        LinearLayoutCompat row = new LinearLayoutCompat(this);
+        row.setOrientation(LinearLayoutCompat.HORIZONTAL);
+        row.setGravity(Gravity.CENTER);
+        TextView label = text(getString(titleRes), 15, COLOR_TEXT_DIM, true);
+        TextView count = text("0", 13, COLOR_TEXT_DIM, true);
+        count.setMinWidth(dp(26));
+        count.setGravity(Gravity.START);
+        row.addView(label);
+        LinearLayoutCompat.LayoutParams countParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        countParams.leftMargin = dp(4);
+        row.addView(count, countParams);
+        tabLabels[index] = label;
+        tabCounts[index] = count;
+        mBinding.tabs.addTab(mBinding.tabs.newTab().setCustomView(row));
+    }
+
+    private void updateTabColors() {
+        for (int i = 0; i < tabLabels.length; i++) {
+            int color = i == tabIndex ? COLOR_ACCENT : COLOR_TEXT_DIM;
+            if (tabLabels[i] != null) tabLabels[i].setTextColor(color);
+            if (tabCounts[i] != null) tabCounts[i].setTextColor(color);
+        }
     }
 
     private List<DownloadTask> visibleTasks() {
@@ -267,6 +296,7 @@ public class DownloadCenterActivity extends BaseActivity implements DownloadTask
         mBinding.pauseAll.setVisibility(tabIndex == 0 ? View.VISIBLE : View.GONE);
         mBinding.delete.setVisibility(View.VISIBLE);
         updateTabTitles();
+        layoutBottomBar();
         refreshStats();
         renderSignature = signature();
         updateStorage();
@@ -396,6 +426,27 @@ public class DownloadCenterActivity extends BaseActivity implements DownloadTask
         return total;
     }
 
+    /** 底栏：下载中页全选紧挨「全部开始」，已下载页全选放在「删除」左侧，避免最左难以点击。 */
+    private void layoutBottomBar() {
+        if (bottomTab == tabIndex) return;
+        bottomTab = tabIndex;
+        LinearLayoutCompat bar = mBinding.bottomBar;
+        bar.removeView(mBinding.selectAll);
+        int index = tabIndex == 0 ? bar.indexOfChild(mBinding.startAll) + 1 : bar.indexOfChild(mBinding.delete);
+        bar.addView(mBinding.selectAll, index);
+        LinearLayoutCompat.LayoutParams params = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.setMarginStart(dp(10));
+        params.setMarginEnd(0);
+        mBinding.selectAll.setLayoutParams(params);
+        for (int id : new int[]{R.id.startAll, R.id.pauseAll, R.id.delete}) {
+            View button = bar.findViewById(id);
+            if (button == null || !(button.getLayoutParams() instanceof LinearLayoutCompat.LayoutParams)) continue;
+            LinearLayoutCompat.LayoutParams buttonParams = (LinearLayoutCompat.LayoutParams) button.getLayoutParams();
+            buttonParams.setMarginStart(dp(10));
+            button.setLayoutParams(buttonParams);
+        }
+    }
+
     private void updateTabTitles() {
         int active = 0;
         int done = 0;
@@ -403,12 +454,9 @@ public class DownloadCenterActivity extends BaseActivity implements DownloadTask
             if (task.getState() == DownloadTask.State.DONE) done++;
             else active++;
         }
-        mBinding.tabs.getTabAt(0).setText(countText(R.string.download_tab_active, active));
-        mBinding.tabs.getTabAt(1).setText(countText(R.string.download_tab_done, done));
-    }
-
-    private CharSequence countText(int resId, int count) {
-        return count > 0 ? getString(resId) + " " + count : getString(resId);
+        if (tabCounts[0] != null) tabCounts[0].setText(String.valueOf(active));
+        if (tabCounts[1] != null) tabCounts[1].setText(String.valueOf(done));
+        updateTabColors();
     }
 
     private View groupCard(String vodName, List<DownloadTask> items) {

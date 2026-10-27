@@ -75,6 +75,7 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
     private Update beta;
     private Update selected;
     private CheckCallback checkCallback;
+    private DownloadListener downloadListener;
     private boolean force;
     private boolean downloading;
     private boolean canceled;
@@ -91,6 +92,16 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
 
         /** result 为空表示已是最新或检查失败。 */
         void onResult(Update result);
+    }
+
+    /** 稳定版静默下载进度回调：界面直接显示进度条，不再弹版本选择弹窗。 */
+    public interface DownloadListener {
+
+        void onProgress(int progress, long bytes, long total, long speed, long elapsed);
+
+        void onComplete();
+
+        void onError(String message);
     }
 
     public static Updater create() {
@@ -111,14 +122,48 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
 
     /** 点击版本号后直接按已配置更新源下载并安装最新稳定版。 */
     public void downloadStable(FragmentActivity activity) {
+        downloadStable(activity, null);
+    }
+
+    /** 直接下载稳定版并把进度回调给界面，不展示版本选择弹窗。 */
+    public void downloadStable(FragmentActivity activity, DownloadListener listener) {
         bind(activity);
         if (stable == null || !stable.hasUpdate()) {
             Notify.show(R.string.update_latest);
+            if (listener != null) listener.onError(ResUtil.getString(R.string.update_latest));
             return;
         }
         selected = stable;
-        show(activity);
-        onConfirm(new View(activity));
+        downloadListener = listener;
+        startDirectDownload();
+    }
+
+    private void startDirectDownload() {
+        downloading = true;
+        canceled = false;
+        routes = getRoutes(selected);
+        routeIndex = 0;
+        if (routes.isEmpty()) {
+            downloading = false;
+            notifyDownloadError(ResUtil.getString(R.string.update_download_source_unavailable));
+            return;
+        }
+        resetProgress();
+        Path.clear(getFile());
+        setDialogProgress(0, 0, selected.size, 0, 0);
+        startNextDownload();
+    }
+
+    private void notifyDownloadError(String message) {
+        DownloadListener listener = downloadListener;
+        downloadListener = null;
+        if (listener != null) listener.onError(message);
+    }
+
+    private void notifyDownloadComplete() {
+        DownloadListener listener = downloadListener;
+        downloadListener = null;
+        if (listener != null) listener.onComplete();
     }
 
     private File getFile() {
@@ -497,6 +542,7 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
         lastTotal = total;
         lastSpeed = speed;
         lastElapsed = elapsed;
+        if (downloadListener != null) downloadListener.onProgress(progress, bytes, total, speed, elapsed);
         if (dialog == null) return;
         if (!dialog.setProgress(progress, bytes, total, speed, elapsed)) dialog = null;
     }
@@ -509,6 +555,7 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
         downloading = false;
         routes = null;
         resetProgress();
+        notifyDownloadError(msg);
         Notify.show(msg);
         dismiss();
     }
@@ -530,11 +577,13 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
                     if (retryFallback()) return;
                     downloading = false;
                     routes = null;
+                    notifyDownloadError(error);
                     Notify.show(error);
                     dismiss();
                     return;
                 }
                 routes = null;
+                notifyDownloadComplete();
                 FileUtil.openFile(file);
                 dismiss();
             });

@@ -3,14 +3,16 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <item
-        android:id="@+id/sync"
-        android:icon="@drawable/ic_action_sync"
-        android:title="@string/menu_sync"
+        android:id="@+id/select_all"
+        android:checkable="true"
+        android:title="@string/menu_select_all"
+        app:actionLayout="@layout/action_select_all"
         app:showAsAction="always" />
 
     <item
-        android:id="@+id/select_all"
-        android:title="@string/menu_select_all"
+        android:id="@+id/sync"
+        android:icon="@drawable/ic_action_sync"
+        android:title="@string/menu_sync"
         app:showAsAction="always" />
 
     <item

@@ -671,6 +671,8 @@
     <string name="setting_incognito">Incognito mode</string>
     <string name="setting_drive_check">Drive link check</string>
     <string name="setting_theme_color">Theme color</string>
+    <string name="setting_theme_solid">Eye-care solid colors</string>
+    <string name="setting_reset">Reset</string>
     <string name="setting_appearance">Appearance &amp; language</string>
     <string name="setting_appearance_summary">4 options</string>
     <string name="setting_auto">Auto</string>
@@ -742,6 +744,8 @@
     <string name="history_watched_episode">Watched %1$s · %2$s</string>
     <string name="history_update_to">Updated to ep. %1$d</string>
     <string name="menu_select_all">Select all</string>
+    <string name="select_required">Select items to delete first</string>
+    <string name="dialog_delete_selected">Delete the %1$d selected item(s)?</string>
     <string name="sync_item_keep">Favorites</string>
     <string name="sync_item_settings">App settings</string>
     <string name="sync_item_remote_relay">Relay server config</string>
@@ -1185,6 +1189,9 @@
     <string name="update_hint">Choose a version to view release notes and update.</string>
     <string name="update_check">Checking for updates…</string>
     <string name="update_latest">Already on the latest version</string>
+    <string name="update_downloading_start">Downloading update…</string>
+    <string name="update_downloading_percent">Downloading update %1$d%%</string>
+    <string name="update_downloading_progress">Downloading %1$d%% · %2$s</string>
     <string name="update_failed">Update check failed</string>
     <string name="update_downloading">Downloading %1$d%%</string>
     <string name="update_downloading_unknown">Downloading…</string>
@@ -1600,13 +1607,13 @@
     <string name="account_backup_keep_desc">Back up my update list to the cloud</string>
     <string name="account_backup_history">Playback history</string>
     <string name="account_backup_history_desc">Back up viewing records and playback progress</string>
-    <string name="account_keep_desc_synced">Backed up · updates %1$d · tracking %2$d · %3$s</string>
+    <string name="account_keep_desc_synced">Backed up · updates %1$d · %2$s</string>
     <string name="account_history_desc_synced">Backed up · last %1$s</string>
     <string name="account_desc_never">Not backed up yet</string>
     <string name="account_backup_on">Backup enabled</string>
     <string name="account_backup_off">Backup disabled</string>
     <string name="account_keep_state">Local data</string>
-    <string name="account_keep_state_value">Favorites %1$d · Tracking %2$d</string>
+    <string name="account_keep_state_value">Favorites %1$d</string>
     <string name="account_public_publish">Publish subscriptions to shared folder</string>
     <string name="account_public_publish_done">Subscriptions published</string>
     <string name="account_public_list">View shared folder</string>
@@ -1628,6 +1635,10 @@
     <string name="account_stats_live">Live sources</string>
     <string name="account_stats_value">Local %1$d · Cloud %2$d</string>
     <string name="account_section_config">Cloud public config</string>
+    <string name="account_entry_sync_desc">Backup switches, cloud status and sync now</string>
+    <string name="account_entry_config_desc">Pull from or back up VOD, live sources and settings</string>
+    <string name="account_entry_sync_state">Local updates %1$d · history %2$d</string>
+    <string name="account_entry_config_state">Auto backup: %1$s</string>
     <string name="account_config_vod">VOD sources</string>
     <string name="account_config_live">Live sources</string>
     <string name="account_config_settings">Settings</string>
@@ -1677,6 +1688,7 @@
     <string name="track_need_keep">Add to favorites first, then long-press to enable update tracking</string>
     <string name="track_off">Update tracking disabled</string>
     <string name="track_on">Update tracking enabled, will check on schedule</string>
+    <string name="track_already">Already tracking · double-tap to set the interval</string>
     <string name="track_day_off">Off</string>
     <string name="track_day_auto">Every day</string>
     <string name="track_mon">Monday</string>

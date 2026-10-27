@@ -38,7 +38,6 @@ import com.fongmi.android.tv.setting.AccountStore;
 import com.fongmi.android.tv.setting.AccountSync;
 import com.fongmi.android.tv.setting.CloudConfigSync;
 import com.fongmi.android.tv.setting.CloudSyncStore;
-import com.fongmi.android.tv.track.UpdateTrack;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.Util;
@@ -69,7 +68,7 @@ public class AccountDialog extends BaseAlertDialog {
     private TextInputEditText confirmInput;
     private TextInputEditText serverInput;
     private Runnable callback;
-    private MaterialButton syncButton;
+    private AlertDialog optionsDialog;
     private boolean syncConfigVod = true;
     private boolean syncConfigLive = true;
     private boolean syncConfigSettings = true;
@@ -206,57 +205,179 @@ public class AccountDialog extends BaseAlertDialog {
 
     private void renderAccount() {
         binding.content.addView(headerCard(AccountStore.name(), getString(R.string.account_uid, AccountStore.uid()), true));
-        int keeps = keepCount();
-        int history = AccountSync.localHistoryCount();
-        long keepAt = CloudSyncStore.keepBackupAt();
-        long historyAt = CloudSyncStore.historyBackupAt();
-
-        LinearLayoutCompat overview = card(getString(R.string.account_section_stats));
-        overview.addView(statRow(getString(R.string.account_stats_keep), keeps, CloudSyncStore.cloudKeepCount()));
-        overview.addView(statRow(getString(R.string.account_stats_history), history, CloudSyncStore.cloudHistoryCount()));
-        overview.addView(statRow(getString(R.string.account_stats_vod), CloudConfigSync.localVodCount(), CloudSyncStore.cloudVodCount()));
-        overview.addView(statRow(getString(R.string.account_stats_live), CloudConfigSync.localLiveCount(), CloudSyncStore.cloudLiveCount()));
-        binding.content.addView(overview);
-
-        LinearLayoutCompat sync = card(getString(R.string.account_section_sync));
-        sync.addView(switchRow(getString(R.string.account_backup_keep), keepAt > 0 ? getString(R.string.account_keep_desc_synced, keeps, trackCount(), formatTime(keepAt)) : getString(R.string.account_desc_never), CloudSyncStore.isKeepEnabled(), checked -> {
-            AccountSync.setKeepBackup(checked);
-            Notify.show(checked ? R.string.account_backup_on : R.string.account_backup_off);
-        }));
-        sync.addView(switchRow(getString(R.string.account_backup_history), historyAt > 0 ? getString(R.string.account_history_desc_synced, formatTime(historyAt)) : getString(R.string.account_desc_never), CloudSyncStore.isHistoryEnabled(), checked -> {
-            AccountSync.setHistoryBackup(checked);
-            Notify.show(checked ? R.string.account_backup_on : R.string.account_backup_off);
-        }));
-        sync.addView(switchRow(getString(R.string.account_backup_config), getString(R.string.account_backup_config_desc), CloudSyncStore.isConfigEnabled(), checked -> {
-            CloudSyncStore.setConfigEnabled(checked);
-            Notify.show(checked ? R.string.account_backup_on : R.string.account_backup_off);
-        }));
-        sync.addView(infoRow(getString(R.string.account_sync_state), syncStatus()));
-        sync.addView(actionRow());
-        sync.addView(note(getString(R.string.account_auto_bind_note)));
-        binding.content.addView(sync);
-
-        binding.content.addView(configCard());
+        binding.content.addView(statsCard());
+        binding.content.addView(entryRow(getString(R.string.account_section_sync), getString(R.string.account_entry_sync_desc), syncSummary(), view -> showSyncOptions()));
+        binding.content.addView(entryRow(getString(R.string.account_section_config), getString(R.string.account_entry_config_desc), configSummary(), view -> showConfigOptions()));
         binding.content.addView(securityCard());
     }
 
-    /** 云端公共配置：勾选需要拉取/备份的内容项。 */
-    private LinearLayoutCompat configCard() {
-        LinearLayoutCompat card = card(getString(R.string.account_section_config));
-        card.addView(checkRow(getString(R.string.account_config_vod), syncConfigVod, checked -> syncConfigVod = checked));
-        card.addView(checkRow(getString(R.string.account_config_live), syncConfigLive, checked -> syncConfigLive = checked));
-        card.addView(checkRow(getString(R.string.account_config_settings), syncConfigSettings, checked -> syncConfigSettings = checked));
-        card.addView(infoRow(getString(R.string.account_config_mode), conflictModeLabel()));
-        card.addView(switchRow(getString(R.string.account_config_remember), getString(R.string.account_config_remember_desc), CloudSyncStore.isConflictRemembered(), checked -> CloudSyncStore.setConflictRemembered(checked)));
-        card.addView(buttonRow(getString(R.string.account_config_pull), true, view -> pullPublicConfig()));
-        card.addView(buttonRow(getString(R.string.account_config_backup), false, view -> backupConfig()));
-        card.addView(note(getString(R.string.account_config_note)));
+    /** 概览：四宫格统计，本地/云端分开展示，视觉上更紧凑清晰。 */
+    private View statsCard() {
+        LinearLayoutCompat card = card(getString(R.string.account_section_stats));
+        LinearLayoutCompat row1 = statGridRow(
+                statTile(getString(R.string.account_stats_keep), keepCount(), CloudSyncStore.cloudKeepCount()),
+                statTile(getString(R.string.account_stats_history), AccountSync.localHistoryCount(), CloudSyncStore.cloudHistoryCount()));
+        LinearLayoutCompat.LayoutParams row1Params = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        row1Params.topMargin = dp(8);
+        row1.setLayoutParams(row1Params);
+        card.addView(row1);
+        LinearLayoutCompat row2 = statGridRow(
+                statTile(getString(R.string.account_stats_vod), CloudConfigSync.localVodCount(), CloudSyncStore.cloudVodCount()),
+                statTile(getString(R.string.account_stats_live), CloudConfigSync.localLiveCount(), CloudSyncStore.cloudLiveCount()));
+        LinearLayoutCompat.LayoutParams row2Params = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        row2Params.topMargin = dp(8);
+        row2.setLayoutParams(row2Params);
+        card.addView(row2);
         return card;
+    }
+
+    private LinearLayoutCompat statGridRow(View left, View right) {
+        LinearLayoutCompat row = new LinearLayoutCompat(requireContext());
+        row.setOrientation(LinearLayoutCompat.HORIZONTAL);
+        LinearLayoutCompat.LayoutParams leftParams = new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        row.addView(left, leftParams);
+        LinearLayoutCompat.LayoutParams rightParams = new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        rightParams.leftMargin = dp(8);
+        row.addView(right, rightParams);
+        return row;
+    }
+
+    private View statTile(String label, int local, int cloud) {
+        LinearLayoutCompat tile = new LinearLayoutCompat(requireContext());
+        tile.setOrientation(LinearLayoutCompat.VERTICAL);
+        tile.setPadding(dp(12), dp(10), dp(12), dp(10));
+        GradientDrawable background = new GradientDrawable();
+        background.setColor(Color.parseColor("#F4F7FC"));
+        background.setCornerRadius(dp(10));
+        tile.setBackground(background);
+        tile.addView(text(label, 12, Color.parseColor("#5F6368"), false));
+        MaterialTextView value = text(getString(R.string.account_stats_value, local, cloud), 14, Color.parseColor("#202124"), true);
+        LinearLayoutCompat.LayoutParams valueParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        valueParams.topMargin = dp(4);
+        tile.addView(value, valueParams);
+        return tile;
+    }
+
+    /** 二级菜单入口：标题 + 说明 + 摘要 + 右侧箭头。 */
+    private View entryRow(String title, String desc, String summary, View.OnClickListener listener) {
+        LinearLayoutCompat row = new LinearLayoutCompat(requireContext());
+        row.setOrientation(LinearLayoutCompat.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(14), dp(12), dp(12), dp(12));
+        row.setBackground(cardBackground());
+        row.setClickable(true);
+        row.setOnClickListener(listener);
+        LinearLayoutCompat.LayoutParams rowParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rowParams.topMargin = dp(10);
+        row.setLayoutParams(rowParams);
+
+        LinearLayoutCompat texts = new LinearLayoutCompat(requireContext());
+        texts.setOrientation(LinearLayoutCompat.VERTICAL);
+        texts.addView(text(title, 15, Color.parseColor("#202124"), true));
+        MaterialTextView summaryView = text(summary, 12, Color.parseColor("#1A73E8"), false);
+        LinearLayoutCompat.LayoutParams summaryParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        summaryParams.topMargin = dp(2);
+        summaryView.setLayoutParams(summaryParams);
+        summaryView.setMaxLines(1);
+        texts.addView(summaryView);
+        MaterialTextView descView = text(desc, 12, Color.parseColor("#80868B"), false);
+        LinearLayoutCompat.LayoutParams descParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        descParams.topMargin = dp(2);
+        descView.setLayoutParams(descParams);
+        texts.addView(descView);
+        row.addView(texts, new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+
+        MaterialTextView arrow = text("›", 24, Color.parseColor("#9AA0A6"), false);
+        LinearLayoutCompat.LayoutParams arrowParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        arrowParams.leftMargin = dp(10);
+        row.addView(arrow, arrowParams);
+        return row;
+    }
+
+    private String syncSummary() {
+        return getString(R.string.account_entry_sync_state, keepCount(), AccountSync.localHistoryCount());
+    }
+
+    private String configSummary() {
+        return getString(R.string.account_entry_config_state, CloudSyncStore.isConfigEnabled() ? getString(R.string.setting_on) : getString(R.string.setting_off));
+    }
+
+    private LinearLayoutCompat optionsContent() {
+        LinearLayoutCompat content = new LinearLayoutCompat(requireContext());
+        content.setOrientation(LinearLayoutCompat.VERTICAL);
+        content.setPadding(dp(20), 0, dp(20), 0);
+        return content;
+    }
+
+    private void showOptionsDialog(CharSequence title, View content) {
+        optionsDialog = new MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_WebHTV_LightDialog)
+                .setTitle(title)
+                .setView(content)
+                .setNegativeButton(R.string.dialog_close, null)
+                .setOnDismissListener(dialog -> {
+                    optionsDialog = null;
+                    if (isAdded()) render();
+                })
+                .show();
+        if (optionsDialog.getWindow() != null) optionsDialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+    }
+
+    private void dismissOptions() {
+        if (optionsDialog != null) optionsDialog.dismiss();
+        optionsDialog = null;
+    }
+
+    /** 云端同步二级菜单：备份开关、状态与立即同步。 */
+    private void showSyncOptions() {
+        long keepAt = CloudSyncStore.keepBackupAt();
+        long historyAt = CloudSyncStore.historyBackupAt();
+        int keeps = keepCount();
+        LinearLayoutCompat content = optionsContent();
+        content.addView(switchRow(getString(R.string.account_backup_keep), keepAt > 0 ? getString(R.string.account_keep_desc_synced, keeps, formatTime(keepAt)) : getString(R.string.account_desc_never), CloudSyncStore.isKeepEnabled(), checked -> {
+            AccountSync.setKeepBackup(checked);
+            Notify.show(checked ? R.string.account_backup_on : R.string.account_backup_off);
+        }));
+        content.addView(switchRow(getString(R.string.account_backup_history), historyAt > 0 ? getString(R.string.account_history_desc_synced, formatTime(historyAt)) : getString(R.string.account_desc_never), CloudSyncStore.isHistoryEnabled(), checked -> {
+            AccountSync.setHistoryBackup(checked);
+            Notify.show(checked ? R.string.account_backup_on : R.string.account_backup_off);
+        }));
+        content.addView(switchRow(getString(R.string.account_backup_config), getString(R.string.account_backup_config_desc), CloudSyncStore.isConfigEnabled(), checked -> {
+            CloudSyncStore.setConfigEnabled(checked);
+            Notify.show(checked ? R.string.account_backup_on : R.string.account_backup_off);
+        }));
+        content.addView(infoRow(getString(R.string.account_sync_state), syncStatus()));
+        content.addView(buttonRow(getString(R.string.account_sync_now), true, view -> {
+            dismissOptions();
+            syncNow();
+        }));
+        content.addView(note(getString(R.string.account_auto_bind_note)));
+        showOptionsDialog(getString(R.string.account_section_sync), content);
+    }
+
+    /** 云端公共配置二级菜单：勾选内容项、冲突策略与拉取/备份。 */
+    private void showConfigOptions() {
+        LinearLayoutCompat content = optionsContent();
+        content.addView(checkRow(getString(R.string.account_config_vod), syncConfigVod, checked -> syncConfigVod = checked));
+        content.addView(checkRow(getString(R.string.account_config_live), syncConfigLive, checked -> syncConfigLive = checked));
+        content.addView(checkRow(getString(R.string.account_config_settings), syncConfigSettings, checked -> syncConfigSettings = checked));
+        content.addView(infoRow(getString(R.string.account_config_mode), conflictModeLabel()));
+        content.addView(switchRow(getString(R.string.account_config_remember), getString(R.string.account_config_remember_desc), CloudSyncStore.isConflictRemembered(), checked -> CloudSyncStore.setConflictRemembered(checked)));
+        content.addView(buttonRow(getString(R.string.account_config_pull), true, view -> {
+            dismissOptions();
+            pullPublicConfig();
+        }));
+        content.addView(buttonRow(getString(R.string.account_config_backup), false, view -> {
+            dismissOptions();
+            backupConfig();
+        }));
+        content.addView(note(getString(R.string.account_config_note)));
+        showOptionsDialog(getString(R.string.account_section_config), content);
     }
 
     private LinearLayoutCompat securityCard() {
         LinearLayoutCompat card = card(getString(R.string.account_section_security));
         card.addView(buttonRow(getString(R.string.account_change_password), false, view -> changePasswordPrompt()));
+        card.addView(buttonRow(getString(R.string.account_logout), false, view -> logout()));
         card.addView(dangerRow(getString(R.string.account_delete), view -> confirmDeleteAccount()));
         card.addView(note(getString(R.string.account_delete_note)));
         return card;
@@ -346,19 +467,11 @@ public class AccountDialog extends BaseAlertDialog {
     }
 
     private void doSyncNow() {
-        if (syncButton != null) {
-            syncButton.setEnabled(false);
-            syncButton.setText(R.string.account_sync_running);
-        }
         binding.progress.setVisibility(View.VISIBLE);
         Notify.show(R.string.account_sync_started);
         AccountSync.syncNow(() -> {
             if (!isAdded()) return;
             binding.progress.setVisibility(View.GONE);
-            if (syncButton != null) {
-                syncButton.setEnabled(true);
-                syncButton.setText(R.string.account_sync_now);
-            }
             render();
             Notify.show(R.string.account_sync_result);
         });
@@ -668,14 +781,6 @@ public class AccountDialog extends BaseAlertDialog {
         }
     }
 
-    private int trackCount() {
-        try {
-            return UpdateTrack.list().size();
-        } catch (Throwable e) {
-            return 0;
-        }
-    }
-
     private String formatTime(long time) {
         return new SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(new Date(time));
     }
@@ -816,34 +921,6 @@ public class AccountDialog extends BaseAlertDialog {
         params.topMargin = dp(6);
         edit.setLayoutParams(params);
         return edit;
-    }
-
-    /** 底部操作行：立即同步（主操作）与退出登录（次要/危险操作）并排，避免两块整行按钮堆叠。 */
-    private View actionRow() {
-        LinearLayoutCompat row = new LinearLayoutCompat(requireContext());
-        row.setOrientation(LinearLayoutCompat.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-
-        MaterialButton sync = actionButton(getString(R.string.account_sync_now), true);
-        MaterialButton logout = actionButton(getString(R.string.account_logout), false);
-        syncButton = sync;
-        int danger = Color.parseColor("#D93025");
-        logout.setTextColor(danger);
-        logout.setStrokeColor(ColorStateList.valueOf(Color.parseColor("#E7B7B2")));
-
-        LinearLayoutCompat.LayoutParams syncParams = new LinearLayoutCompat.LayoutParams(0, dp(42), 1);
-        LinearLayoutCompat.LayoutParams logoutParams = new LinearLayoutCompat.LayoutParams(0, dp(42), 1);
-        logoutParams.leftMargin = dp(10);
-        row.addView(sync, syncParams);
-        row.addView(logout, logoutParams);
-
-        sync.setOnClickListener(view -> syncNow());
-        logout.setOnClickListener(view -> logout());
-
-        LinearLayoutCompat.LayoutParams params = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        params.topMargin = dp(12);
-        row.setLayoutParams(params);
-        return row;
     }
 
     private MaterialButton actionButton(String label, boolean tonal) {

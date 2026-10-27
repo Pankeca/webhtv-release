@@ -26,7 +26,8 @@ public final class UpdateTracker {
 
     public static synchronized void init() {
         if (future != null) return;
-        future = Task.scheduler().scheduleWithFixedDelay(UpdateTracker::checkSafe, 2, INTERVAL_HOURS, TimeUnit.HOURS);
+        // 启动 30 秒后先跑一轮，之后每 6 小时检查一次，避免开启追更后长时间看不到更新集数
+        future = Task.scheduler().scheduleWithFixedDelay(UpdateTracker::checkSafe, 30, INTERVAL_HOURS * 3600, TimeUnit.SECONDS);
     }
 
     private static void checkSafe() {

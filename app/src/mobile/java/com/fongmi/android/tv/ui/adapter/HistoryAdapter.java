@@ -16,9 +16,19 @@ import com.fongmi.android.tv.track.UpdateTrack;
 import com.fongmi.android.tv.utils.HistoryProgressFormatter;
 import com.fongmi.android.tv.utils.ImgUtil;
 
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 public class HistoryAdapter extends BaseDiffAdapter<History, HistoryAdapter.ViewHolder> {
 
+    private static final Pattern EPISODE_PATTERN = Pattern.compile("(\\d+)");
+
     private final OnClickListener listener;
+    private final Set<History> selected = new HashSet<>();
     private int width, height;
     private boolean animate;
     private boolean delete;
@@ -32,7 +42,7 @@ public class HistoryAdapter extends BaseDiffAdapter<History, HistoryAdapter.View
 
         void onItemClick(History item);
 
-        void onItemDelete(History item);
+        void onItemSelect(History item);
 
         boolean onLongClick();
     }
@@ -49,7 +59,45 @@ public class HistoryAdapter extends BaseDiffAdapter<History, HistoryAdapter.View
     public void setDelete(boolean delete) {
         this.animate = false;
         this.delete = delete;
+        if (!delete) selected.clear();
         notifyItemRangeChanged(0, getItemCount());
+    }
+
+    public boolean isSelected(History item) {
+        return selected.contains(item);
+    }
+
+    public void toggleSelection(History item) {
+        if (!selected.remove(item)) selected.add(item);
+        notifyItemRangeChanged(0, getItemCount());
+    }
+
+    public void setAllSelected(boolean checked) {
+        selected.clear();
+        if (checked) selected.addAll(getItems());
+        notifyItemRangeChanged(0, getItemCount());
+    }
+
+    public boolean isAllSelected() {
+        return getItemCount() > 0 && selected.size() >= getItemCount();
+    }
+
+    public int getSelectedCount() {
+        return selected.size();
+    }
+
+    public void clearSelection() {
+        selected.clear();
+        notifyItemRangeChanged(0, getItemCount());
+    }
+
+    /** 删除当前勾选项：全选只负责选中，删除需再点删除按钮确认。 */
+    public void deleteSelected(Runnable done) {
+        List<History> remain = new ArrayList<>(getItems());
+        remain.removeAll(selected);
+        for (History item : selected) item.deleteAndSync();
+        selected.clear();
+        setItems(remain, done);
     }
 
     @Override
@@ -81,6 +129,11 @@ public class HistoryAdapter extends BaseDiffAdapter<History, HistoryAdapter.View
         holder.binding.progress.setMax(duration > 0 ? duration : 1);
         holder.binding.progress.setProgress(duration > 0 ? Math.min(progress, duration) : 0, animate);
         holder.binding.delete.setVisibility(!delete ? View.GONE : View.VISIBLE);
+        if (delete) {
+            boolean checked = selected.contains(item);
+            holder.binding.delete.setImageResource(checked ? R.drawable.ic_vod_check_on : R.drawable.ic_vod_check_off);
+            holder.binding.delete.setBackgroundColor(checked ? 0x40000000 : 0x14000000);
+        }
         String watchedTime = HistoryProgressFormatter.format(item.getPosition(), item.getDuration());
         String episode = item.getVodRemarks();
         boolean hasEpisode = !TextUtils.isEmpty(episode) && !TextUtils.isEmpty(watchedTime) && !same;
@@ -93,17 +146,32 @@ public class HistoryAdapter extends BaseDiffAdapter<History, HistoryAdapter.View
         // 集数已并入已看行时不再重复显示 remark
         holder.binding.remark.setVisibility(!delete && !showProgress && !same ? View.VISIBLE : View.GONE);
         UpdateTrack track = UpdateTrack.find(item.getKey());
-        int updateCount = track == null ? 0 : track.getCount();
+        int updateCount = track != null ? track.getCount() : 0;
+        // 未开启追更时，退化为从备注（如「更新至第20集」）解析总集数，避免更新集数整块消失
+        if (updateCount <= 0) updateCount = parseEpisode(item.getVodRemarks());
         holder.binding.historyUpdate.setText(holder.itemView.getContext().getString(R.string.history_update_to, updateCount));
         holder.binding.historyUpdate.setVisibility(!delete && updateCount > 0 ? View.VISIBLE : View.GONE);
         ImgUtil.load(item.getVodName(), item.getVodPic(), holder.binding.image);
         setClickListener(holder.binding.getRoot(), item);
     }
 
+    private int parseEpisode(String text) {
+        if (TextUtils.isEmpty(text)) return 0;
+        Matcher matcher = EPISODE_PATTERN.matcher(text);
+        int count = 0;
+        while (matcher.find()) {
+            try {
+                count = Integer.parseInt(matcher.group(1));
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return count;
+    }
+
     private void setClickListener(View root, History item) {
         root.setOnLongClickListener(view -> listener.onLongClick());
         root.setOnClickListener(view -> {
-            if (isDelete()) listener.onItemDelete(item);
+            if (isDelete()) listener.onItemSelect(item);
             else listener.onItemClick(item);
         });
     }

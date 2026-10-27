@@ -55,6 +55,20 @@ public class SettingEnhanceActivity extends BaseActivity {
         reorderItems();
         mBinding.customCsp.requestFocus();
         setText();
+        Setting.putEnhanceRepoVisible(false);
+        applyRepoVisibility();
+        mBinding.enhanceTitle.setOnLongClickListener(view -> {
+            Setting.putEnhanceRepoVisible(!Setting.isEnhanceRepoVisible());
+            applyRepoVisibility();
+            return true;
+        });
+    }
+
+    /** 仓库入口默认隐藏，长按标题解锁。 */
+    private void applyRepoVisibility() {
+        boolean visible = Setting.isEnhanceRepoVisible();
+        mBinding.githubRepo.setVisibility(visible ? View.VISIBLE : View.GONE);
+        mBinding.cnbRepo.setVisibility(visible ? View.VISIBLE : View.GONE);
     }
 
     @Override

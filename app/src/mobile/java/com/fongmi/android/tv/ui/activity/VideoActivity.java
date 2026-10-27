@@ -17,6 +17,7 @@ import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.provider.Settings;
 import android.text.InputType;
 import android.text.TextUtils;
@@ -832,7 +833,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         mBinding.name.setOnClickListener(view -> onName());
         mBinding.more.setOnClickListener(view -> onMore());
         mBinding.shortDisplay.setOnClickListener(view -> onShortDisplay());
-        mBinding.track.setOnClickListener(view -> onUpdateTrack());
+        mBinding.track.setOnClickListener(view -> onTrackTap());
         setTrackButton();
         mBinding.search.setOnClickListener(view -> onSearch());
         mBinding.download.setOnClickListener(view -> onDownload());
@@ -2357,7 +2358,21 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         DownloadDialog.show(this, getKey(), getSite().getName(), getId(), mBinding.name.getText().toString(), getPic(), flagName, mEpisodeAdapter.getItems());
     }
 
-    private void onUpdateTrack() {
+    private long lastTrackTap;
+
+    /** 单击直接追更，双击才打开更新时间设置；用户不必先了解更新时间才能追更。 */
+    private void onTrackTap() {
+        long now = SystemClock.elapsedRealtime();
+        if (now - lastTrackTap < 350) {
+            lastTrackTap = 0;
+            onUpdateTrackSettings();
+        } else {
+            lastTrackTap = now;
+            onUpdateTrackQuick();
+        }
+    }
+
+    private void onUpdateTrackQuick() {
         Keep keep = Keep.find(getHistoryKey());
         if (keep == null) {
             keep = new Keep();
@@ -2370,6 +2385,30 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
             checkKeepImg();
         }
         UpdateTrack track = UpdateTrack.find(getHistoryKey());
+        if (track == null) {
+            UpdateTrack.set(keep, UpdateTrack.DAYS_EVERY);
+            UpdateTrack.markSeen(getHistoryKey(), getEpisodeCount());
+            Notify.show(R.string.track_on);
+        } else {
+            Notify.show(R.string.track_already);
+        }
+        setTrackButton();
+    }
+
+    private void onUpdateTrackSettings() {
+        Keep keep = Keep.find(getHistoryKey());
+        if (keep == null) {
+            keep = new Keep();
+            keep.setKey(getHistoryKey());
+            keep.setCid(VodConfig.getCid());
+            keep.setVodPic(mHistory.getVodPic());
+            keep.setVodName(mHistory.getVodName());
+            keep.setSiteName(getSite().getName());
+            keep.save();
+            checkKeepImg();
+        }
+        Keep finalKeep = keep;
+        UpdateTrack track = UpdateTrack.find(getHistoryKey());
         ScheduleDialog.show(this, track == null ? UpdateTrack.DAYS_NONE : track.getDays(), days -> {
             if (days == UpdateTrack.DAYS_NONE) {
                 UpdateTrack.remove(getHistoryKey());
@@ -2378,7 +2417,8 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
                 checkKeepImg();
                 Notify.show(R.string.track_off);
             } else {
-                UpdateTrack.set(Keep.find(getHistoryKey()), days);
+                UpdateTrack.set(finalKeep, days);
+                UpdateTrack.markSeen(getHistoryKey(), getEpisodeCount());
                 Notify.show(R.string.track_on);
             }
             setTrackButton();

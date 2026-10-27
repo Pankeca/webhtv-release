@@ -254,8 +254,9 @@ public class SettingEnhanceFragment extends BaseFragment {
         return true;
     }
 
-    /** 默认隐藏仓库入口；长按标题或图标切换全部显示/隐藏，并持久化。 */
+    /** 默认隐藏仓库入口；长按标题或图标临时解锁，离开页面后恢复隐藏。 */
     private void setupRepoReveal() {
+        Setting.putEnhanceRepoVisible(false);
         applyRepoVisibility();
         View.OnLongClickListener toggle = view -> {
             toggleRepoVisibility();

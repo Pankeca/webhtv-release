@@ -13,9 +13,15 @@ import com.fongmi.android.tv.track.UpdateTrack;
 import com.fongmi.android.tv.databinding.AdapterVodBinding;
 import com.fongmi.android.tv.utils.ImgUtil;
 
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
 public class KeepAdapter extends BaseDiffAdapter<Keep, KeepAdapter.ViewHolder> {
 
     private final OnClickListener listener;
+    private final Set<Keep> selected = new HashSet<>();
     private int width, height;
     private boolean delete;
 
@@ -27,7 +33,7 @@ public class KeepAdapter extends BaseDiffAdapter<Keep, KeepAdapter.ViewHolder> {
 
         void onItemClick(Keep item);
 
-        void onItemDelete(Keep item);
+        void onItemSelect(Keep item);
 
         boolean onLongClick();
     }
@@ -43,7 +49,45 @@ public class KeepAdapter extends BaseDiffAdapter<Keep, KeepAdapter.ViewHolder> {
 
     public void setDelete(boolean delete) {
         this.delete = delete;
+        if (!delete) selected.clear();
         notifyItemRangeChanged(0, getItemCount());
+    }
+
+    public boolean isSelected(Keep item) {
+        return selected.contains(item);
+    }
+
+    public void toggleSelection(Keep item) {
+        if (!selected.remove(item)) selected.add(item);
+        notifyItemRangeChanged(0, getItemCount());
+    }
+
+    public void setAllSelected(boolean checked) {
+        selected.clear();
+        if (checked) selected.addAll(getItems());
+        notifyItemRangeChanged(0, getItemCount());
+    }
+
+    public boolean isAllSelected() {
+        return getItemCount() > 0 && selected.size() >= getItemCount();
+    }
+
+    public int getSelectedCount() {
+        return selected.size();
+    }
+
+    public void clearSelection() {
+        selected.clear();
+        notifyItemRangeChanged(0, getItemCount());
+    }
+
+    /** 删除当前勾选项：全选是选中状态，只有点删除才真正移除。 */
+    public void deleteSelected(Runnable done) {
+        List<Keep> remain = new ArrayList<>(getItems());
+        remain.removeAll(selected);
+        for (Keep item : selected) item.delete();
+        selected.clear();
+        setItems(remain, done);
     }
 
     @Override
@@ -78,6 +122,11 @@ public class KeepAdapter extends BaseDiffAdapter<Keep, KeepAdapter.ViewHolder> {
             holder.binding.remark.setTextColor(0xFFFF5252);
         }
         holder.binding.delete.setVisibility(!delete ? View.GONE : View.VISIBLE);
+        if (delete) {
+            boolean checked = selected.contains(item);
+            holder.binding.delete.setImageResource(checked ? R.drawable.ic_vod_check_on : R.drawable.ic_vod_check_off);
+            holder.binding.delete.setBackgroundColor(checked ? 0x40000000 : 0x14000000);
+        }
         ImgUtil.load(item.getVodName(), item.getVodPic(), holder.binding.image);
         setClickListener(holder.binding.getRoot(), item);
     }
@@ -85,7 +134,7 @@ public class KeepAdapter extends BaseDiffAdapter<Keep, KeepAdapter.ViewHolder> {
     private void setClickListener(View root, Keep item) {
         root.setOnLongClickListener(view -> listener.onLongClick());
         root.setOnClickListener(view -> {
-            if (isDelete()) listener.onItemDelete(item);
+            if (isDelete()) listener.onItemSelect(item);
             else listener.onItemClick(item);
         });
     }

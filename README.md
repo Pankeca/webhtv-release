@@ -202,3 +202,26 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST https://sync.940214.xyz/api/aut
 - 个人中心：统计为「追更 本地1·云端1 / 播放历史 本地37·云端37 / 点播源 本地3·云端3 / 直播源 本地1·云端1」，无底部按钮；冲突选择弹窗、注销二次确认链、立即同步覆盖提示与 Toast 均正常。
 - 线上注销：临时账号走完「注册 → 备份 → 注销 → 旧 token 401 → 同用户名可重新注册」，临时账号已清理。
 - 线上公共配置：管理员 `put` → 用户 token `get` 返回 content → `delete` 后 `get` 404。
+
+## 八、交互与 UI 优化（2026-10-28 第二轮）
+
+| # | 需求 | 实现 |
+| --- | --- | --- |
+| 1 | 个人中心界面美化 | `AccountDialog` 重排为：用户卡 → 「数据概览」2×2 宫格（追更/历史/点播源/直播源，`本地 N · 云端 M`）→ 二级菜单入口卡 → 「账号安全」卡 |
+| 2 | 云端同步/公共配置改二级菜单 | 新增 `entryRow()`（标题 + 摘要 + 说明 + 右箭头），点击弹 `showOptionsDialog()`；摘要见 `account_entry_sync_state` / `account_entry_config_state` |
+| 3 | 删除「我的追更」后的「追踪」 | `account_keep_desc_synced` 去掉追踪参数，改为「云端已备份 · 追更 %1$d · %2$s」，三语言同步 |
+| 4 | 追更单击直接追更、双击设置 | `VideoActivity.onTrackTap()` 用 `SystemClock` 做 350ms 判定：单击 `onUpdateTrackQuick()`（建 Keep + `UpdateTrack.DAYS_EVERY` + `markSeen`，Toast `track_on`），双击走 `ScheduleDialog` |
+| 5 | 追更/历史全选位置与语义 | 菜单顺序改为 `select_all → sync → delete`，全选用 `action_select_all.xml` 的 `CheckBox` actionView；`KeepAdapter`/`HistoryAdapter` 新增 `selected` 集合与 `toggleSelection/setAllSelected/deleteSelected`，删除确认文案 `dialog_delete_selected`（未勾选提示 `select_required`） |
+| 6 | 下载中心 Tab 固定 + 底栏按钮重排 | Tab 改为自定义视图（label 15sp + count 13sp，count 固定 `minWidth 26dp`），数量变化不再推动文字；`layoutBottomBar()` 按当前 Tab 把 `selectAll` 插到「全部开始」右侧（下载中）或「删除」左侧（已下载） |
+| 7 | 增强功能顶部图标默认隐藏 | `SettingEnhanceFragment` / `SettingEnhanceActivity` 每次进入先 `putEnhanceRepoVisible(false)`，长按标题临时解锁，离开即恢复隐藏 |
+| 8 | 主题壁纸重置 + 护眼纯色皮肤 | `ThemeDialog` 重写：主题色板 + 「护眼纯色皮肤」6 色（炭黑/深海蓝/墨绿/暗紫/暖棕/青灰，`Setting.WALL_SOLID_*` 37–42）+ 标题行「重置」；选纯色会同时写 `wall/wallType/wallColor` 并 `ConfigEvent.wall()` |
+| 9 | 检查更新直接下载并显示进度 | `Updater.downloadStable(activity, DownloadListener)` 绕过 `UpdateDialog` 直接下稳定版；`dialog_about.xml` 内联 `LinearProgressIndicator + updateStatus`，显示百分比与文件大小；失败仅隐藏进度条并恢复更新提示 |
+| 10 | 最近观看「更新至第几集」 | `HistoryAdapter` 先用 `UpdateTrack.find(key).getCount()`，为 0 时回退解析 `vodRemarks` 里最后一个数字（`parseEpisode`），未追更也能显示 |
+
+其他修复：
+
+- 新增更新相关字符串：`update_downloading_start` / `update_downloading_percent` / `update_downloading_progress`（避免与既有 `update_downloading` 冲突）。
+- `UpdateTracker` 首轮检查由「等 6 小时」改为「启动 30 秒后先跑一轮」，再按 6 小时间隔调度，避免新追更长时间不更新。
+- 个人中心「账号安全」恢复「修改密码 / 退出登录 / 注销账号」三按钮（首轮改版时退出登录被误删，本轮补回）。
+
+真机验证（同为 Lenovo TB331FC）：登录态个人中心宫格与两个二级菜单、追更单击/双击、全选打钩与「确定删除选中的 N 项？」、下载中心 Tab 不位移与底栏按钮位置、增强功能图标默认隐藏、护眼纯色皮肤与重置、最近观看集数显示均已截图确认。
