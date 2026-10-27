@@ -48,13 +48,10 @@ public class SettingEnhanceFragment extends BaseFragment {
 
     private static final String URL_GITHUB = "https://github.com/fish2018/webhtv";
     private static final String URL_CNB = "https://cnb.cool/fish2035/ext";
-    /** 连续点击标题 7 次才显示 GitHub / CNB 入口，避免普通用户误触。 */
-    private static final int REPO_TAP_COUNT = 7;
 
     private FragmentSettingEnhanceBinding mBinding;
     private final ActivityResultLauncher<String[]> apkLauncher = registerForActivityResult(new ActivityResultContracts.OpenDocument(), this::onApkSelected);
     private Device pendingApkDevice;
-    private int repoTaps;
 
     public static SettingEnhanceFragment newInstance() {
         return new SettingEnhanceFragment();
@@ -257,13 +254,30 @@ public class SettingEnhanceFragment extends BaseFragment {
         return true;
     }
 
-    /** 默认隐藏仓库入口，连续点击标题 7 次后显示并持久化。 */
+    /** 默认隐藏仓库入口；长按标题或图标切换全部显示/隐藏，并持久化。 */
     private void setupRepoReveal() {
         applyRepoVisibility();
-        mBinding.toolbar.setOnClickListener(view -> onRepoTitleTap());
-        for (int i = 0; i < mBinding.toolbar.getChildCount(); i++) {
-            View child = mBinding.toolbar.getChildAt(i);
-            if (child instanceof TextView && !TextUtils.isEmpty(((TextView) child).getText())) child.setOnClickListener(view -> onRepoTitleTap());
+        View.OnLongClickListener toggle = view -> {
+            toggleRepoVisibility();
+            return true;
+        };
+        bindLongClick(mBinding.toolbar, toggle);
+        setTitleLongClick(mBinding.toolbar, toggle);
+    }
+
+    private void bindLongClick(View view, View.OnLongClickListener listener) {
+        view.setOnLongClickListener(listener);
+        if (view instanceof ViewGroup group) {
+            for (int i = 0; i < group.getChildCount(); i++) bindLongClick(group.getChildAt(i), listener);
+        }
+    }
+
+    private void setTitleLongClick(View view, View.OnLongClickListener listener) {
+        if (!(view instanceof ViewGroup group)) return;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            View child = group.getChildAt(i);
+            if (child instanceof TextView && !TextUtils.isEmpty(((TextView) child).getText())) child.setOnLongClickListener(listener);
+            else setTitleLongClick(child, listener);
         }
     }
 
@@ -275,13 +289,11 @@ public class SettingEnhanceFragment extends BaseFragment {
         if (cnb != null) cnb.setVisible(visible);
     }
 
-    private void onRepoTitleTap() {
-        if (Setting.isEnhanceRepoVisible()) return;
-        if (++repoTaps < REPO_TAP_COUNT) return;
-        repoTaps = 0;
-        Setting.putEnhanceRepoVisible(true);
+    private void toggleRepoVisibility() {
+        boolean visible = !Setting.isEnhanceRepoVisible();
+        Setting.putEnhanceRepoVisible(visible);
         applyRepoVisibility();
-        Notify.show(R.string.setting_enhance_repo_revealed);
+        Notify.show(visible ? R.string.setting_enhance_repo_revealed : R.string.setting_enhance_repo_hidden);
     }
 
     private void openRepo(String url) {

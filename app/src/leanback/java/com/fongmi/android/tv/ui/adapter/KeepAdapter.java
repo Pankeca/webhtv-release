@@ -49,6 +49,13 @@ public class KeepAdapter extends BaseDiffAdapter<Keep, KeepAdapter.ViewHolder> {
         notifyItemRangeChanged(0, getItemCount());
     }
 
+    @Override
+    public void clear() {
+        super.clear();
+        setDelete(false);
+        Keep.deleteAll();
+    }
+
     private void setClickListener(View root, Keep item) {
         root.setOnLongClickListener(view -> listener.onLongClick());
         root.setOnClickListener(view -> {
@@ -72,6 +79,8 @@ public class KeepAdapter extends BaseDiffAdapter<Keep, KeepAdapter.ViewHolder> {
         setClickListener(holder.itemView, item);
         holder.binding.name.setText(item.getVodName());
         holder.binding.remark.setVisibility(View.GONE);
+        holder.binding.historyProgress.setVisibility(View.GONE);
+        holder.binding.historyUpdate.setVisibility(View.GONE);
         holder.binding.site.setVisibility(View.VISIBLE);
         holder.binding.site.setText(item.getSiteName());
         holder.binding.delete.setVisibility(!delete ? View.GONE : View.VISIBLE);

@@ -3,6 +3,7 @@ package com.fongmi.android.tv.setting;
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.api.AuthApi;
+import com.fongmi.android.tv.db.AppDatabase;
 import com.fongmi.android.tv.playback.KeepCloudBackup;
 import com.fongmi.android.tv.playback.PlaybackRemoteSyncStore;
 import com.fongmi.android.tv.playback.PlaybackRemoteSyncer;
@@ -26,8 +27,8 @@ public final class AccountSync {
     public static void onLogin() {
         CloudSyncStore.applyLoginDefaults();
         bind();
-        KeepCloudBackup.schedule(1500);
-        if (CloudSyncStore.isHistoryEnabled()) Task.execute(() -> PlaybackRemoteSyncer.sync(SYNC_ID));
+        // 登录后先不自动上传，个人中心会提示是否同步本地记录到云端；本地为空则静默拉取。
+        KeepCloudBackup.restoreIfEmpty();
     }
 
     /** Re-binds silently on startup so a stale token or missing config heals itself. */
@@ -94,10 +95,79 @@ public final class AccountSync {
         Task.execute(() -> {
             if (CloudSyncStore.isHistoryEnabled()) PlaybackRemoteSyncer.sync(SYNC_ID);
             if (CloudSyncStore.isKeepEnabled()) KeepCloudBackup.backup(false);
-            App.post(() -> {
+            CloudConfigSync.markHistoryCount(localHistoryCount());
+            Runnable finish = () -> App.post(() -> {
                 if (onDone != null) onDone.run();
             });
+            // 配置备份是异步网络请求，需等它回写云端数量后再通知刷新，否则统计会滞后
+            if (CloudSyncStore.isConfigEnabled()) {
+                CloudConfigSync.backup(true, true, true, new CloudConfigSync.Callback() {
+                    @Override
+                    public void success(String message) {
+                        finish.run();
+                    }
+
+                    @Override
+                    public void error(String message) {
+                        finish.run();
+                    }
+                });
+            } else {
+                finish.run();
+            }
         });
+    }
+
+    /**
+     * 登录后按用户选择处理本地记录与云端记录：
+     * MODE_CLOUD_FIRST 云端覆盖本地，MODE_LOCAL_FIRST 本地覆盖云端，MODE_MERGE 双向增量。
+     */
+    public static void applyLoginChoice(int mode, Runnable onDone) {
+        CloudConfigSync.Callback done = new CloudConfigSync.Callback() {
+            @Override
+            public void success(String message) {
+                syncHistoryAndFinish(onDone);
+            }
+
+            @Override
+            public void error(String message) {
+                syncHistoryAndFinish(onDone);
+            }
+        };
+        if (mode == CloudSyncStore.MODE_CLOUD_FIRST) {
+            KeepCloudBackup.restore(true, () -> CloudConfigSync.pullPersonal(true, true, true, CloudSyncStore.MODE_CLOUD_FIRST, done));
+            return;
+        }
+        if (mode == CloudSyncStore.MODE_LOCAL_FIRST) {
+            Task.execute(() -> {
+                if (CloudSyncStore.isKeepEnabled()) KeepCloudBackup.backup(false);
+                CloudConfigSync.backup(true, true, true, done);
+            });
+            return;
+        }
+        CloudConfigSync.pullPersonal(true, true, true, CloudSyncStore.MODE_MERGE, done);
+    }
+
+    private static void syncHistoryAndFinish(Runnable onDone) {
+        Task.execute(() -> {
+            if (CloudSyncStore.isHistoryEnabled()) PlaybackRemoteSyncer.sync(SYNC_ID);
+            finish(onDone);
+        });
+    }
+
+    private static void finish(Runnable onDone) {
+        CloudConfigSync.markHistoryCount(localHistoryCount());
+        App.post(() -> {
+            if (onDone != null) onDone.run();
+        });
+    }
+
+    public static int localHistoryCount() {
+        try {
+            return AppDatabase.get().getHistoryDao().findAll().size();
+        } catch (Throwable e) {
+            return 0;
+        }
     }
 
     private static void setSourceEnabled(boolean enabled) {

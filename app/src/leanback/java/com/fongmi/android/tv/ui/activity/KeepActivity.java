@@ -8,6 +8,7 @@ import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.viewbinding.ViewBinding;
 
 import com.fongmi.android.tv.Product;
+import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.Config;
 import com.fongmi.android.tv.bean.Keep;
@@ -18,6 +19,7 @@ import com.fongmi.android.tv.ui.adapter.KeepAdapter;
 import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.ui.custom.SpaceItemDecoration;
 import com.fongmi.android.tv.utils.Notify;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import org.greenrobot.eventbus.Subscribe;
 import org.greenrobot.eventbus.ThreadMode;
@@ -90,8 +92,23 @@ public class KeepActivity extends BaseActivity implements KeepAdapter.OnClickLis
 
     @Override
     public boolean onLongClick() {
-        mAdapter.setDelete(true);
+        // 遥控器：第一次长按进入删除模式，删除模式下再次长按可全选清空（带确认）
+        if (mAdapter.isDelete()) clearAll();
+        else mAdapter.setDelete(true);
         return true;
+    }
+
+    private void clearAll() {
+        if (mAdapter.getItemCount() == 0) {
+            mAdapter.setDelete(false);
+            return;
+        }
+        new MaterialAlertDialogBuilder(this, R.style.ThemeOverlay_WebHTV_LightDialog)
+                .setTitle(R.string.menu_select_all)
+                .setMessage(R.string.dialog_delete_keep)
+                .setNegativeButton(R.string.dialog_negative, null)
+                .setPositiveButton(R.string.dialog_positive, (dialog, which) -> mAdapter.clear())
+                .show();
     }
 
     @Override

@@ -140,7 +140,8 @@ public class CustomWallView extends FrameLayout implements DefaultLifecycleObser
         int oldColor = Setting.getWallColor();
         if (newColor == oldColor) return;
         Setting.putWallColor(newColor);
-        if (Setting.getThemeColor() == 0) RefreshEvent.theme();
+        // 壁纸色只作为「自动」主题的来源；自定义主题色始终优先，重刷时保持自定义色。
+        RefreshEvent.theme();
     }
 
     private void loadRes(int resId) {

@@ -43,13 +43,17 @@ public final class KeepCloudBackup {
     public static void backup(boolean notify) {
         if (!canBackup()) return;
         try {
+            List<Keep> keeps = AppDatabase.get().getKeepDao().findAll();
+            List<UpdateTrack> tracks = UpdateTrack.list();
             JsonObject data = new JsonObject();
-            data.add("keeps", App.gson().toJsonTree(AppDatabase.get().getKeepDao().findAll()));
-            data.add("tracks", App.gson().toJsonTree(UpdateTrack.list()));
+            data.add("keeps", App.gson().toJsonTree(keeps));
+            data.add("tracks", App.gson().toJsonTree(tracks));
+            final int keepCount = keeps.size();
+            final int trackCount = tracks.size();
             AuthApi.backupSave(TYPE, data, new AuthApi.Callback() {
                 @Override
                 public void success(JsonObject response) {
-                    CloudSyncStore.markKeepBackup();
+                    CloudSyncStore.markKeepCount(keepCount, trackCount);
                 }
 
                 @Override
@@ -64,32 +68,53 @@ public final class KeepCloudBackup {
 
     /** Restores the cloud snapshot only when this device has nothing local yet. */
     public static void restoreIfEmpty() {
-        if (!AccountStore.isLogin() || !CloudSyncStore.isKeepEnabled()) return;
+        restore(false, null);
+    }
+
+    /** 从云端恢复追更/追更跟踪；force=true 时覆盖本地（先清空本地记录）。 */
+    public static void restore(boolean force, Runnable onDone) {
+        if (!AccountStore.isLogin()) return;
         Task.execute(() -> {
-            try {
-                if (!AppDatabase.get().getKeepDao().findAll().isEmpty()) return;
-                if (!UpdateTrack.list().isEmpty()) return;
-            } catch (Throwable e) {
-                return;
+            if (!force) {
+                try {
+                    if (!AppDatabase.get().getKeepDao().findAll().isEmpty()) return;
+                    if (!UpdateTrack.list().isEmpty()) return;
+                } catch (Throwable e) {
+                    return;
+                }
             }
             AuthApi.backupLoad(TYPE, new AuthApi.Callback() {
                 @Override
                 public void success(JsonObject response) {
-                    Task.execute(() -> apply(response));
+                    Task.execute(() -> {
+                        apply(response, force);
+                        App.post(() -> {
+                            if (onDone != null) onDone.run();
+                        });
+                    });
                 }
 
                 @Override
                 public void error(String message) {
                     SpiderDebug.log("keep-backup", "restore skipped: %s", message);
+                    App.post(() -> {
+                        if (onDone != null) onDone.run();
+                    });
                 }
             });
         });
     }
 
-    private static void apply(JsonObject response) {
+    private static void apply(JsonObject response, boolean replace) {
         try {
-            JsonObject data = response.has("data") && response.get("data").isJsonObject() ? response.getAsJsonObject("data") : null;
-            if (data == null) return;
+            JsonObject record = response.has("data") && response.get("data").isJsonObject() ? response.getAsJsonObject("data") : null;
+            if (record == null) return;
+            // 服务端备份记录形如 {type, updatedAt, data:{keeps,tracks}}，这里同时兼容旧格式。
+            JsonObject data = record.has("data") && record.get("data").isJsonObject() ? record.getAsJsonObject("data") : record;
+            if (replace) {
+                AppDatabase.get().getKeepDao().deleteAll();
+                com.github.catvod.utils.Prefers.put("update_tracks", "[]");
+            }
             int keeps = 0;
             if (data.has("keeps") && data.get("keeps").isJsonArray()) {
                 List<Keep> items = App.gson().fromJson(data.getAsJsonArray("keeps"), new com.google.gson.reflect.TypeToken<List<Keep>>() {
@@ -115,8 +140,8 @@ public final class KeepCloudBackup {
                     }
                 }
             }
-            if (keeps > 0 || tracks > 0) {
-                CloudSyncStore.markKeepBackup();
+            if (keeps > 0 || tracks > 0 || replace) {
+                CloudSyncStore.markKeepCount(keeps, tracks);
                 RefreshEvent.keep();
                 SpiderDebug.log("keep-backup", "restored keeps=%s tracks=%s", keeps, tracks);
             }

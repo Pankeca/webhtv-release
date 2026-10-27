@@ -74,6 +74,7 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
     private Update stable;
     private Update beta;
     private Update selected;
+    private CheckCallback checkCallback;
     private boolean force;
     private boolean downloading;
     private boolean canceled;
@@ -86,8 +87,38 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
     private Updater() {
     }
 
+    public interface CheckCallback {
+
+        /** result 为空表示已是最新或检查失败。 */
+        void onResult(Update result);
+    }
+
     public static Updater create() {
         return INSTANCE;
+    }
+
+    /** 静默检查更新：不弹窗，由调用方展示版本号。 */
+    public Updater check(FragmentActivity activity, CheckCallback callback) {
+        bind(activity);
+        if (!Setting.getUpdate()) {
+            App.post(() -> callback.onResult(null));
+            return this;
+        }
+        this.checkCallback = callback;
+        Task.execute(() -> doInBackground(activity, true));
+        return this;
+    }
+
+    /** 点击版本号后直接按已配置更新源下载并安装最新稳定版。 */
+    public void downloadStable(FragmentActivity activity) {
+        bind(activity);
+        if (stable == null || !stable.hasUpdate()) {
+            Notify.show(R.string.update_latest);
+            return;
+        }
+        selected = stable;
+        show(activity);
+        onConfirm(new View(activity));
     }
 
     private File getFile() {
@@ -136,6 +167,16 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
             beta = awaitUpdate(betaFuture, Update.CHANNEL_BETA, deadline);
         }
         if (!stable.hasUpdate() && !beta.hasUpdate()) {
+            if (checkCallback != null) {
+                CheckCallback callback = checkCallback;
+                checkCallback = null;
+                App.post(() -> {
+                    if (hasErrorOnly()) Notify.show(R.string.update_failed);
+                    else Notify.show(R.string.update_latest);
+                    callback.onResult(null);
+                });
+                return;
+            }
             if (forceCheck && (stable.hasManifest() || beta.hasManifest())) {
                 selected = getPreferredUpdate();
                 App.post(() -> show(activity));
@@ -145,6 +186,13 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
             return;
         }
         selected = getPreferredUpdate();
+        if (checkCallback != null) {
+            CheckCallback callback = checkCallback;
+            checkCallback = null;
+            Update result = stable != null && stable.hasUpdate() ? stable : null;
+            App.post(() -> callback.onResult(result));
+            return;
+        }
         App.post(() -> show(activity));
     }
 

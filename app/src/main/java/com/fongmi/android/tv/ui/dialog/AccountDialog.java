@@ -15,6 +15,7 @@ import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
+import android.widget.CheckBox;
 import android.widget.EditText;
 
 import androidx.annotation.NonNull;
@@ -35,6 +36,7 @@ import com.fongmi.android.tv.databinding.DialogAccountBinding;
 import com.fongmi.android.tv.playback.KeepCloudBackup;
 import com.fongmi.android.tv.setting.AccountStore;
 import com.fongmi.android.tv.setting.AccountSync;
+import com.fongmi.android.tv.setting.CloudConfigSync;
 import com.fongmi.android.tv.setting.CloudSyncStore;
 import com.fongmi.android.tv.track.UpdateTrack;
 import com.fongmi.android.tv.utils.Notify;
@@ -67,6 +69,10 @@ public class AccountDialog extends BaseAlertDialog {
     private TextInputEditText confirmInput;
     private TextInputEditText serverInput;
     private Runnable callback;
+    private MaterialButton syncButton;
+    private boolean syncConfigVod = true;
+    private boolean syncConfigLive = true;
+    private boolean syncConfigSettings = true;
     private int adminTaps;
     private boolean adminRevealed;
     private boolean registerMode;
@@ -113,15 +119,14 @@ public class AccountDialog extends BaseAlertDialog {
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         binding.contentScroll.setMaxHeight((int) (screenHeight * 0.62f));
         render();
+        if (AccountStore.isLogin()) CloudConfigSync.refreshCounts(() -> {
+            if (isAdded()) render();
+        });
     }
 
     @Override
     protected void initEvent() {
         binding.title.setOnClickListener(view -> onTitleTap());
-        binding.negative.setText(R.string.account_close);
-        binding.positive.setText(R.string.account_done);
-        binding.negative.setOnClickListener(view -> dismiss());
-        binding.positive.setOnClickListener(view -> dismiss());
     }
 
     @Override
@@ -202,12 +207,19 @@ public class AccountDialog extends BaseAlertDialog {
     private void renderAccount() {
         binding.content.addView(headerCard(AccountStore.name(), getString(R.string.account_uid, AccountStore.uid()), true));
         int keeps = keepCount();
-        int tracks = trackCount();
+        int history = AccountSync.localHistoryCount();
         long keepAt = CloudSyncStore.keepBackupAt();
         long historyAt = CloudSyncStore.historyBackupAt();
 
+        LinearLayoutCompat overview = card(getString(R.string.account_section_stats));
+        overview.addView(statRow(getString(R.string.account_stats_keep), keeps, CloudSyncStore.cloudKeepCount()));
+        overview.addView(statRow(getString(R.string.account_stats_history), history, CloudSyncStore.cloudHistoryCount()));
+        overview.addView(statRow(getString(R.string.account_stats_vod), CloudConfigSync.localVodCount(), CloudSyncStore.cloudVodCount()));
+        overview.addView(statRow(getString(R.string.account_stats_live), CloudConfigSync.localLiveCount(), CloudSyncStore.cloudLiveCount()));
+        binding.content.addView(overview);
+
         LinearLayoutCompat sync = card(getString(R.string.account_section_sync));
-        sync.addView(switchRow(getString(R.string.account_backup_keep), keepAt > 0 ? getString(R.string.account_keep_desc_synced, keeps, tracks, formatTime(keepAt)) : getString(R.string.account_desc_never), CloudSyncStore.isKeepEnabled(), checked -> {
+        sync.addView(switchRow(getString(R.string.account_backup_keep), keepAt > 0 ? getString(R.string.account_keep_desc_synced, keeps, trackCount(), formatTime(keepAt)) : getString(R.string.account_desc_never), CloudSyncStore.isKeepEnabled(), checked -> {
             AccountSync.setKeepBackup(checked);
             Notify.show(checked ? R.string.account_backup_on : R.string.account_backup_off);
         }));
@@ -215,15 +227,44 @@ public class AccountDialog extends BaseAlertDialog {
             AccountSync.setHistoryBackup(checked);
             Notify.show(checked ? R.string.account_backup_on : R.string.account_backup_off);
         }));
+        sync.addView(switchRow(getString(R.string.account_backup_config), getString(R.string.account_backup_config_desc), CloudSyncStore.isConfigEnabled(), checked -> {
+            CloudSyncStore.setConfigEnabled(checked);
+            Notify.show(checked ? R.string.account_backup_on : R.string.account_backup_off);
+        }));
         sync.addView(infoRow(getString(R.string.account_sync_state), syncStatus()));
-        sync.addView(infoRow(getString(R.string.account_keep_state), getString(R.string.account_keep_state_value, keeps, tracks)));
         sync.addView(actionRow());
         sync.addView(note(getString(R.string.account_auto_bind_note)));
         binding.content.addView(sync);
+
+        binding.content.addView(configCard());
+        binding.content.addView(securityCard());
+    }
+
+    /** 云端公共配置：勾选需要拉取/备份的内容项。 */
+    private LinearLayoutCompat configCard() {
+        LinearLayoutCompat card = card(getString(R.string.account_section_config));
+        card.addView(checkRow(getString(R.string.account_config_vod), syncConfigVod, checked -> syncConfigVod = checked));
+        card.addView(checkRow(getString(R.string.account_config_live), syncConfigLive, checked -> syncConfigLive = checked));
+        card.addView(checkRow(getString(R.string.account_config_settings), syncConfigSettings, checked -> syncConfigSettings = checked));
+        card.addView(infoRow(getString(R.string.account_config_mode), conflictModeLabel()));
+        card.addView(switchRow(getString(R.string.account_config_remember), getString(R.string.account_config_remember_desc), CloudSyncStore.isConflictRemembered(), checked -> CloudSyncStore.setConflictRemembered(checked)));
+        card.addView(buttonRow(getString(R.string.account_config_pull), true, view -> pullPublicConfig()));
+        card.addView(buttonRow(getString(R.string.account_config_backup), false, view -> backupConfig()));
+        card.addView(note(getString(R.string.account_config_note)));
+        return card;
+    }
+
+    private LinearLayoutCompat securityCard() {
+        LinearLayoutCompat card = card(getString(R.string.account_section_security));
+        card.addView(buttonRow(getString(R.string.account_change_password), false, view -> changePasswordPrompt()));
+        card.addView(dangerRow(getString(R.string.account_delete), view -> confirmDeleteAccount()));
+        card.addView(note(getString(R.string.account_delete_note)));
+        return card;
     }
 
     private View adminCard() {
         LinearLayoutCompat card = card(getString(R.string.account_section_admin));
+        card.addView(sectionLabel(getString(R.string.account_section_server)));
         card.addView(fieldRow(getString(R.string.account_server), false));
         card.addView(buttonRow(getString(R.string.account_server_save), true, view -> saveServer()));
         if (AccountStore.hasServerOverride()) {
@@ -236,7 +277,15 @@ public class AccountDialog extends BaseAlertDialog {
         }
         card.addView(sectionLabel(getString(R.string.account_section_public)));
         card.addView(buttonRow(getString(R.string.account_public_publish), false, view -> publishSubscriptions()));
+        card.addView(buttonRow(getString(R.string.account_admin_publish_config), false, view -> publishConfig()));
         card.addView(buttonRow(getString(R.string.account_public_list), false, view -> listPublic()));
+        card.addView(sectionLabel(getString(R.string.account_section_backend)));
+        card.addView(buttonRow(getString(R.string.account_admin_backend), false, view -> backendLogin()));
+        card.addView(buttonRow(getString(R.string.account_admin_update_settings), false, view -> {
+            FragmentActivity activity = requireActivity();
+            dismiss();
+            activity.getWindow().getDecorView().post(() -> UpdateSettingsDialog.show(activity));
+        }));
         card.addView(note(getString(R.string.account_admin_note)));
         return card;
     }
@@ -267,9 +316,9 @@ public class AccountDialog extends BaseAlertDialog {
                 binding.progress.setVisibility(View.GONE);
                 AccountStore.login(data.get("uid").getAsLong(), username, data.get("token").getAsString());
                 AccountSync.onLogin();
-                KeepCloudBackup.restoreIfEmpty();
                 Notify.show(R.string.account_welcome);
                 render();
+                if (login) promptLoginSync();
             }
 
             @Override
@@ -283,12 +332,260 @@ public class AccountDialog extends BaseAlertDialog {
     }
 
     private void syncNow() {
+        // 已记住同步策略的用户不再重复提示，避免打扰
+        if (CloudSyncStore.isConfigEnabled() && !CloudSyncStore.isConflictRemembered()) {
+            new MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_WebHTV_LightDialog)
+                    .setTitle(R.string.account_sync_confirm_title)
+                    .setMessage(R.string.account_sync_confirm_message)
+                    .setNegativeButton(R.string.dialog_negative, null)
+                    .setPositiveButton(R.string.dialog_positive, (dialog, which) -> doSyncNow())
+                    .show();
+            return;
+        }
+        doSyncNow();
+    }
+
+    private void doSyncNow() {
+        if (syncButton != null) {
+            syncButton.setEnabled(false);
+            syncButton.setText(R.string.account_sync_running);
+        }
+        binding.progress.setVisibility(View.VISIBLE);
         Notify.show(R.string.account_sync_started);
         AccountSync.syncNow(() -> {
             if (!isAdded()) return;
-            CloudSyncStore.markHistoryBackup();
+            binding.progress.setVisibility(View.GONE);
+            if (syncButton != null) {
+                syncButton.setEnabled(true);
+                syncButton.setText(R.string.account_sync_now);
+            }
             render();
-            Notify.show(R.string.account_sync_done);
+            Notify.show(R.string.account_sync_result);
+        });
+    }
+
+    /** 登录后提示是否把本地记录同步到云端，覆盖操作均需用户明确选择。 */
+    private void promptLoginSync() {
+        if (!isAdded()) return;
+        int local = keepCount() + AccountSync.localHistoryCount();
+        if (local == 0) return;
+        final int[] mode = {CloudSyncStore.MODE_MERGE};
+        String[] items = {getString(R.string.account_login_sync_merge), getString(R.string.account_login_sync_cloud), getString(R.string.account_login_sync_local)};
+        new MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_WebHTV_LightDialog)
+                .setTitle(R.string.account_login_sync_title)
+                .setMessage(R.string.account_login_sync_message)
+                .setSingleChoiceItems(items, 0, (d, which) -> mode[0] = which)
+                .setNegativeButton(R.string.account_login_sync_later, null)
+                .setPositiveButton(R.string.account_login_sync_confirm, (d, which) -> {
+                    binding.progress.setVisibility(View.VISIBLE);
+                    AccountSync.applyLoginChoice(mode[0], () -> {
+                        if (!isAdded()) return;
+                        binding.progress.setVisibility(View.GONE);
+                        render();
+                        Notify.show(R.string.account_sync_result);
+                    });
+                })
+                .show();
+    }
+
+    private void pullPublicConfig() {
+        if (!syncConfigVod && !syncConfigLive && !syncConfigSettings) {
+            Notify.show(R.string.account_config_none_selected);
+            return;
+        }
+        chooseConflictMode(mode -> {
+            binding.progress.setVisibility(View.VISIBLE);
+            CloudConfigSync.pullPublic(syncConfigVod, syncConfigLive, syncConfigSettings, mode, new CloudConfigSync.Callback() {
+                @Override
+                public void success(String message) {
+                    if (!isAdded()) return;
+                    binding.progress.setVisibility(View.GONE);
+                    render();
+                    Notify.show(message);
+                }
+
+                @Override
+                public void error(String message) {
+                    if (!isAdded()) return;
+                    binding.progress.setVisibility(View.GONE);
+                    Notify.show(message);
+                }
+            });
+        });
+    }
+
+    private void backupConfig() {
+        if (!syncConfigVod && !syncConfigLive && !syncConfigSettings) {
+            Notify.show(R.string.account_config_none_selected);
+            return;
+        }
+        // 上传会用本地内容覆盖云端备份，先明确提示，避免误覆盖。
+        new MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_WebHTV_LightDialog)
+                .setTitle(R.string.account_config_backup_confirm_title)
+                .setMessage(R.string.account_config_backup_confirm_message)
+                .setNegativeButton(R.string.dialog_negative, null)
+                .setPositiveButton(R.string.dialog_positive, (dialog, which) -> doBackupConfig())
+                .show();
+    }
+
+    private void doBackupConfig() {
+        binding.progress.setVisibility(View.VISIBLE);
+        CloudConfigSync.backup(syncConfigVod, syncConfigLive, syncConfigSettings, new CloudConfigSync.Callback() {
+            @Override
+            public void success(String message) {
+                if (!isAdded()) return;
+                binding.progress.setVisibility(View.GONE);
+                render();
+                Notify.show(message);
+            }
+
+            @Override
+            public void error(String message) {
+                if (!isAdded()) return;
+                binding.progress.setVisibility(View.GONE);
+                Notify.show(message);
+            }
+        });
+    }
+
+    /** 未记住选择时弹出增量/覆盖选择，默认增量。 */
+    private void chooseConflictMode(java.util.function.IntConsumer onDone) {
+        if (CloudSyncStore.isConflictRemembered()) {
+            onDone.accept(CloudSyncStore.conflictMode());
+            return;
+        }
+        final int[] mode = {CloudSyncStore.MODE_MERGE};
+        String[] items = {getString(R.string.account_config_mode_merge), getString(R.string.account_config_mode_cloud), getString(R.string.account_config_mode_local)};
+        new MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_WebHTV_LightDialog)
+                .setTitle(R.string.account_config_mode)
+                .setSingleChoiceItems(items, CloudSyncStore.conflictMode(), (d, which) -> mode[0] = which)
+                .setNegativeButton(R.string.dialog_negative, null)
+                .setPositiveButton(R.string.dialog_positive, (d, which) -> {
+                    CloudSyncStore.setConflictMode(mode[0]);
+                    onDone.accept(mode[0]);
+                })
+                .show();
+    }
+
+    private void publishConfig() {
+        if (!AccountStore.isAdminUnlocked()) return;
+        CloudConfigSync.publish(true, true, true, new CloudConfigSync.Callback() {
+            @Override
+            public void success(String message) {
+                Notify.show(message);
+            }
+
+            @Override
+            public void error(String message) {
+                Notify.show(message);
+            }
+        });
+    }
+
+    /** 后端服务登录：确认管理员权限后保持后端会话可用。 */
+    private void backendLogin() {
+        if (AccountStore.isAdminUnlocked()) {
+            Notify.show(R.string.account_admin_backend_done);
+        } else {
+            promptAdminCode();
+        }
+    }
+
+    private void changePasswordPrompt() {
+        LinearLayoutCompat box = new LinearLayoutCompat(requireContext());
+        box.setOrientation(LinearLayoutCompat.VERTICAL);
+        box.setPadding(dp(20), dp(4), dp(20), 0);
+        TextInputEditText oldInput = passwordField(getString(R.string.account_password_old));
+        TextInputEditText newInput = passwordField(getString(R.string.account_password_new));
+        box.addView(oldInput);
+        box.addView(newInput);
+        AlertDialog dialog = new MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_WebHTV_LightDialog)
+                .setTitle(R.string.account_change_password)
+                .setView(box)
+                .setNegativeButton(R.string.dialog_negative, null)
+                .setPositiveButton(R.string.dialog_positive, (d, which) -> AuthApi.changePassword(oldInput.getText().toString(), newInput.getText().toString(), new AuthApi.Callback() {
+                    @Override
+                    public void success(com.google.gson.JsonObject data) {
+                        if (data != null && data.has("token")) AccountStore.login(AccountStore.uid(), AccountStore.name(), data.get("token").getAsString());
+                        Notify.show(R.string.account_password_changed);
+                        render();
+                    }
+
+                    @Override
+                    public void error(String message) {
+                        Notify.show(message);
+                    }
+                })).show();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM);
+            dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+        }
+    }
+
+    private TextInputEditText passwordField(String hint) {
+        TextInputEditText edit = new TextInputEditText(requireContext());
+        edit.setHint(hint);
+        edit.setTextSize(14);
+        edit.setSingleLine(true);
+        edit.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        edit.setShowSoftInputOnFocus(true);
+        edit.setOnClickListener(view -> Util.showKeyboard(edit));
+        LinearLayoutCompat.LayoutParams params = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.topMargin = dp(8);
+        edit.setLayoutParams(params);
+        return edit;
+    }
+
+    /** 注销账号：二次确认 + 密码校验，确认后永久删除云端数据。 */
+    private void confirmDeleteAccount() {
+        new MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_WebHTV_LightDialog)
+                .setTitle(R.string.account_delete_title)
+                .setMessage(R.string.account_delete_message)
+                .setNegativeButton(R.string.dialog_negative, null)
+                .setPositiveButton(R.string.account_delete_confirm, (d, which) -> promptDeletePassword())
+                .show();
+    }
+
+    private void promptDeletePassword() {
+        EditText input = new EditText(requireContext());
+        input.setHint(R.string.account_delete_password);
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        input.setShowSoftInputOnFocus(true);
+        input.setOnClickListener(view -> Util.showKeyboard(input));
+        AlertDialog dialog = new MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_WebHTV_LightDialog)
+                .setTitle(R.string.account_delete_title)
+                .setMessage(R.string.account_delete_message_final)
+                .setView(input)
+                .setNegativeButton(R.string.dialog_negative, null)
+                .setPositiveButton(R.string.account_delete_confirm, (d, which) -> {
+                    String password = input.getText().toString();
+                    if (TextUtils.isEmpty(password)) {
+                        Notify.show(R.string.account_input_required);
+                        return;
+                    }
+                    deleteAccount(password);
+                }).show();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM);
+            dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+        }
+    }
+
+    private void deleteAccount(String password) {
+        binding.progress.setVisibility(View.VISIBLE);
+        AuthApi.deleteAccount(password, new AuthApi.Callback() {
+            @Override
+            public void success(com.google.gson.JsonObject data) {
+                binding.progress.setVisibility(View.GONE);
+                clearLocalLogin(false);
+                Notify.show(R.string.account_delete_done);
+            }
+
+            @Override
+            public void error(String message) {
+                binding.progress.setVisibility(View.GONE);
+                Notify.show(message);
+            }
         });
     }
 
@@ -307,10 +604,14 @@ public class AccountDialog extends BaseAlertDialog {
     }
 
     private void clearLocalLogin() {
+        clearLocalLogin(true);
+    }
+
+    private void clearLocalLogin(boolean notify) {
         AccountStore.logout();
         AccountSync.unbind();
         adminRevealed = false;
-        Notify.show(R.string.account_logout_done);
+        if (notify) Notify.show(R.string.account_logout_done);
         render();
     }
 
@@ -525,6 +826,7 @@ public class AccountDialog extends BaseAlertDialog {
 
         MaterialButton sync = actionButton(getString(R.string.account_sync_now), true);
         MaterialButton logout = actionButton(getString(R.string.account_logout), false);
+        syncButton = sync;
         int danger = Color.parseColor("#D93025");
         logout.setTextColor(danger);
         logout.setStrokeColor(ColorStateList.valueOf(Color.parseColor("#E7B7B2")));
@@ -594,11 +896,51 @@ public class AccountDialog extends BaseAlertDialog {
         MaterialTextView right = text(value, 13, Color.parseColor("#5F6368"), false);
         right.setGravity(Gravity.END);
         right.setMaxLines(1);
-        root.addView(right, new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        LinearLayoutCompat.LayoutParams rightParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rightParams.leftMargin = dp(12);
+        root.addView(right, rightParams);
         LinearLayoutCompat.LayoutParams params = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         params.topMargin = dp(8);
         root.setLayoutParams(params);
         return root;
+    }
+
+    /** 统计行：左侧标签，右侧「本地 N · 云端 M」右对齐。 */
+    private View statRow(String label, int local, int cloud) {
+        return infoRow(label, getString(R.string.account_stats_value, local, cloud));
+    }
+
+    private View checkRow(String label, boolean checked, SwitchRowListener listener) {
+        LinearLayoutCompat row = new LinearLayoutCompat(requireContext());
+        row.setOrientation(LinearLayoutCompat.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(0, dp(6), 0, dp(6));
+        row.addView(text(label, 14, Color.parseColor("#3C4043"), false), new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        CheckBox box = new CheckBox(requireContext());
+        box.setChecked(checked);
+        box.setButtonTintList(new ColorStateList(new int[][]{{android.R.attr.state_checked}, {}}, new int[]{Color.parseColor("#1A73E8"), Color.parseColor("#8A8F98")}));
+        box.setOnCheckedChangeListener((button, value) -> listener.onChanged(value));
+        row.setOnClickListener(view -> box.setChecked(!box.isChecked()));
+        row.addView(box, new LinearLayoutCompat.LayoutParams(dp(36), dp(36)));
+        return row;
+    }
+
+    private View dangerRow(String label, View.OnClickListener listener) {
+        MaterialButton button = actionButton(label, false);
+        button.setTextColor(Color.parseColor("#D93025"));
+        button.setStrokeColor(ColorStateList.valueOf(Color.parseColor("#E7B7B2")));
+        button.setOnClickListener(listener);
+        LinearLayoutCompat.LayoutParams params = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(42));
+        params.topMargin = dp(10);
+        button.setLayoutParams(params);
+        return button;
+    }
+
+    private String conflictModeLabel() {
+        int mode = CloudSyncStore.conflictMode();
+        if (mode == CloudSyncStore.MODE_CLOUD_FIRST) return getString(R.string.account_config_mode_cloud);
+        if (mode == CloudSyncStore.MODE_LOCAL_FIRST) return getString(R.string.account_config_mode_local);
+        return getString(R.string.account_config_mode_merge);
     }
 
     private View note(String value) {

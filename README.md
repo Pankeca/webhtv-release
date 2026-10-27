@@ -136,3 +136,69 @@ git diff 4e2474f -- app/src/mobile/java/com/fongmi/android/tv/ui/activity/Downlo
 3. **严重**：《嫁金钗》本地缓存播放中，点选集里其他已下载集会播放失败并跳回首次点击的那一集；其他剧集正常。该剧已下载集为 `第18集.ts` / `陪看1.ts`（集名不规则），待排查：`Util.getNumber("陪看1")` 的解析与 `showLocal()` 排序、`findLocal()` 命中情况、播放失败后的自动切源回退逻辑。
 4. 下载弹窗集数按钮宽度与每行个数需统一（`DownloadDialog.COLUMNS = 3`，下载中心胶囊为 `DownloadCenterActivity.CHIP_COLUMNS = 4`，详情页选集走 `EpisodeGridLayoutPolicy.getMaxSpan()`：横屏/平板 6 列、竖屏 4 列），按拇指可点区域（≥48dp）重排并收敛成一处配置。
 5. 已下载 tab 展开分组后，最后一行集数按钮会被底部操作条遮挡（列表缺少底部 padding）。
+
+## 七、云端服务与个人中心（2026-10-28）
+
+### 后端（`cloud/edgeone`）
+
+| 项 | 值 |
+| --- | --- |
+| 代码入口 | `cloud/edgeone/edge-functions/api/[[default]].js`（单文件路由） |
+| 托管 | EdgeOne Makers 项目 `webhtv-sync`（ProjectId `makers-hlaoldkoeyli`） |
+| 域名 | `https://sync.940214.xyz`；CLI 默认域名为 `webhtv-sync.edgeone.dev` |
+| 存储 | EdgeOne Pages Blob，store 名 `webhtv`（`@edgeone/pages-blob`） |
+| 管理员口令 | `ADMIN_CODE = "webhtv"`，与 `app/build.gradle` 的 `BuildConfig.ADMIN_CODE` **必须一致**，改一处即失效 |
+
+入库范围：`package.json`、`package-lock.json`、`index.html`、`edge-functions/`（`cloud/.gitignore` 已忽略 `node_modules/` 与 `.edgeone/`，二者都是可重新生成的部署依赖/产物）。
+
+部署与验证：
+
+```bash
+~/.bun/bin/edgeone login        # 首次需浏览器授权，凭据落在本机，不入库
+~/.bun/bin/edgeone whoami
+cd /home/s/webtv/cloud/edgeone && ~/.bun/bin/edgeone makers deploy
+
+curl -s https://sync.940214.xyz/api/health
+# 未登录访问注销接口应为 401；若返回 404 说明线上仍是旧版本，需重新部署
+curl -s -o /dev/null -w '%{http_code}\n' -X POST https://sync.940214.xyz/api/auth/delete
+```
+
+接口一览：
+
+| 方法 | 路径 | 鉴权 | 说明 |
+| --- | --- | --- | --- |
+| POST | `/api/auth/register`、`/api/auth/login`、`/api/auth/logout` | 无 / token | 账号注册、登录、退出 |
+| POST | `/api/auth/password` | token | 修改密码（旧密码校验） |
+| POST | `/api/auth/delete` | token + 密码 | **注销账号**：删除 `un_`/`u_`/`ut_`/`bk_`/`r_` 前缀数据并吊销 token |
+| GET | `/api/auth/me` | token | 校验 token 是否有效 |
+| POST/GET | `/api/backup/save`、`/api/backup/load?type=` | token | 按 `type`（`keep`/`config`）存快照；响应为 `{ok,data:{type,updatedAt,appId,data:{...}}}`，读取端要做**双层解包** |
+| POST | `/api/playback/sync`、`/events` | token | 播放进度增量同步/事件回传 |
+| GET | `/api/public/list`、`/api/public/get?key=` | token | 公共配置读取（`get` 返回 `{ok,key,content}`，`content` 是 JSON 字符串） |
+| POST | `/api/public/put`、`/api/public/delete` | `X-WebHTV-Admin` 口令 | 管理员发布/删除公共配置；客户端默认发布 key `public_config` |
+
+### 个人中心（仅 `mobile` source set）
+
+| 行为 | 实现要点 |
+| --- | --- |
+| 登录同步选择 | 未登录前有本地追更/历史时，登录后弹「双向增量（默认）/云端覆盖本地/本地覆盖云端」，取消则不处理；无本地记录时静默拉取 |
+| 数据概览 | 「我的追更 / 播放历史 / 点播源 / 直播源」四行，均为 `本地 N · 云端 M`，数值右对齐 |
+| 云端数量 | 追更、点播源、直播源来自最近一次备份快照的数量并缓存到 `Prefers`（`cloud_keep_count`/`cloud_track_count`/`cloud_vod_count`/`cloud_live_count`）；播放历史云端数量取最近一次同步时的本地条数（`cloud_history_count`） |
+| 云端公共配置 | 勾选点播源/直播源/设置项 →「从云端获取公共配置」（增量/覆盖，可勾选记住选择）或「备份本地配置到云端」（先弹覆盖确认）。覆盖只更新同名配置，不删本地源，避免级联删除追更/历史 |
+| 立即同步 | 配置备份开启且未记住策略时先弹覆盖确认；同步完成后刷新统计并 Toast 反馈 |
+| 注销账号 | 二次确认 → 输入密码 → 云端永久删除；本地记录保留 |
+| 底部按钮 | 「关闭 / 完成」已删除，点遮罩或返回键关闭 |
+| 管理员入口 | 连点标题 7 次 + 口令 `webhtv`，解锁后多出「服务配置 / 发布配置 / 后端服务登录 / 更新设置」 |
+
+相关文件：`setting/CloudConfigSync.java`（公共/个人配置收集与应用）、`setting/CloudSyncStore.java`（开关与云端数量缓存）、`setting/AccountSync.java`（登录同步策略与立即同步）、`playback/KeepCloudBackup.java`（追更快照）、`ui/dialog/AccountDialog.java`、`dialog_account.xml`。
+
+### 电视端兼容
+
+- `HistoryPresenter` + `leanback/res/layout/adapter_vod.xml` 与手机一致：已看行显示「已看 第X集 · 具体时间」，另起一行「更新至 第X集」。
+- 遥控操作：长按进入删除模式，删除模式下**再次长按**即全选清空（追更在 `KeepActivity`、历史在 `HomeActivity`），都会先弹确认。
+- 手机与电视仍是两个 APK（同 `applicationId`、同签名、数据互通）。两个 source set 各有一份 `HomeActivity`，直接合并会类冲突，单包方案需重命名 Activity 并新增按 UiMode 分发的启动页，暂不做。
+
+### 真机验证（2026-10-28，Lenovo TB331FC / Android 13）
+
+- 个人中心：统计为「追更 本地1·云端1 / 播放历史 本地37·云端37 / 点播源 本地3·云端3 / 直播源 本地1·云端1」，无底部按钮；冲突选择弹窗、注销二次确认链、立即同步覆盖提示与 Toast 均正常。
+- 线上注销：临时账号走完「注册 → 备份 → 注销 → 旧 token 401 → 同用户名可重新注册」，临时账号已清理。
+- 线上公共配置：管理员 `put` → 用户 token `get` 返回 content → `delete` 后 `get` 404。

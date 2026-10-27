@@ -70,6 +70,8 @@ public class KeepAdapter extends BaseDiffAdapter<Keep, KeepAdapter.ViewHolder> {
         holder.binding.site.setVisibility(View.VISIBLE);
         holder.binding.site.setText(item.getSiteName());
         holder.binding.progress.setVisibility(View.GONE);
+        holder.binding.historyProgress.setVisibility(View.GONE);
+        holder.binding.historyUpdate.setVisibility(View.GONE);
         holder.binding.remark.setVisibility(UpdateTrack.hasUpdate(item.getKey()) ? View.VISIBLE : View.GONE);
         if (holder.binding.remark.getVisibility() == View.VISIBLE) {
             holder.binding.remark.setText(R.string.track_badge);

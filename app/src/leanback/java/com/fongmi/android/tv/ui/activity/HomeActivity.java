@@ -78,6 +78,7 @@ import com.fongmi.android.tv.web.WebHomeViewport;
 import com.github.catvod.crawler.SpiderDebug;
 import com.github.catvod.net.OkHttp;
 import com.github.catvod.utils.Json;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.common.collect.Lists;
 import com.google.gson.JsonObject;
 
@@ -640,9 +641,23 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
 
     @Override
     public boolean onLongClick() {
-        if (mPresenter.isDelete()) clearHistory();
+        // 遥控器：第一次长按进入删除模式，删除模式下再次长按全选清空（带确认）
+        if (mPresenter.isDelete()) confirmClearHistory();
         else setHistoryDelete(true);
         return true;
+    }
+
+    private void confirmClearHistory() {
+        if (mHistoryAdapter.size() == 0) {
+            mPresenter.setDelete(false);
+            return;
+        }
+        new MaterialAlertDialogBuilder(this, R.style.ThemeOverlay_WebHTV_LightDialog)
+                .setTitle(R.string.menu_select_all)
+                .setMessage(R.string.dialog_delete_history)
+                .setNegativeButton(R.string.dialog_negative, null)
+                .setPositiveButton(R.string.dialog_positive, (dialog, which) -> clearHistory())
+                .show();
     }
 
     @Override

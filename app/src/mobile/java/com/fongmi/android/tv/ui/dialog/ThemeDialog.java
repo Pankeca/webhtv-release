@@ -11,7 +11,11 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 public class ThemeDialog extends BaseAlertDialog implements ThemeAdapter.OnClickListener {
 
-    private static final int[] COLORS = {-1, 0, 0xFF6750A4, 0xFF3949AB, 0xFF1E88E5, 0xFF00ACC1, 0xFF00897B, 0xFF43A047, 0xFF7CB342, 0xFFFB8C00, 0xFFE53935, 0xFFD81B60, 0xFF8E24AA, 0xFF6D4C41,};
+    /** 柔和护眼色板：低饱和、低亮度，避免长时间观看刺眼。 */
+    private static final int[] COLORS = {-1, 0,
+            0xFF7E9B8E, 0xFF7F94AE, 0xFF8E86A8, 0xFFB08A8A,
+            0xFFA8917A, 0xFF6E8F92, 0xFF9A8FA6, 0xFF8A9A7B,
+            0xFF7B8FA6, 0xFFA29A86, 0xFF97899B, 0xFF6F8F7F};
     private DialogThemeBinding binding;
 
     public static void show(Fragment fragment) {

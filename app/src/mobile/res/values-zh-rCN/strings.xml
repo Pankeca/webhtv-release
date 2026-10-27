@@ -103,7 +103,7 @@
 
     <!-- Dialog -->
     <string name="dialog_delete_record">删除全部纪录？</string>
-    <string name="dialog_delete_keep">收藏纪录将会全部删除。</string>
+    <string name="dialog_delete_keep">追更记录将会全部删除。</string>
     <string name="dialog_delete_history">观看纪录将会全部删除。</string>
 
     <!-- Timer -->

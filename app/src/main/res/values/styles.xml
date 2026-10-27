@@ -74,8 +74,9 @@
     </style>
 
     <style name="TextAppearance.WebHTV.DownloadTab" parent="">
-        <item name="android:textSize">18sp</item>
+        <item name="android:textSize">19sp</item>
         <item name="android:textStyle">bold</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
     </style>
 
     <style name="TextAppearance.WebHTV.LightDialogSliderLabel" parent="TextAppearance.MaterialComponents.Tooltip">

@@ -81,6 +81,11 @@ public class KeepActivity extends BaseActivity implements KeepAdapter.OnClickLis
         }
     }
 
+    private void onSelectAll() {
+        if (mAdapter.getItemCount() == 0) return;
+        new MaterialAlertDialogBuilder(this).setTitle(R.string.menu_select_all).setMessage(R.string.dialog_delete_keep).setNegativeButton(R.string.dialog_negative, null).setPositiveButton(R.string.dialog_positive, (dialog, which) -> mAdapter.clear()).show();
+    }
+
     private void loadConfig(Config config, Keep item) {
         VodConfig.load(config, new Callback() {
             @Override
@@ -131,6 +136,7 @@ public class KeepActivity extends BaseActivity implements KeepAdapter.OnClickLis
     public boolean onOptionsItemSelected(@NonNull MenuItem item) {
         if (item.getItemId() == android.R.id.home) onBackInvoked();
         else if (item.getItemId() == R.id.delete) onDelete();
+        else if (item.getItemId() == R.id.select_all) onSelectAll();
         else if (item.getItemId() == R.id.sync) onSync();
         return super.onOptionsItemSelected(item);
     }

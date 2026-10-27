@@ -105,6 +105,7 @@ public class OneKeySyncDialog extends BaseBottomSheetDialog implements SyncDevic
         binding.recycler.addItemDecoration(new SpaceItemDecoration(1, 8));
         binding.recycler.setAdapter(adapter = new SyncDeviceAdapter(this));
         updateDevice(binding.localName, binding.localHost, binding.localIcon, Device.get());
+        binding.webhtvSwitch.setChecked(Setting.isWebHomeExtension());
         updateDirection();
         getDevice();
     }
@@ -116,6 +117,7 @@ public class OneKeySyncDialog extends BaseBottomSheetDialog implements SyncDevic
         binding.changeDevice.setOnClickListener(v -> changeDevice());
         binding.selectAll.setOnClickListener(v -> toggleSelection());
         binding.spider.setOnCheckedChangeListener((buttonView, isChecked) -> updateSyncPathsVisible());
+        binding.webhtvSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> Setting.putWebHomeExtension(isChecked));
         binding.syncPaths.setOnClickListener(v -> SyncPathDialog.show(this, this::updateSyncPathSummary));
         binding.start.setOnClickListener(v -> {
             if (syncing) cancelSync();

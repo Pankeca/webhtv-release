@@ -72,6 +72,13 @@ public class AuthApi {
         return post("password", AccountStore.token(), body, callback);
     }
 
+    /** 注销账号：需要再次输入密码，服务端会清除该用户全部云端数据。 */
+    public static Future deleteAccount(String password, Callback callback) {
+        JsonObject body = new JsonObject();
+        body.addProperty("password", password);
+        return post("delete", AccountStore.token(), body, callback);
+    }
+
     public static Future backupSave(String type, Object data, Callback callback) {
         JsonObject body = new JsonObject();
         body.addProperty("type", type);

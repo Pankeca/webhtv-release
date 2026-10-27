@@ -13,6 +13,7 @@ import androidx.fragment.app.FragmentActivity;
 
 import com.fongmi.android.tv.BuildConfig;
 import com.fongmi.android.tv.R;
+import com.fongmi.android.tv.Updater;
 import com.fongmi.android.tv.databinding.DialogAboutBinding;
 import com.fongmi.android.tv.utils.AppVersion;
 import com.fongmi.android.tv.utils.ResUtil;
@@ -29,13 +30,24 @@ public final class AboutDialog {
 
         Dialog dialog = LightDialog.create(activity, null, binding.getRoot());
         binding.confirm.setOnClickListener(v -> dialog.dismiss());
-        binding.updateSettings.setOnClickListener(v -> {
-            dialog.dismiss();
-            UpdateSettingsDialog.show(activity);
-        });
         binding.checkUpdate.setOnClickListener(v -> {
-            dialog.dismiss();
-            if (updateAction != null) updateAction.run();
+            binding.checkUpdate.setEnabled(false);
+            binding.checkUpdate.setText(R.string.update_check);
+            binding.updateHint.setVisibility(android.view.View.GONE);
+            Updater.create().check(activity, update -> {
+                if (!dialog.isShowing()) return;
+                binding.checkUpdate.setEnabled(true);
+                binding.checkUpdate.setText(R.string.about_check_update);
+                if (update == null || !update.hasUpdate()) return;
+                // 优先展示清单里的 versionName，缺失时回退到资产名（可能是 xxx.apk，仅兜底）
+                String version = android.text.TextUtils.isEmpty(update.versionName) ? AppVersion.stripPrefix(update.name) : update.versionName;
+                binding.updateHint.setText(activity.getString(R.string.about_update_available, version));
+                binding.updateHint.setVisibility(android.view.View.VISIBLE);
+                binding.updateHint.setOnClickListener(v2 -> {
+                    dialog.dismiss();
+                    Updater.create().downloadStable(activity);
+                });
+            });
         });
         dialog.setCanceledOnTouchOutside(false);
         dialog.show();

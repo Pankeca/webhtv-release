@@ -54,6 +54,23 @@
         android:textSize="13sp"
         tools:text="版本 versionName (versionCode) · mobile/arm64" />
 
+    <com.google.android.material.textview.MaterialTextView
+        android:id="@+id/updateHint"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:paddingTop="2dp"
+        android:paddingBottom="2dp"
+        android:textColor="#1A73E8"
+        android:textSize="13sp"
+        android:textStyle="bold"
+        android:visibility="gone"
+        tools:text="发现新版本 v1.2.3，点击更新"
+        tools:visibility="visible" />
+
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
@@ -111,24 +128,11 @@
             android:layout_weight="1"
             android:minHeight="44dp"
             android:nextFocusLeft="@id/checkUpdate"
-            android:nextFocusRight="@id/updateSettings"
             android:text="@string/about_acknowledge"
             android:textColor="@color/dialog_primary_button_text"
             android:textSize="14sp"
             app:backgroundTint="@color/dialog_primary_button_bg"
             app:cornerRadius="8dp" />
-
-        <androidx.appcompat.widget.AppCompatImageButton
-            android:id="@+id/updateSettings"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:layout_marginStart="10dp"
-            android:background="@drawable/selector_dialog_step_button"
-            android:contentDescription="@string/update_settings"
-            android:nextFocusLeft="@id/confirm"
-            android:padding="10dp"
-            android:src="@drawable/ic_remote_settings"
-            app:tint="#5F6368" />
 
     </androidx.appcompat.widget.LinearLayoutCompat>
 </androidx.appcompat.widget.LinearLayoutCompat>

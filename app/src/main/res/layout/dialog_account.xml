@@ -55,40 +55,4 @@
 
     </com.fongmi.android.tv.ui.custom.CustomNestedScrollView>
 
-    <androidx.appcompat.widget.LinearLayoutCompat
-        android:id="@+id/footer"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/negative"
-            style="@style/Widget.Material3.Button.OutlinedButton"
-            android:layout_width="0dp"
-            android:layout_height="40dp"
-            android:layout_weight="1"
-            android:minHeight="40dp"
-            android:minWidth="0dp"
-            android:text="@string/dialog_negative"
-            android:textColor="@color/dialog_outlined_button_text"
-            app:backgroundTint="@color/dialog_outlined_button_bg"
-            app:strokeColor="@color/dialog_outlined_button_stroke" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/positive"
-            style="@style/Widget.Material3.Button"
-            android:layout_width="0dp"
-            android:layout_height="40dp"
-            android:layout_marginStart="8dp"
-            android:layout_weight="1"
-            android:minHeight="40dp"
-            android:minWidth="0dp"
-            android:text="@string/dialog_positive"
-            android:textColor="@color/dialog_primary_button_text"
-            app:backgroundTint="@color/dialog_primary_button_bg" />
-
-    </androidx.appcompat.widget.LinearLayoutCompat>
-
 </androidx.appcompat.widget.LinearLayoutCompat>
