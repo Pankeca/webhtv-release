@@ -11,9 +11,6 @@ import android.widget.TextView;
 import androidx.viewbinding.ViewBinding;
 
 import com.fongmi.android.tv.R;
-import com.fongmi.android.tv.gitcloud.GitCloudAccountStore;
-import com.fongmi.android.tv.playback.ViewingRecordSyncStore;
-import com.fongmi.android.tv.remote.RemoteStore;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.databinding.ActivitySettingEnhanceBinding;
 import com.fongmi.android.tv.setting.CustomCspSetting;
@@ -23,16 +20,11 @@ import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.ui.dialog.CspWarmupDialog;
 import com.fongmi.android.tv.ui.dialog.CustomCspDialog;
 import com.fongmi.android.tv.ui.dialog.DebugLogDialog;
-import com.fongmi.android.tv.ui.dialog.GitCloudDialog;
-import com.fongmi.android.tv.ui.dialog.LoginStateLearnDialog;
 import com.fongmi.android.tv.ui.dialog.ManagePageDialog;
 import com.fongmi.android.tv.ui.dialog.OneKeySyncDialog;
-import com.fongmi.android.tv.ui.dialog.RemoteTrustDialog;
 import com.fongmi.android.tv.ui.dialog.ShellProxyDialog;
 import com.fongmi.android.tv.ui.dialog.SiteHealthDialog;
-import com.fongmi.android.tv.ui.dialog.ViewingRecordSyncDialog;
 import com.fongmi.android.tv.ui.dialog.WebHomeExtensionDialog;
-import com.fongmi.android.tv.utils.LoginStateSync;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.PermissionUtil;
 import com.fongmi.android.tv.web.ext.WebHomeExtensionRegistry;
@@ -78,10 +70,7 @@ public class SettingEnhanceActivity extends BaseActivity {
         mBinding.webHomeFullscreen.setOnClickListener(this::setWebHomeFullscreen);
         mBinding.cspWarmup.setOnClickListener(this::setCspWarmup);
         mBinding.playbackArtworkWall.setOnClickListener(this::setPlaybackArtworkWall);
-        mBinding.playbackWebhook.setOnClickListener(view -> ViewingRecordSyncDialog.show(this, this::setText));
         mBinding.managePage.setOnClickListener(view -> ManagePageDialog.show(this));
-        mBinding.remoteTrust.setOnClickListener(view -> RemoteTrustDialog.show(this, this::setText));
-        mBinding.gitCloud.setOnClickListener(view -> GitCloudDialog.show(this, this::setText));
         mBinding.shellProxy.setOnClickListener(view -> ShellProxyDialog.show(this, this::setText));
         mBinding.shellProxy.setOnLongClickListener(v -> false);
         mBinding.shellProxyConfig.setVisibility(View.GONE);
@@ -90,7 +79,6 @@ public class SettingEnhanceActivity extends BaseActivity {
             if (granted) CustomCspDialog.show(this, this::setText);
             else Notify.show(R.string.setting_custom_csp_permission_required);
         }));
-        mBinding.loginState.setOnClickListener(view -> LoginStateLearnDialog.show(this, this::setText));
         mBinding.oneKeySync.setOnClickListener(v -> OneKeySyncDialog.create().show(this));
     }
 
@@ -99,10 +87,7 @@ public class SettingEnhanceActivity extends BaseActivity {
         View[] order = {
                 mBinding.customCsp,
                 mBinding.webHomeExtension,
-                mBinding.gitCloud,
-                mBinding.remoteTrust,
                 mBinding.oneKeySync,
-                mBinding.loginState,
                 mBinding.shellProxy,
                 mBinding.shellProxyConfig,
                 mBinding.managePage,
@@ -111,8 +96,7 @@ public class SettingEnhanceActivity extends BaseActivity {
                 mBinding.playbackArtworkWall,
                 mBinding.driveCheck,
                 mBinding.siteHealthSort,
-                mBinding.debugLog,
-                mBinding.playbackWebhook
+                mBinding.debugLog
         };
         for (View view : order) parent.removeView(view);
         for (View view : order) parent.addView(view);
@@ -130,17 +114,9 @@ public class SettingEnhanceActivity extends BaseActivity {
         safeSet("webHomeFullscreen", mBinding.webHomeFullscreenText, () -> getSwitch(Setting.isWebHomeFullscreen()));
         safeSet("cspWarmup", mBinding.cspWarmupText, this::getCspWarmupText);
         safeSet("playbackArtworkWall", mBinding.playbackArtworkWallText, () -> getSwitch(Setting.isPlaybackArtworkWall()));
-        safeSet("playbackWebhook", mBinding.playbackWebhookText, () -> ViewingRecordSyncStore.summary(this));
         safeSet("managePage", mBinding.managePageText, () -> getString(R.string.manage_page_web));
-        safeSet("remoteTrust", mBinding.remoteTrustText, () -> RemoteStore.summary(this));
-        safeSet("gitCloud", mBinding.gitCloudText, () -> getString(R.string.git_cloud_account_count, GitCloudAccountStore.list().size()));
         setShellProxyText();
         setCustomCspText();
-        safeSet("loginState", mBinding.loginStateText, () -> {
-            int learned = LoginStateSync.learnedCount();
-            int pending = LoginStateSync.pendingPaths().size();
-            return getString(LoginStateSync.hasLearningSnapshot() ? R.string.login_state_learning_count : R.string.login_state_count, learned, pending);
-        });
     }
 
     private boolean canSetText() {
