@@ -75,7 +75,7 @@ public final class CloudConfigSync {
             public void success(JsonObject response) {
                 CloudSyncStore.markConfigCount(vod ? Config.getAll(0).size() : CloudSyncStore.cloudVodCount(),
                         live ? Config.getAll(1).size() : CloudSyncStore.cloudLiveCount());
-                if (callback != null) callback.success("已备份到云端");
+                if (callback != null) callback.success(backupSummary(data));
             }
 
             @Override
@@ -353,5 +353,14 @@ public final class CloudConfigSync {
         if (result[1] > 0) parts.add("直播源 " + result[1] + " 项");
         if (result[2] > 0) parts.add("设置项 " + result[2] + " 项");
         return parts.isEmpty() ? prefix + "：已是最新" : prefix + "：" + String.join("、", parts);
+    }
+
+    /** 备份结果：把实际上传的点播源/直播源/设置项数量反馈给用户。 */
+    private static String backupSummary(JsonObject data) {
+        List<String> parts = new ArrayList<>();
+        if (data.has("vod") && data.get("vod").isJsonArray()) parts.add("点播源 " + data.getAsJsonArray("vod").size() + " 项");
+        if (data.has("live") && data.get("live").isJsonArray()) parts.add("直播源 " + data.getAsJsonArray("live").size() + " 项");
+        if (data.has("settings") && data.get("settings").isJsonObject()) parts.add("设置项 " + data.getAsJsonObject("settings").size() + " 项");
+        return parts.isEmpty() ? "已备份到云端" : "已备份到云端：" + String.join("、", parts);
     }
 }

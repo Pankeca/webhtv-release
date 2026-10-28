@@ -10,12 +10,6 @@
         app:showAsAction="always" />
 
     <item
-        android:id="@+id/update"
-        android:icon="@drawable/ic_action_refresh"
-        android:title="@string/menu_update"
-        app:showAsAction="always" />
-
-    <item
         android:id="@+id/sync"
         android:icon="@drawable/ic_action_sync"
         android:title="@string/menu_sync"

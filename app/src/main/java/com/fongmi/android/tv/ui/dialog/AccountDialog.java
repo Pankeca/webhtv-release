@@ -48,6 +48,7 @@ import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textview.MaterialTextView;
 
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -204,67 +205,80 @@ public class AccountDialog extends BaseAlertDialog {
     }
 
     private void renderAccount() {
-        binding.content.addView(headerCard(AccountStore.name(), getString(R.string.account_uid, AccountStore.uid()), true));
-        binding.content.addView(statsCard());
+        binding.content.addView(heroCard());
         binding.content.addView(entryRow(
-                entryTile(getString(R.string.account_section_sync), syncSummary(), view -> showSyncOptions()),
-                entryTile(getString(R.string.account_section_config), configSummary(), view -> showConfigOptions())));
+                entryTile(getString(R.string.account_section_sync), syncSummary(), "云", "#E8F0FE", "#1A73E8", view -> showSyncOptions()),
+                entryTile(getString(R.string.account_section_config), configSummary(), "配", "#E6F4EA", "#137333", view -> showConfigOptions())));
         binding.content.addView(securityCard());
     }
 
-    /** 概览：四宫格统计，本地/云端分开展示，视觉上更紧凑清晰。 */
-    private View statsCard() {
-        LinearLayoutCompat card = card(getString(R.string.account_section_stats));
-        LinearLayoutCompat row1 = statGridRow(
-                statTile(getString(R.string.account_stats_keep), keepCount(), CloudSyncStore.cloudKeepCount()),
-                statTile(getString(R.string.account_stats_history), AccountSync.localHistoryCount(), CloudSyncStore.cloudHistoryCount()));
-        LinearLayoutCompat.LayoutParams row1Params = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        row1Params.topMargin = dp(8);
-        row1.setLayoutParams(row1Params);
-        card.addView(row1);
-        LinearLayoutCompat row2 = statGridRow(
-                statTile(getString(R.string.account_stats_vod), CloudConfigSync.localVodCount(), CloudSyncStore.cloudVodCount()),
-                statTile(getString(R.string.account_stats_live), CloudConfigSync.localLiveCount(), CloudSyncStore.cloudLiveCount()));
-        LinearLayoutCompat.LayoutParams row2Params = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        row2Params.topMargin = dp(8);
-        row2.setLayoutParams(row2Params);
-        card.addView(row2);
-        return card;
+    /** 顶部概览：头像 + 账号 + 四项本地/云端统计压在同一张卡里，一屏就能看完一级菜单。 */
+    private View heroCard() {
+        LinearLayoutCompat root = new LinearLayoutCompat(requireContext());
+        root.setOrientation(LinearLayoutCompat.VERTICAL);
+        root.setPadding(dp(14), dp(12), dp(14), dp(12));
+        GradientDrawable background = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+                new int[]{Color.parseColor("#E8F0FE"), Color.parseColor("#F5F8FF")});
+        background.setCornerRadius(dp(16));
+        root.setBackground(background);
+        LinearLayoutCompat.LayoutParams rootParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rootParams.topMargin = dp(8);
+        root.setLayoutParams(rootParams);
+
+        LinearLayoutCompat head = new LinearLayoutCompat(requireContext());
+        head.setOrientation(LinearLayoutCompat.HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        head.addView(avatar(AccountStore.name()), new LinearLayoutCompat.LayoutParams(dp(42), dp(42)));
+
+        LinearLayoutCompat texts = new LinearLayoutCompat(requireContext());
+        texts.setOrientation(LinearLayoutCompat.VERTICAL);
+        MaterialTextView name = text(AccountStore.name(), 16, Color.parseColor("#202124"), true);
+        name.setMaxLines(1);
+        texts.addView(name);
+        MaterialTextView sub = text(getString(R.string.account_uid, AccountStore.uid()), 11, Color.parseColor("#5F6368"), false);
+        sub.setMaxLines(1);
+        texts.addView(sub);
+        LinearLayoutCompat.LayoutParams textParams = new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        textParams.leftMargin = dp(10);
+        head.addView(texts, textParams);
+
+        root.addView(head);
+
+        View divider = new View(requireContext());
+        divider.setBackgroundColor(Color.parseColor("#DCE5F5"));
+        LinearLayoutCompat.LayoutParams dividerParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1));
+        dividerParams.topMargin = dp(10);
+        root.addView(divider, dividerParams);
+
+        LinearLayoutCompat stats = new LinearLayoutCompat(requireContext());
+        stats.setOrientation(LinearLayoutCompat.HORIZONTAL);
+        LinearLayoutCompat.LayoutParams statsParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        statsParams.topMargin = dp(10);
+        stats.setLayoutParams(statsParams);
+        addStat(stats, getString(R.string.account_stats_keep), keepCount(), CloudSyncStore.cloudKeepCount(), true);
+        addStat(stats, getString(R.string.account_stats_history), AccountSync.localHistoryCount(), CloudSyncStore.cloudHistoryCount(), true);
+        addStat(stats, getString(R.string.account_stats_vod), CloudConfigSync.localVodCount(), CloudSyncStore.cloudVodCount(), false);
+        addStat(stats, getString(R.string.account_stats_live), CloudConfigSync.localLiveCount(), CloudSyncStore.cloudLiveCount(), false);
+        root.addView(stats);
+        return root;
     }
 
-    private LinearLayoutCompat statGridRow(View left, View right) {
-        LinearLayoutCompat row = new LinearLayoutCompat(requireContext());
-        row.setOrientation(LinearLayoutCompat.HORIZONTAL);
-        LinearLayoutCompat.LayoutParams leftParams = new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
-        row.addView(left, leftParams);
-        LinearLayoutCompat.LayoutParams rightParams = new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
-        rightParams.leftMargin = dp(8);
-        row.addView(right, rightParams);
-        return row;
+    private void addStat(LinearLayoutCompat parent, String label, int local, int cloud, boolean margin) {
+        LinearLayoutCompat column = new LinearLayoutCompat(requireContext());
+        column.setOrientation(LinearLayoutCompat.VERTICAL);
+        column.addView(text(getString(R.string.account_stats_pairs, local, cloud), 13, Color.parseColor("#202124"), true));
+        column.addView(text(label, 10, Color.parseColor("#5F6368"), false));
+        LinearLayoutCompat.LayoutParams params = new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        if (margin) params.rightMargin = dp(6);
+        parent.addView(column, params);
     }
 
-    private View statTile(String label, int local, int cloud) {
-        LinearLayoutCompat tile = new LinearLayoutCompat(requireContext());
-        tile.setOrientation(LinearLayoutCompat.VERTICAL);
-        tile.setPadding(dp(12), dp(10), dp(12), dp(10));
-        GradientDrawable background = new GradientDrawable();
-        background.setColor(Color.parseColor("#F4F7FC"));
-        background.setCornerRadius(dp(10));
-        tile.setBackground(background);
-        tile.addView(text(label, 12, Color.parseColor("#5F6368"), false));
-        MaterialTextView value = text(getString(R.string.account_stats_value, local, cloud), 14, Color.parseColor("#202124"), true);
-        LinearLayoutCompat.LayoutParams valueParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        valueParams.topMargin = dp(4);
-        tile.addView(value, valueParams);
-        return tile;
-    }
-
-    /** 二级菜单入口：并排两列，点击弹出对应二级菜单。 */
+    /** 二级菜单入口：并排两列，图标 + 标题 + 状态角标，点击弹出对应二级菜单。 */
     private View entryRow(View left, View right) {
         LinearLayoutCompat row = new LinearLayoutCompat(requireContext());
         row.setOrientation(LinearLayoutCompat.HORIZONTAL);
         LinearLayoutCompat.LayoutParams rowParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        rowParams.topMargin = dp(10);
+        rowParams.topMargin = dp(8);
         row.setLayoutParams(rowParams);
         row.addView(left, new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         LinearLayoutCompat.LayoutParams rightParams = new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
@@ -273,34 +287,50 @@ public class AccountDialog extends BaseAlertDialog {
         return row;
     }
 
-    /** 单个入口卡片：标题 + 摘要 + 右侧箭头。 */
-    private View entryTile(String title, String summary, View.OnClickListener listener) {
+    /** 单个入口卡片：图标 + 标题 + 状态角标 + 右侧箭头。 */
+    private View entryTile(String title, String badge, String icon, String badgeBg, String badgeFg, View.OnClickListener listener) {
         LinearLayoutCompat tile = new LinearLayoutCompat(requireContext());
         tile.setOrientation(LinearLayoutCompat.VERTICAL);
         tile.setPadding(dp(12), dp(10), dp(12), dp(10));
         tile.setBackground(cardBackground());
         tile.setClickable(true);
+        tile.setFocusable(true);
         tile.setOnClickListener(listener);
+        if (android.os.Build.VERSION.SDK_INT >= 23) tile.setForeground(ContextCompat.getDrawable(requireContext(), R.drawable.ripple_round_14));
 
         LinearLayoutCompat head = new LinearLayoutCompat(requireContext());
         head.setOrientation(LinearLayoutCompat.HORIZONTAL);
         head.setGravity(Gravity.CENTER_VERTICAL);
+        MaterialTextView iconView = text(icon, 13, Color.parseColor(badgeFg), true);
+        iconView.setGravity(Gravity.CENTER);
+        GradientDrawable iconBg = new GradientDrawable();
+        iconBg.setColor(Color.parseColor(badgeBg));
+        iconBg.setCornerRadius(dp(9));
+        iconView.setBackground(iconBg);
+        head.addView(iconView, new LinearLayoutCompat.LayoutParams(dp(28), dp(28)));
+
         MaterialTextView titleView = text(title, 14, Color.parseColor("#202124"), true);
         titleView.setMaxLines(1);
         titleView.setEllipsize(TextUtils.TruncateAt.END);
-        head.addView(titleView, new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        MaterialTextView arrow = text("›", 18, Color.parseColor("#9AA0A6"), false);
+        LinearLayoutCompat.LayoutParams titleParams = new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        titleParams.leftMargin = dp(8);
+        head.addView(titleView, titleParams);
         LinearLayoutCompat.LayoutParams arrowParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        arrowParams.leftMargin = dp(4);
-        head.addView(arrow, arrowParams);
+        head.addView(text("›", 17, Color.parseColor("#B0B6BD"), false), arrowParams);
         tile.addView(head);
 
-        MaterialTextView summaryView = text(summary, 11, Color.parseColor("#1A73E8"), false);
-        summaryView.setMaxLines(2);
-        LinearLayoutCompat.LayoutParams summaryParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        summaryParams.topMargin = dp(4);
-        summaryView.setLayoutParams(summaryParams);
-        tile.addView(summaryView);
+        MaterialTextView badgeView = text(badge, 10, Color.parseColor(badgeFg), true);
+        badgeView.setMaxLines(1);
+        badgeView.setEllipsize(TextUtils.TruncateAt.END);
+        badgeView.setPadding(dp(7), dp(2), dp(7), dp(2));
+        GradientDrawable badgeDrawable = new GradientDrawable();
+        badgeDrawable.setColor(Color.parseColor(badgeBg));
+        badgeDrawable.setCornerRadius(dp(7));
+        badgeView.setBackground(badgeDrawable);
+        LinearLayoutCompat.LayoutParams badgeParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        badgeParams.topMargin = dp(8);
+        badgeParams.leftMargin = dp(36);
+        tile.addView(badgeView, badgeParams);
         return tile;
     }
 
@@ -386,11 +416,29 @@ public class AccountDialog extends BaseAlertDialog {
 
     private LinearLayoutCompat securityCard() {
         LinearLayoutCompat card = card(getString(R.string.account_section_security));
-        card.addView(buttonRow(getString(R.string.account_change_password), false, view -> changePasswordPrompt()));
-        card.addView(buttonRow(getString(R.string.account_logout), false, view -> logout()));
-        card.addView(dangerRow(getString(R.string.account_delete), view -> confirmDeleteAccount()));
+        card.addView(linkRow(getString(R.string.account_change_password), "#3C4043", view -> changePasswordPrompt()));
+        card.addView(linkRow(getString(R.string.account_logout), "#3C4043", view -> logout()));
+        card.addView(linkRow(getString(R.string.account_delete), "#D93025", view -> confirmDeleteAccount()));
         card.addView(note(getString(R.string.account_delete_note)));
         return card;
+    }
+
+    /** 紧凑的可点击行：标题 + 箭头，用来代替整宽按钮，把一级菜单压进一屏。 */
+    private View linkRow(String label, String color, View.OnClickListener listener) {
+        LinearLayoutCompat row = new LinearLayoutCompat(requireContext());
+        row.setOrientation(LinearLayoutCompat.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(6), 0, dp(4), 0);
+        row.setClickable(true);
+        row.setFocusable(true);
+        row.setBackgroundResource(R.drawable.ripple_round_14);
+        row.setOnClickListener(listener);
+        row.addView(text(label, 14, Color.parseColor(color), false), new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        row.addView(text("›", 16, Color.parseColor("#C0C4CC"), false));
+        LinearLayoutCompat.LayoutParams params = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36));
+        params.topMargin = dp(2);
+        row.setLayoutParams(params);
+        return row;
     }
 
     private View adminCard() {
@@ -483,8 +531,17 @@ public class AccountDialog extends BaseAlertDialog {
             if (!isAdded()) return;
             binding.progress.setVisibility(View.GONE);
             render();
-            Notify.show(R.string.account_sync_result);
+            Notify.show(syncResultText());
         });
+    }
+
+    /** 同步完成的反馈：按已开启的备份项，把本次同步的条数/项数说明清楚。 */
+    private String syncResultText() {
+        List<String> parts = new ArrayList<>();
+        if (CloudSyncStore.isKeepEnabled()) parts.add(getString(R.string.account_sync_part_keep, keepCount()));
+        if (CloudSyncStore.isHistoryEnabled()) parts.add(getString(R.string.account_sync_part_history, AccountSync.localHistoryCount()));
+        if (CloudSyncStore.isConfigEnabled()) parts.add(getString(R.string.account_sync_part_config, CloudConfigSync.localVodCount(), CloudConfigSync.localLiveCount()));
+        return parts.isEmpty() ? getString(R.string.account_sync_result) : getString(R.string.account_sync_done_detail, TextUtils.join(" · ", parts));
     }
 
     /** 登录后提示是否把本地记录同步到云端，覆盖操作均需用户明确选择。 */
@@ -518,6 +575,7 @@ public class AccountDialog extends BaseAlertDialog {
         }
         chooseConflictMode(mode -> {
             binding.progress.setVisibility(View.VISIBLE);
+            Notify.show(R.string.account_config_pulling);
             CloudConfigSync.pullPublic(syncConfigVod, syncConfigLive, syncConfigSettings, mode, new CloudConfigSync.Callback() {
                 @Override
                 public void success(String message) {
@@ -553,6 +611,7 @@ public class AccountDialog extends BaseAlertDialog {
 
     private void doBackupConfig() {
         binding.progress.setVisibility(View.VISIBLE);
+        Notify.show(R.string.account_config_backing_up);
         CloudConfigSync.backup(syncConfigVod, syncConfigLive, syncConfigSettings, new CloudConfigSync.Callback() {
             @Override
             public void success(String message) {
@@ -933,27 +992,6 @@ public class AccountDialog extends BaseAlertDialog {
         return edit;
     }
 
-    private MaterialButton actionButton(String label, boolean tonal) {
-        MaterialButton button = new MaterialButton(requireContext());
-        button.setText(label);
-        button.setMinHeight(0);
-        button.setMinimumHeight(0);
-        button.setPadding(0, 0, 0, 0);
-        button.setInsetTop(0);
-        button.setInsetBottom(0);
-        button.setSingleLine(true);
-        button.setTextSize(14);
-        ColorStateList bg = ContextCompat.getColorStateList(requireContext(), tonal ? R.color.dialog_tonal_button_bg : R.color.dialog_outlined_button_bg);
-        ColorStateList fg = ContextCompat.getColorStateList(requireContext(), tonal ? R.color.dialog_tonal_button_text : R.color.dialog_outlined_button_text);
-        button.setBackgroundTintList(bg);
-        button.setTextColor(fg);
-        if (!tonal) {
-            button.setStrokeColor(ContextCompat.getColorStateList(requireContext(), R.color.dialog_outlined_button_stroke));
-            button.setStrokeWidth(dp(1));
-        }
-        return button;
-    }
-
     private View buttonRow(String label, boolean tonal, View.OnClickListener listener) {
         MaterialButton button = new MaterialButton(requireContext());
         button.setText(label);
@@ -1010,17 +1048,6 @@ public class AccountDialog extends BaseAlertDialog {
         row.setOnClickListener(view -> box.setChecked(!box.isChecked()));
         row.addView(box, new LinearLayoutCompat.LayoutParams(dp(36), dp(36)));
         return row;
-    }
-
-    private View dangerRow(String label, View.OnClickListener listener) {
-        MaterialButton button = actionButton(label, false);
-        button.setTextColor(Color.parseColor("#D93025"));
-        button.setStrokeColor(ColorStateList.valueOf(Color.parseColor("#E7B7B2")));
-        button.setOnClickListener(listener);
-        LinearLayoutCompat.LayoutParams params = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(42));
-        params.topMargin = dp(10);
-        button.setLayoutParams(params);
-        return button;
     }
 
     private String conflictModeLabel() {

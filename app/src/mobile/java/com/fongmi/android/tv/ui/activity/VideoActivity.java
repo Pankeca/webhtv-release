@@ -1458,7 +1458,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         list.setClipToPadding(false);
         list.setPadding(0, dp(8), 0, 0);
         list.setOverScrollMode(View.OVER_SCROLL_NEVER);
-        list.setAdapter(mSiteAdapter = new SiteChipAdapter(this::onItemClick));
+        list.setAdapter(mSiteAdapter = new SiteChipAdapter(this::onSiteClick));
         row.addView(list, new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         parent.addView(row, index, new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -1475,6 +1475,14 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         if (mSiteAdapter == null) return;
         mSiteAdapter.setSelectedKey(getKey());
         mSiteList.setVisibility(mSiteAdapter.isEmpty() ? View.GONE : View.VISIBLE);
+    }
+
+    /** 换站请求期间把线路/选集做半透明提示：不整页 loading，但能看出正在刷新。 */
+    private void setSwitchingVisual(boolean switching) {
+        float alpha = switching ? 0.45f : 1f;
+        mBinding.flag.setAlpha(alpha);
+        mBinding.episode.setAlpha(alpha);
+        mBinding.episodeGroup.setAlpha(alpha);
     }
 
     /** 「本地优先」开关只在网络播放页有意义，本地缓存页始终播本地。 */
@@ -1608,10 +1616,20 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     }
 
     private void getDetail(Vod item) {
+        getDetail(item, false);
+    }
+
+    /** 站点胶囊点选：一定属于同一部影片，走局部刷新（不整页 loading），并立即高亮。 */
+    private void onSiteClick(Vod item) {
+        if (mSiteAdapter != null) mSiteAdapter.setSelectedKey(item.getSiteKey());
+        onItemClick(item, true);
+    }
+
+    private void getDetail(Vod item, boolean siteSwitch) {
         revealManualSearch = false;
-        // 只有同名影片换站点才走局部刷新；从搜索结果点进另一部影片仍然整页刷新
+        // 站点胶囊/自动换源必然是同一部影片；快搜结果点进另一部影片才整页刷新
         String current = mBinding.name.getText() == null ? "" : mBinding.name.getText().toString();
-        mSiteSwitching = TextUtils.equals(current, item.getName());
+        mSiteSwitching = siteSwitch || TextUtils.equals(current, item.getName());
         // 记住当前集名，新站点详情回来后仍停在同名集数
         mPendingEpisode = getEpisode() == null ? "" : getEpisode().getName();
         saveHistory();
@@ -1634,6 +1652,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
             setQualityVisible(false);
             mBinding.progressLayout.showProgress();
         }
+        setSwitchingVisual(mSiteSwitching);
         updateNavigationKey();
         if (!mSiteSwitching && service() != null) {
             player().reset();
@@ -1650,6 +1669,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         if (result.getList().isEmpty()) {
             // 换站失败：清掉换站标记，后续点集数按普通播放处理
             mSiteSwitching = false;
+            setSwitchingVisual(false);
             setEmpty(result.hasMsg());
         } else setDetail(result.getVod());
         Notify.show(result.getMsg());
@@ -1682,6 +1702,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         boolean switching = mSiteSwitching;
         mSiteSwitching = false;
         mManualSite = false;
+        setSwitchingVisual(false);
         if (!switching) {
             item.checkPic(getPic());
             item.checkName(getName());
@@ -1935,12 +1956,16 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
 
     @Override
     public void onItemClick(Vod item) {
+        onItemClick(item, false);
+    }
+
+    private void onItemClick(Vod item, boolean siteSwitch) {
         // 手动点站点：关掉自动换源链，站点不可用时只提示，不自动往下一个站点跳
         mManualSite = true;
         setAutoMode(false);
         setInitAuto(false);
         applySearchArtwork(item);
-        getDetail(item);
+        getDetail(item, siteSwitch);
     }
 
     @Override
@@ -6826,7 +6851,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         mBroken.add(getId());
         setInitAuto(false);
         applySearchArtwork(item);
-        getDetail(item);
+        getDetail(item, true);
     }
 
     private void onPaused() {

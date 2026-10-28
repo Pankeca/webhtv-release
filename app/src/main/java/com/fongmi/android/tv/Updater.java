@@ -6,6 +6,7 @@ import android.content.pm.Signature;
 import android.os.Build;
 import android.os.SystemClock;
 import android.text.TextUtils;
+import android.util.Log;
 import android.view.View;
 
 import androidx.fragment.app.FragmentActivity;
@@ -22,6 +23,7 @@ import com.fongmi.android.tv.utils.Github;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.Task;
+import com.fongmi.android.tv.update.CnbArchiveTransfer;
 import com.fongmi.android.tv.update.GithubProxy;
 import com.fongmi.android.tv.update.HttpUpdateTransfer;
 import com.fongmi.android.tv.update.OciArtifact;
@@ -29,6 +31,7 @@ import com.fongmi.android.tv.update.OciMirror;
 import com.fongmi.android.tv.update.OciUpdateTransfer;
 import com.fongmi.android.tv.update.UpdateHttp;
 import com.fongmi.android.tv.update.UpdateRoutePlanner;
+import com.fongmi.android.tv.update.UpdateUrl;
 import com.fongmi.android.tv.update.UpdateTarget;
 import com.fongmi.android.tv.update.UpdateTransfer;
 import com.github.catvod.utils.Path;
@@ -460,7 +463,7 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
             List<UpdateTarget> routes = new ArrayList<>();
             String customUrl = Setting.getUpdateCustomUrl();
             if (!TextUtils.isEmpty(customUrl) && !TextUtils.isEmpty(update.apk) && update.apk.startsWith("https://")) {
-                routes.add(UpdateTarget.github(update.apk));
+                routes.addAll(UpdateRoutePlanner.planForApk(update.apk));
                 return routes;
             }
             GithubProxy.Config github = GithubProxy.resolve(Setting.getUpdateGithubProxy(), Setting.getUpdateGithubProxyUrl(), Setting.getUpdateGithubProxyMode());
@@ -476,8 +479,16 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
     private void startNextDownload() {
         if (routes == null || routeIndex >= routes.size()) return;
         UpdateTarget target = routes.get(routeIndex++);
-        transfer = target.kind == UpdateTarget.Kind.OCI ? new OciUpdateTransfer(target, getFile()) : new HttpUpdateTransfer(target.url, getFile(), selected == null ? 0 : selected.size);
+        Log.i("WebHTVUpdate", "route " + routeIndex + "/" + routes.size() + " kind=" + target.kind + " host=" + UpdateUrl.host(target.url));
+        transfer = createTransfer(target);
         transfer.start(this);
+    }
+
+    private UpdateTransfer createTransfer(UpdateTarget target) {
+        long size = selected == null ? 0 : selected.size;
+        if (target.kind == UpdateTarget.Kind.OCI) return new OciUpdateTransfer(target, getFile());
+        if (target.kind == UpdateTarget.Kind.ARCHIVE) return new CnbArchiveTransfer(target.url, getFile(), target.entry, size);
+        return new HttpUpdateTransfer(target.url, getFile(), size);
     }
 
     private boolean retryFallback() {
@@ -550,6 +561,7 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
     @Override
     public void error(String msg) {
         if (canceled) return;
+        Log.i("WebHTVUpdate", "route failed: " + msg);
         transfer = null;
         if (retryFallback()) return;
         downloading = false;

@@ -246,3 +246,22 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST https://sync.940214.xyz/api/aut
 - `ExpandAll` 在「已下载」页由 `GONE→VISIBLE` 会改变 `tabsBar` 可用宽度，是页签位移的真正根因（上一轮只处理了文字宽度变化）。
 
 真机验证（Lenovo TB331FC，`com.fongmi.android.tv.dev`）：个人中心两入口同行且「播放历史 本地 2」与最近观看 2 条一致；追更页删除图标/全选/取消全选无残留圆圈、更新提示「全部已是最新（共 4 部）」；最近观看更新提示「全部已是最新（共 2 部）」；下载中/已下载页签 `uiautomator` 坐标完全一致（`下载中` 文本均 `[385,174][451,203]`），底栏「全选 全部开始 全部暂停 删除」；追更按钮单击「已追更→追更→已追更」、双击弹出「追更设置」且取消后仍为已追更。
+
+## 十、换站体验、个人中心一屏化与更新 413 修复（2026-10-28 第四轮）
+
+| # | 需求 | 实现 |
+| --- | --- | --- |
+| 1 | 点某些站点变成整页刷新 / 切换迟钝 | 站点胶囊改为独立回调 `onSiteClick()`，一定是同片换源，走 `getDetail(item, true)` 局部刷新（不再按片名比较，站点命名差异也不会误判成「另一部影片」）；点击瞬间 `mSiteAdapter.setSelectedKey()` 先高亮，请求期间线路/选集 `setSwitchingVisual(true)` 半透明提示，返回后恢复 |
+| 2 | 个人中心一屏展示所有一级菜单 | 头像 + 四项统计压成一张 `heroCard()`（统计单行 4 列 `本地/云端`），云端同步 / 公共配置改为图标 + 标题 + 状态角标卡（角标为圆角 pill，浅蓝/浅绿），安全设置由整宽按钮改为 36dp 点击行 + 箭头，一屏即可看全 |
+| 3 | 同步类操作要有反馈 | `立即同步` 完成提示按已开启项汇总「同步完成：追更 N 条 · 历史 N 条 · 影视 X 项 / 直播 Y 项」；`从云端获取公共配置` / `备份本地配置到云端` 先提示「正在…」，完成后返回明细（点播源 x 项、直播源 y 项、设置项 z 项） |
+| 4 | 去掉追更/最近观看的更新按钮 | 删除 `menu_keep`/`menu_history` 的 `update` 项、`KeepActivity/HistoryActivity.onUpdate()`、`UpdateTracker.checkKeys()/CheckCallback` 及 6 条专用字符串，工具栏回到「全选 · 同步 · 删除」 |
+| 5 | 单击追更补充双击说明 | `track_on` 三语文案改为「已开启追更 · 双击追更按钮可设置追更日程」 |
+| 6 | 关于-检查更新后点更新报 HTTP 413 | 见下节：CNB 直链大小限制导致，新增仓库 zip 归档兜底 |
+
+### 关于「检查更新」413 的真实根因与修复
+
+- 自定义更新地址为 CNB 仓库直链 `https://cnb.cool/mytools-2026/app-release/-/git/raw/main/app.apk`，安装包 160,456,096 字节（153 MiB）。
+- CNB 对 raw 直链硬性限制 100 MiB，超过直接返回 `413`，body 为 `{"errcode":2000033,"errmsg":"raw file size 153 MiB exceeded 100 MiB，please pull via git client"}`，与网络环境无关，Range 分段请求同样 413。
+- 修复：新增 `CnbArchiveTransfer`，当 HTTP 直链返回 413 时自动改下同仓库 `/-/git/archive/{ref}.zip`（实测 90 MB、4.8 s），流式解包出 `app.apk` 并按清单 `size` 校验；`UpdateTarget.Kind.ARCHIVE` + `UpdateRoutePlanner.addCnbArchive()/planForApk()` 生成「直链 → 归档」两条路由，`Updater.createTransfer()` 按类型分流。
+- 改动范围仅限更新下载路由（`update/` 包与 `Updater`），未触碰站源/线路更新与站点配置逻辑。
+- 真机验证：日志 `route 1/2 kind=GITHUB host=cnb.cool` → `413` → `route 2/2 kind=ARCHIVE host=cnb.cool` → 约 13 s 后弹出系统安装器「影视(5.6.0) 将替换当前版本」（验证后已拒绝安装，避免覆盖调试包）。

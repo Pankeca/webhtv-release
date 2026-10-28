@@ -30,6 +30,7 @@ public final class UpdateRoutePlanner {
             routes.add(UpdateTarget.github(proxy.rewrite(githubUrl)));
         } catch (Exception ignored) {
         }
+        addCnbArchive(routes, githubUrl);
         for (String id : FALLBACK_PROXIES) {
             if (id.equals(proxy.id)) continue;
             try {
@@ -37,6 +38,33 @@ public final class UpdateRoutePlanner {
             } catch (Exception ignored) {
             }
         }
+    }
+
+    /** CNB 的 raw 直链对超过 100MB 的文件固定返回 413，改用同仓库 zip 归档下载后解包 APK。 */
+    private static void addCnbArchive(List<UpdateTarget> routes, String githubUrl) {
+        int index = githubUrl.indexOf("/-/git/raw/");
+        if (index <= 0) return;
+        String rest = githubUrl.substring(index + "/-/git/raw/".length());
+        int slash = rest.indexOf('/');
+        if (slash <= 0 || slash == rest.length() - 1) return;
+        String ref = rest.substring(0, slash);
+        String entry = rest.substring(rest.lastIndexOf('/') + 1);
+        try {
+            routes.add(UpdateTarget.archive(githubUrl.substring(0, index) + "/-/git/archive/" + ref + ".zip", entry));
+        } catch (Exception ignored) {
+        }
+    }
+
+    /** 自定义更新地址：直链之外再补一条 CNB 仓库 zip 归档兜底（raw 直链 >100MB 固定 413）。 */
+    public static List<UpdateTarget> planForApk(String apkUrl) {
+        List<UpdateTarget> routes = new ArrayList<>();
+        if (apkUrl == null || apkUrl.trim().isEmpty()) return routes;
+        try {
+            routes.add(UpdateTarget.github(apkUrl));
+        } catch (Exception ignored) {
+        }
+        addCnbArchive(routes, apkUrl);
+        return routes;
     }
 
     private static void addOci(List<UpdateTarget> routes, OciArtifact artifact, String endpoint) {

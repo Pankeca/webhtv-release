@@ -11,7 +11,6 @@ import com.fongmi.android.tv.utils.ResUtil;
 import com.github.catvod.crawler.SpiderDebug;
 import com.fongmi.android.tv.utils.Task;
 
-import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
 import java.util.concurrent.ScheduledFuture;
@@ -23,11 +22,6 @@ public final class UpdateTracker {
     private static ScheduledFuture<?> future;
 
     private UpdateTracker() {
-    }
-
-    public interface CheckCallback {
-
-        void done(String message);
     }
 
     public static synchronized void init() {
@@ -59,37 +53,6 @@ public final class UpdateTracker {
             if ((track.getDays() & UpdateTrack.bitFor(calendar)) == 0) return false;
         }
         return true;
-    }
-
-    /** 手动更新指定追更项，完成后在主线程回传更新详情（供「我的追更」「最近观看」的更新按钮使用）。 */
-    public static void checkKeys(List<String> keys, CheckCallback callback) {
-        Task.submit(() -> {
-            int total = 0;
-            List<String> details = new ArrayList<>();
-            for (String key : keys) {
-                UpdateTrack track = UpdateTrack.find(key);
-                if (track == null) continue;
-                total++;
-                try {
-                    Result result = SiteApi.detailContent(track.getSiteKey(), track.getVodId());
-                    if (result == null || result.getVod() == null) continue;
-                    int count = UpdateTrack.countEpisodes(result.getVod().getFlags());
-                    if (count <= 0) continue;
-                    boolean changed = count > track.getCount();
-                    track.setCount(count);
-                    UpdateTrack.save(track);
-                    if (changed) details.add(ResUtil.getString(R.string.track_update_item, track.getVodName(), count));
-                } catch (Throwable e) {
-                    SpiderDebug.log("track", "manual check %s failed %s", track.getVodName(), e.toString());
-                }
-            }
-            String message;
-            if (total == 0) message = ResUtil.getString(R.string.track_update_none);
-            else if (details.isEmpty()) message = ResUtil.getString(R.string.track_update_latest, total);
-            else message = ResUtil.getString(R.string.track_update_result, details.size(), TextUtils.join("、", details));
-            String result = message;
-            App.post(() -> callback.done(result));
-        });
     }
 
     private static void checkOne(UpdateTrack track) {
