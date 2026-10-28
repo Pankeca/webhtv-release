@@ -200,17 +200,20 @@
         android:paddingStart="14dp"
         android:paddingTop="8dp"
         android:paddingEnd="14dp"
-        android:paddingBottom="28dp">
+        android:paddingBottom="12dp">
 
         <CheckBox
             android:id="@+id/selectAll"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="10dp"
+            android:layout_marginStart="4dp"
             android:buttonTint="#FFE8E4F5"
+            android:paddingStart="4dp"
+            android:paddingEnd="4dp"
+            android:minWidth="0dp"
             android:text="@string/download_select_all"
             android:textColor="#FFE8E4F5"
-            android:textSize="14sp" />
+            android:textSize="13sp" />
 
         <!-- 占位把按钮推到右侧：已下载页只剩"删除/全选"时也不会被拉伸成整行 -->
         <Space
@@ -222,51 +225,51 @@
             android:id="@+id/startAll"
             style="?attr/materialButtonOutlinedStyle"
             android:layout_width="wrap_content"
-            android:layout_height="42dp"
+            android:layout_height="40dp"
             android:layout_marginStart="6dp"
             android:insetTop="0dp"
             android:insetBottom="0dp"
-            android:minWidth="92dp"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp"
+            android:minWidth="0dp"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
             android:singleLine="true"
             android:text="@string/download_action_start_all"
             android:textColor="#FFE8E4F5"
-            android:textSize="14sp"
+            android:textSize="13sp"
             app:strokeColor="#4DFFFFFF" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/pauseAll"
             style="?attr/materialButtonOutlinedStyle"
             android:layout_width="wrap_content"
-            android:layout_height="42dp"
+            android:layout_height="40dp"
             android:layout_marginStart="6dp"
             android:insetTop="0dp"
             android:insetBottom="0dp"
-            android:minWidth="92dp"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp"
+            android:minWidth="0dp"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
             android:singleLine="true"
             android:text="@string/download_action_pause_all"
             android:textColor="#FFE8E4F5"
-            android:textSize="14sp"
+            android:textSize="13sp"
             app:strokeColor="#4DFFFFFF" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/delete"
             style="?attr/materialButtonOutlinedStyle"
             android:layout_width="wrap_content"
-            android:layout_height="42dp"
+            android:layout_height="40dp"
             android:layout_marginStart="6dp"
             android:insetTop="0dp"
             android:insetBottom="0dp"
-            android:minWidth="92dp"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp"
+            android:minWidth="0dp"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
             android:singleLine="true"
             android:text="@string/download_delete"
             android:textColor="#FFFF8A90"
-            android:textSize="14sp"
+            android:textSize="13sp"
             app:strokeColor="#66FF6B72" />
 
     </androidx.appcompat.widget.LinearLayoutCompat>

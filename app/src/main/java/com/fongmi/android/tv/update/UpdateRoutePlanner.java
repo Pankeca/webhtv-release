@@ -64,6 +64,15 @@ public final class UpdateRoutePlanner {
         } catch (Exception ignored) {
         }
         addCnbArchive(routes, apkUrl);
+        // GitHub 直链在部分网络下会连接超时，补公共加速线路兜底
+        if (apkUrl.contains("github.com") || apkUrl.contains("githubusercontent.com")) {
+            for (String id : FALLBACK_PROXIES) {
+                try {
+                    routes.add(UpdateTarget.github(GithubProxy.resolve(id, "", "").rewrite(apkUrl)));
+                } catch (Exception ignored) {
+                }
+            }
+        }
         return routes;
     }
 

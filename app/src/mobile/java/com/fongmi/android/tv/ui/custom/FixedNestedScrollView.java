@@ -2,12 +2,15 @@ package com.fongmi.android.tv.ui.custom;
 
 import android.content.Context;
 import android.util.AttributeSet;
-import android.view.MotionEvent;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.widget.NestedScrollView;
 
+/**
+ * 手机端详情页滚动容器：必须保留触摸滚动与惯性滑动，
+ * 否则小屏上线路/选集超出屏幕后手指滑不到（平板因内容一屏放得下不易察觉）。
+ */
 public class FixedNestedScrollView extends NestedScrollView {
 
     public FixedNestedScrollView(@NonNull Context context) {
@@ -20,24 +23,5 @@ public class FixedNestedScrollView extends NestedScrollView {
 
     public FixedNestedScrollView(@NonNull Context context, @Nullable AttributeSet attrs, int defStyleAttr) {
         super(context, attrs, defStyleAttr);
-    }
-
-    @Override
-    public boolean onInterceptTouchEvent(MotionEvent ev) {
-        return false;
-    }
-
-    @Override
-    public boolean onTouchEvent(MotionEvent ev) {
-        return false;
-    }
-
-    @Override
-    public void scrollTo(int x, int y) {
-        super.scrollTo(x, 0);
-    }
-
-    @Override
-    public void fling(int velocityY) {
     }
 }

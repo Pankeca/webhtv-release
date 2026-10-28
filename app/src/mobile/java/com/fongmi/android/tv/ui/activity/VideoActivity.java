@@ -239,6 +239,8 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     private LinearLayoutCompat mLocalBar;
     private boolean mReturnFromNetwork;
     private boolean mManualSite;
+    /** 用户主动点「换源」时置位，搜索返回后即使关闭了自动换源也要强制切换。 */
+    private boolean forceNextSource;
     private LinearLayoutCompat mSiteRow;
     private RecyclerView mSiteList;
     private SiteChipAdapter mSiteAdapter;
@@ -860,13 +862,13 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         mBinding.control.back.setOnClickListener(view -> onBack());
         mBinding.control.cast.setOnClickListener(view -> onCast());
         mBinding.control.info.setOnClickListener(view -> onInfo());
-        mBinding.control.keep.setOnClickListener(view -> onKeep());
         mBinding.control.osdDiagnostics.setOnClickListener(view -> onOsdDiagnostics());
         mBinding.control.play.setOnClickListener(view -> checkPlay());
         mBinding.control.next.setOnClickListener(view -> checkNext());
         mBinding.control.prev.setOnClickListener(view -> checkPrev());
         mBinding.control.setting.setOnClickListener(view -> onSetting());
         mBinding.control.title.setOnLongClickListener(view -> onChange());
+        mBinding.control.right.back.setOnClickListener(view -> onBack());
         mBinding.control.right.lock.setOnClickListener(view -> onLock());
         mBinding.control.right.rotate.setOnClickListener(view -> onRotate());
         mBinding.control.fullscreen.setOnClickListener(view -> onFullscreen());
@@ -1459,9 +1461,10 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         row.addView(header, new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         RecyclerView list = new RecyclerView(this);
-        // 站点全部平铺（自动换行），不再用横向滚动把后面的站点藏起来
         FlexboxLayoutManager manager = new FlexboxLayoutManager(this, FlexDirection.ROW);
-        manager.setFlexWrap(FlexWrap.WRAP);
+        // 竖屏宽度有限：站点固定单行左右滑动，避免站点过多时铺满底部把线路和选集挤出屏幕
+        boolean portrait = getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT;
+        manager.setFlexWrap(portrait ? FlexWrap.NOWRAP : FlexWrap.WRAP);
         list.setLayoutManager(manager);
         list.setItemAnimator(null);
         list.setClipToPadding(false);
@@ -2332,8 +2335,24 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     }
 
     private boolean onChange() {
+        // 用户主动换源：解除手动站点锁定，并在「自动换源」关闭时也强制切到下一个站点
+        mManualSite = false;
+        if (!hasOtherSite()) {
+            Notify.show(R.string.play_switch_no_site);
+            return true;
+        }
+        Notify.show(R.string.play_switching);
+        forceNextSource = true;
         checkSearch(true);
         return true;
+    }
+
+    private boolean hasOtherSite() {
+        String key = getKey();
+        for (Site item : VodConfig.get().getSites()) {
+            if (!TextUtils.equals(key, item.getKey()) && isPass(item)) return true;
+        }
+        return false;
     }
 
     private boolean onCopy() {
@@ -4771,9 +4790,9 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         hideWidgetOverlay();
         mBinding.control.danmaku.setVisibility(isLock() || !player().haveDanmaku() ? View.GONE : View.VISIBLE);
         mBinding.control.setting.setVisibility(View.GONE);
+        mBinding.control.right.back.setVisibility(isFullscreen() && !isLock() ? View.VISIBLE : View.GONE);
         mBinding.control.right.rotate.setVisibility(isFullscreen() && !isLock() ? View.VISIBLE : View.GONE);
         mBinding.control.fullscreen.setVisibility(isLock() ? View.GONE : View.VISIBLE);
-        mBinding.control.keep.setVisibility(mHistory == null || isFullscreen() ? View.GONE : View.VISIBLE);
         boolean showPlayParams = PlayerButtonSetting.isVisible(PlayerButtonSetting.PLAY_PARAMS);
         mBinding.control.action.playParams.setVisibility(showPlayParams ? View.VISIBLE : View.GONE);
         mBinding.control.osdDiagnostics.setVisibility(PlayerSetting.isOsdDiagnostics() && PlayerButtonSetting.isVisible(PlayerButtonSetting.PLAY_PARAMS) && !player().isEmpty() ? View.VISIBLE : View.GONE);
@@ -5131,7 +5150,6 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
 
     private void checkKeepImg() {
         boolean kept = Keep.find(getHistoryKey()) != null;
-        mBinding.control.keep.setImageResource(kept ? R.drawable.ic_control_keep_on : R.drawable.ic_control_keep_off);
         mBinding.audioKeepAction.setSelected(kept);
     }
 
@@ -6769,8 +6787,9 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
 
     private void checkSearch(boolean force) {
         // 手动切换站点期间不做自动换源，否则详情请求失败会一路切到站点列表最后一个
-        if (mManualSite) return;
+        if (!force && mManualSite) return;
         if (!force && !PlayerSetting.isAutoChange()) return;
+        forceNextSource = force;
         // 站点行自己搜过一轮后 QuickAdapter 可能已有数据，但那是手动搜索，必须重新按自动模式搜
         if (mQuickAdapter.isEmpty() || !isAutoMode()) initSearch(mBinding.name.getText().toString(), true);
         else nextSite();
@@ -6821,7 +6840,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         syncSiteChips();
         if (isQuickSearchVisible()) mQuickSearchDialog.addAll(items);
         if (revealManualSearch && !items.isEmpty()) revealManualSearch = false;
-        if (isInitAuto() && PlayerSetting.isAutoChange()) nextSite();
+        if (isInitAuto() && (PlayerSetting.isAutoChange() || forceNextSource)) nextSite();
         if (items.isEmpty()) return;
         App.removeCallbacks(mR4);
     }
@@ -6852,7 +6871,14 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     }
 
     private void nextSite() {
-        if (mQuickAdapter.isEmpty()) return;
+        if (mQuickAdapter.isEmpty()) {
+            if (forceNextSource) {
+                forceNextSource = false;
+                Notify.show(R.string.play_switch_no_site);
+            }
+            return;
+        }
+        forceNextSource = false;
         int position = mQuickAdapter.getBestPosition();
         Vod item = mQuickAdapter.get(position);
         Notify.show(getString(R.string.play_switch_site, item.getSiteName()));
@@ -7151,6 +7177,10 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     @Override
     public void onConfigurationChanged(@NonNull Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
+        // 详情页不重建时同步站点行的换行策略：竖屏单行横滑，横屏多行
+        if (mSiteList != null && mSiteList.getLayoutManager() instanceof FlexboxLayoutManager) {
+            ((FlexboxLayoutManager) mSiteList.getLayoutManager()).setFlexWrap(newConfig.orientation == Configuration.ORIENTATION_PORTRAIT ? FlexWrap.NOWRAP : FlexWrap.WRAP);
+        }
         if (shouldRecreateAudioStageForOrientation(newConfig)) {
             setAudioOnly(true);
             recreate();

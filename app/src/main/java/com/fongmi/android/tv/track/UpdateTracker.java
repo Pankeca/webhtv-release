@@ -30,6 +30,24 @@ public final class UpdateTracker {
         void done(String message);
     }
 
+    /** 最近观看里的单条待更新目标（含未追更的记录）。 */
+    public static class Target {
+
+        public final String key;
+        public final String siteKey;
+        public final String vodId;
+        public final String vodName;
+        public final int knownCount;
+
+        public Target(String key, String siteKey, String vodId, String vodName, int knownCount) {
+            this.key = key;
+            this.siteKey = siteKey;
+            this.vodId = vodId;
+            this.vodName = vodName;
+            this.knownCount = knownCount;
+        }
+    }
+
     public static synchronized void init() {
         if (future != null) return;
         // 启动 30 秒后先跑一轮，之后每 6 小时检查一次，避免开启追更后长时间看不到更新集数
@@ -90,6 +108,52 @@ public final class UpdateTracker {
             String result = message;
             App.post(() -> callback.done(result));
         });
+    }
+
+    /** 手动更新最近观看的全部记录：追更与未追更都检查，未追更的最新集数写入本地缓存。 */
+    public static void checkHistory(List<Target> targets, CheckCallback callback) {
+        Task.submit(() -> {
+            List<String> details = new ArrayList<>();
+            int total = 0;
+            for (Target target : targets) {
+                if (TextUtils.isEmpty(target.siteKey) || TextUtils.isEmpty(target.vodId)) continue;
+                total++;
+                try {
+                    Result result = SiteApi.detailContent(target.siteKey, target.vodId);
+                    if (result == null || result.getVod() == null) continue;
+                    int count = UpdateTrack.countEpisodes(result.getVod().getFlags());
+                    if (count <= 0) continue;
+                    UpdateTrack track = UpdateTrack.find(target.key);
+                    if (track != null) {
+                        track.setCount(count);
+                        UpdateTrack.save(track);
+                    }
+                    HistoryEpisodeCache.put(target.key, count);
+                    if (count > target.knownCount) details.add(ResUtil.getString(R.string.track_update_item, target.vodName, count));
+                } catch (Throwable e) {
+                    SpiderDebug.log("track", "history check %s failed %s", target.vodName, e.toString());
+                }
+            }
+            String message;
+            if (total == 0) message = ResUtil.getString(R.string.track_update_none);
+            else if (details.isEmpty()) message = ResUtil.getString(R.string.track_update_latest, total);
+            else message = ResUtil.getString(R.string.track_update_result, details.size(), TextUtils.join("、", details));
+            String result = message;
+            App.post(() -> callback.done(result));
+        });
+    }
+
+    public static int parseEpisode(String text) {
+        if (TextUtils.isEmpty(text)) return 0;
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("(\\d+)").matcher(text);
+        int count = 0;
+        while (matcher.find()) {
+            try {
+                count = Integer.parseInt(matcher.group(1));
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return count;
     }
 
     private static void checkOne(UpdateTrack track) {

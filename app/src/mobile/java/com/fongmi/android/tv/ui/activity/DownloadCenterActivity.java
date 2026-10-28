@@ -3,6 +3,7 @@ package com.fongmi.android.tv.ui.activity;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.res.ColorStateList;
+import android.content.res.Configuration;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
@@ -106,10 +107,29 @@ public class DownloadCenterActivity extends BaseActivity implements DownloadTask
     @Override
     protected void initView(Bundle savedInstanceState) {
         setSupportActionBar(mBinding.toolbar);
+        applyCompactLayout();
         DownloadManager.get().reconcile();
         DownloadManager.get().resumeNow();
         initTabs();
         render();
+    }
+
+    /** 横屏手机（高 < 480dp）压缩顶栏/页签/总览，避免顶栏吃掉半屏。 */
+    private void applyCompactLayout() {
+        Configuration configuration = getResources().getConfiguration();
+        if (configuration.screenHeightDp >= 480) return;
+        ViewGroup.LayoutParams toolbarParams = mBinding.toolbar.getLayoutParams();
+        toolbarParams.height = dp(44);
+        mBinding.toolbar.setLayoutParams(toolbarParams);
+        ViewGroup.LayoutParams tabsParams = mBinding.tabsBar.getLayoutParams();
+        tabsParams.height = dp(40);
+        mBinding.tabsBar.setLayoutParams(tabsParams);
+        LinearLayoutCompat.LayoutParams statsParams = (LinearLayoutCompat.LayoutParams) mBinding.stats.getLayoutParams();
+        statsParams.topMargin = 0;
+        statsParams.bottomMargin = dp(2);
+        mBinding.stats.setLayoutParams(statsParams);
+        mBinding.stats.setPadding(mBinding.stats.getPaddingLeft(), dp(4), mBinding.stats.getPaddingRight(), dp(4));
+        mBinding.expandAll.setTextSize(13);
     }
 
     @Override

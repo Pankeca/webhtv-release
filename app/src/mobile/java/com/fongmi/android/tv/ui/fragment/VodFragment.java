@@ -1,5 +1,6 @@
 package com.fongmi.android.tv.ui.fragment;
 
+import android.content.res.Configuration;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.LayerDrawable;
 import android.text.TextUtils;
@@ -118,6 +119,21 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
         setLogo();
         updateToolbarMenu();
         updateAccountIcon();
+        applySmallScreenLayout();
+    }
+
+    /**
+     * 手机横屏矮屏适配：把顶栏压扁，给内容留高度。
+     * 竖屏的按钮收纳由 menu_vod.xml 的 ifRoom 自动完成。
+     */
+    private void applySmallScreenLayout() {
+        Configuration configuration = getResources().getConfiguration();
+        if (configuration.orientation == Configuration.ORIENTATION_LANDSCAPE && configuration.screenHeightDp < 480) {
+            ViewGroup.LayoutParams params = mBinding.toolbar.getLayoutParams();
+            params.height = ResUtil.dp2px(44);
+            mBinding.toolbar.setLayoutParams(params);
+            mBinding.type.setPadding(mBinding.type.getPaddingStart(), 0, mBinding.type.getPaddingEnd(), ResUtil.dp2px(4));
+        }
     }
 
     @Override
@@ -318,6 +334,14 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
         MenuItem item = mBinding.toolbar.getMenu().findItem(R.id.search);
         View search = item == null ? null : item.getActionView();
         if (search == null) return;
+        // 小屏（宽 < 600dp）收窄搜索框，给右侧图标留位置
+        if (getResources().getConfiguration().screenWidthDp < 600) {
+            ViewGroup.LayoutParams params = search.getLayoutParams();
+            if (params != null) {
+                params.width = ResUtil.dp2px(104);
+                search.setLayoutParams(params);
+            }
+        }
         search.setOnClickListener(view -> SearchActivity.start(requireActivity()));
         search.setOnLongClickListener(view -> {
             SearchActivity.start(requireActivity(), "", getHome().getKey());

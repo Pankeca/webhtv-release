@@ -9,8 +9,12 @@ if (localPropsFile.exists()) {
         localProps.load(it)
     }
 }
-def hasReleaseSigning = localProps['storeFile'] && localProps['keyAlias'] && localProps['storePassword']
-def releaseKeyPassword = localProps['keyPassword'] ?: localProps['storePassword']
+// 签名口令只从环境变量或本机 local.properties 读取，仓库内不保存任何明文口令
+def signingStoreFile = localProps['storeFile'] ?: System.getenv('WEBHTV_STORE_FILE')
+def signingAlias = localProps['keyAlias'] ?: System.getenv('WEBHTV_KEY_ALIAS')
+def signingStorePassword = localProps['storePassword'] ?: System.getenv('WEBHTV_STORE_PASSWORD')
+def hasReleaseSigning = signingStoreFile && signingAlias && signingStorePassword
+def releaseKeyPassword = localProps['keyPassword'] ?: System.getenv('WEBHTV_KEY_PASSWORD') ?: signingStorePassword
 def fastRelease = (project.findProperty('fastRelease') ?: 'false').toString().toBoolean()
 def buildTimestamp = new Date().format('yyyyMMddHHmm', TimeZone.getTimeZone('Asia/Shanghai'))
 def buildTime = fastRelease ? "fast-${buildTimestamp}" : buildTimestamp
@@ -38,10 +42,12 @@ android {
         applicationId "com.fongmi.android.tv"
         minSdk libs.versions.minSdk.get().toInteger()
         targetSdk libs.versions.targetSdk.get().toInteger()
-        versionCode 561
-        versionName "5.6.1"
+        versionCode 564
+        versionName "5.6.4"
         buildConfigField "String", "DEFAULT_CLOUD_SERVER", "\"${(project.findProperty('webhtvCloudServer') ?: 'https://sync.940214.xyz').toString().replace('\\', '\\\\').replace('\"', '\\\"')}\""
         buildConfigField "String", "ADMIN_CODE", "\"${(project.findProperty('webhtvAdminCode') ?: 'webhtv').toString().replace('\\', '\\\\').replace('\"', '\\\"')}\""
+        // 内置弹幕服务地址（可用 -PwebhtvDanmakuUrl 或 WEBHTV_DANMAKU_URL 覆盖）
+        buildConfigField "String", "DANMAKU_API_URL", "\"${(project.findProperty('webhtvDanmakuUrl') ?: System.getenv('WEBHTV_DANMAKU_URL') ?: 'https://danmu.940214.xyz').toString().replace('\\', '\\\\').replace('\"', '\\\"')}\""
         // 自有更新源：手机端与电视端按「端名-ABI」读取各自的 update-*.json，避免电视端拿到手机包。
         buildConfigField "String", "UPDATE_MANIFEST_BASE", "\"${(project.findProperty('webhtvUpdateBase') ?: 'https://cnb.cool/mytools-2026/app-release/-/git/raw/main').toString().replace('\\', '\\\\').replace('\"', '\\\"')}\""
         buildConfigField "String", "BUILD_TIME", "\"${buildTime}\""
@@ -98,10 +104,10 @@ android {
     signingConfigs {
         release {
             if (hasReleaseSigning) {
-                storeFile file(localProps['storeFile'])
-                keyAlias localProps['keyAlias']
+                storeFile file(signingStoreFile)
+                keyAlias signingAlias
                 keyPassword releaseKeyPassword
-                storePassword localProps['storePassword']
+                storePassword signingStorePassword
             }
         }
     }

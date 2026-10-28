@@ -12,7 +12,9 @@ import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.History;
 import com.fongmi.android.tv.databinding.AdapterVodBinding;
+import com.fongmi.android.tv.track.HistoryEpisodeCache;
 import com.fongmi.android.tv.track.UpdateTrack;
+import com.fongmi.android.tv.track.UpdateTracker;
 import com.fongmi.android.tv.utils.HistoryProgressFormatter;
 import com.fongmi.android.tv.utils.ImgUtil;
 
@@ -20,12 +22,8 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public class HistoryAdapter extends BaseDiffAdapter<History, HistoryAdapter.ViewHolder> {
-
-    private static final Pattern EPISODE_PATTERN = Pattern.compile("(\\d+)");
 
     private final OnClickListener listener;
     private final Set<History> selected = new HashSet<>();
@@ -166,26 +164,16 @@ public class HistoryAdapter extends BaseDiffAdapter<History, HistoryAdapter.View
         // 集数已并入已看行时不再重复显示 remark
         holder.binding.remark.setVisibility(!delete && !showProgress && !same ? View.VISIBLE : View.GONE);
         UpdateTrack track = UpdateTrack.find(item.getKey());
-        int updateCount = track != null ? track.getCount() : 0;
+        int updateCount = Math.max(track != null ? track.getCount() : 0, HistoryEpisodeCache.get(item.getKey()));
         // 未开启追更时，退化为从备注（如「更新至第20集」）解析总集数，避免更新集数整块消失
-        if (updateCount <= 0) updateCount = parseEpisode(item.getVodRemarks());
+        if (updateCount <= 0) updateCount = UpdateTracker.parseEpisode(item.getVodRemarks());
+        // 已看到的集数已经追平最新集数时不再重复显示「更新至」，避免两个标签互相矛盾
+        int watchedEpisode = UpdateTracker.parseEpisode(episode);
+        boolean showUpdate = !delete && updateCount > 0 && (!hasEpisode || updateCount > watchedEpisode);
         holder.binding.historyUpdate.setText(holder.itemView.getContext().getString(R.string.history_update_to, updateCount));
-        holder.binding.historyUpdate.setVisibility(!delete && updateCount > 0 ? View.VISIBLE : View.GONE);
+        holder.binding.historyUpdate.setVisibility(showUpdate ? View.VISIBLE : View.GONE);
         ImgUtil.load(item.getVodName(), item.getVodPic(), holder.binding.image);
         setClickListener(holder.binding.getRoot(), item);
-    }
-
-    private int parseEpisode(String text) {
-        if (TextUtils.isEmpty(text)) return 0;
-        Matcher matcher = EPISODE_PATTERN.matcher(text);
-        int count = 0;
-        while (matcher.find()) {
-            try {
-                count = Integer.parseInt(matcher.group(1));
-            } catch (NumberFormatException ignored) {
-            }
-        }
-        return count;
     }
 
     private void setClickListener(View root, History item) {

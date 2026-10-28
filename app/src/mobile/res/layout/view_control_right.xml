@@ -7,6 +7,14 @@
     android:orientation="vertical">
 
     <androidx.appcompat.widget.AppCompatImageView
+        android:id="@+id/back"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:scaleType="center"
+        android:src="@drawable/ic_control_back" />
+
+    <androidx.appcompat.widget.AppCompatImageView
         android:id="@+id/lock"
         android:layout_width="48dp"
         android:layout_height="48dp"

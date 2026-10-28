@@ -9,6 +9,8 @@ import android.view.ViewGroup;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.google.android.flexbox.FlexboxLayoutManager;
+
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.bean.Vod;
 import com.fongmi.android.tv.databinding.AdapterFlagBinding;
@@ -100,6 +102,15 @@ public class SiteChipAdapter extends RecyclerView.Adapter<SiteChipAdapter.ViewHo
         RecyclerView.LayoutParams params = (RecyclerView.LayoutParams) holder.binding.text.getLayoutParams();
         int spacing = ResUtil.dp2px(8);
         params.setMargins(0, 0, spacing, spacing);
+        // 竖屏单行横滑时 flexbox 默认会把子项压缩进一行，胶囊被压成竖排文字；
+        // 明确不收缩 + 自适应宽度，超出的部分交给 RecyclerView 横向滚动。
+        params.width = ViewGroup.LayoutParams.WRAP_CONTENT;
+        if (params instanceof FlexboxLayoutManager.LayoutParams) {
+            FlexboxLayoutManager.LayoutParams flex = (FlexboxLayoutManager.LayoutParams) params;
+            flex.setFlexShrink(0f);
+            flex.setFlexBasisPercent(-1f);
+        }
+        holder.binding.text.setLayoutParams(params);
     }
 
     /** 站点名一行，集数一行且字号略小，和可可影视的站点胶囊一致。 */

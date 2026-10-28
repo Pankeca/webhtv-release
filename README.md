@@ -42,13 +42,37 @@ export http_proxy=http://127.0.0.1:7897
 
 ## 三、签名与 Token（Release 发布用，按需填写）
 
-Release 包不配置签名时会自动用 debug 签名。要正式签名，在 `local.properties` 追加四项：
+Release 包不配置签名时会自动用 debug 签名。正式签名的口令**只允许**放在本机 `local.properties` 或环境变量里，仓库内不保存任何明文：
 
 ```properties
 storeFile=/home/s/xxx.jks
 keyAlias=xxx
 storePassword=xxx
 keyPassword=xxx
+```
+
+`app/build.gradle` 的读取优先级：`local.properties` → 环境变量（`WEBHTV_STORE_FILE` / `WEBHTV_KEY_ALIAS` / `WEBHTV_STORE_PASSWORD` / `WEBHTV_KEY_PASSWORD`）。
+
+本机已生成的发布签名（口令不入库，构建前 source 一次）：
+
+```bash
+set -a; . /home/s/Android/secrets/webhtv-release.env; set +a
+export JAVA_HOME=/home/s/Android/jdk21
+```
+
+| 项 | 值 |
+| --- | --- |
+| Keystore | `/home/s/Android/secrets/webhtv-release.jks`（0600） |
+| 口令文件 | `/home/s/Android/secrets/webhtv-release.env`（0600，`WEBHTV_*` 四个变量） |
+| Alias | `webhtv` |
+| 证书 | `CN=WebHTV, OU=Release, O=WebHTV, L=Beijing, ST=Beijing, C=CN`，RSA 2048，10000 天 |
+| 证书 SHA-256 | `5c3b6ccce5f7f1418599de9b85dd91a4b5839b38fe5f30a43ef17ad1cf7fb7f7` |
+
+发布 Token（GitHub / CNB）只在当前终端会话里用环境变量传入，**不要写入任何文件或提交**：
+
+```bash
+export GH_TOKEN=...     # GitHub PAT（repo 权限）
+export CNB_TOKEN=...    # CNB 令牌 PC-push
 ```
 
 CI 发布使用仓库 Secrets（名称记录在此，值不落盘、不入库）：
@@ -278,3 +302,234 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST https://sync.940214.xyz/api/aut
 | 4 | 升版本并区分更新源 | `versionCode 561 / versionName 5.6.1`；`BuildConfig.UPDATE_MANIFEST_BASE` + `getDefaultManifestUrl()` 按 `mobile/leanback` × ABI 读取 `update-mobile-arm64_v8a.json`、`update-leanback-armeabi_v7a.json` 等，手机端与电视端互不串包；manifest 的 `apk` 若为完整 https 地址，直接走 `planForApk()`（含 CNB 归档兜底） |
 | 5 | 个人中心视觉再调整 | 弹窗底色改 `shape_account_dialog`（#F5F7FB）；hero 卡白→浅蓝渐变加 1dp 描边；统计拆为「本地 N / 云端 N / 名称」三行；安全行 `linkRow()` 文字居中 |
 
+## 十二、播放器换源与全屏返回（2026-10-28 第六轮）
+
+| # | 需求 | 实现 |
+| --- | --- | --- |
+| 1 | 全屏「换源」点击无反应 | 根因：`checkSearch(true)` 命中手动站点锁定 `mManualSite` 直接 return；且搜索返回后强制切换仍受「自动换源」开关限制。现改为用户主动换源时解除锁定，并置 `forceNextSource`，搜索返回后无论开关状态都执行 `nextSite()`；无其他可用站点时 Toast「没有找到其他可用站点」，点击瞬间 Toast「正在搜索其他可用站点…」 |
+| 2 | 全屏界面右侧增加返回图标 | `view_control_right.xml` 新增 `back`（`ic_control_back`），仅全屏且未锁定时显示，点击 `onBack()` 退出全屏回到详情页 |
+| 3 | 删除详情页小窗口右上角收藏图标 | 移除 `view_control_vod.xml` 的 `keep` 星标及 `control.keep` 绑定/显隐/图标刷新，音频页 `audioKeepAction` 与「更多」菜单的收藏入口保留 |
+
+## 十三、发布 5.6.2（2026-10-28 第七轮）
+
+### 版本与产物
+
+`versionCode 562 / versionName 5.6.2`，四种组合全部签名发布：
+
+| 产物 | 大小 | SHA-256（前 8 位） |
+| --- | --- | --- |
+| `mobile-arm64_v8a.apk` | 139,225,565 | `138f55b4` |
+| `mobile-armeabi_v7a.apk` | 117,057,109 | `5e66b7a0` |
+| `leanback-arm64_v8a.apk` | 139,289,351 | `f8f6c25e` |
+| `leanback-armeabi_v7a.apk` | 117,120,895 | `deddf6a6` |
+
+构建命令（每个变体约 8 分钟，建议逐个执行避免同终端互相打断）：
+
+```bash
+cd /home/s/webtv && set -a && . /home/s/Android/secrets/webhtv-release.env && set +a
+export JAVA_HOME=/home/s/Android/jdk21
+./gradlew :app:assembleMobileArm64_v8aRelease --no-daemon
+./gradlew :app:assembleMobileArmeabi_v7aRelease --no-daemon
+./gradlew :app:assembleLeanbackArm64_v8aRelease --no-daemon
+./gradlew :app:assembleLeanbackArmeabi_v7aRelease --no-daemon
+```
+
+### 发布位置
+
+| 用途 | 地址 |
+| --- | --- |
+| GitHub 发布仓库 | `https://github.com/Pankeca/webhtv-release` |
+| GitHub Release v5.6.2 | `https://github.com/Pankeca/webhtv-release/releases/tag/v5.6.2` |
+| 更新清单（CNB，客户端读取） | `https://cnb.cool/mytools-2026/app-release/-/git/raw/main/<端名>-<ABI>.json` |
+
+- 4 个 APK 作为 Release assets 上传，清单里的 `apk` 指向 GitHub 资源直链；`UpdateRoutePlanner` 会追加 `ghfast` 等公共加速线路兜底。
+- CNB `app-release` 仓库只提交 4 个 JSON 清单（`mobile-arm64_v8a.json` 等），不重复存大文件；清单含 `name/versionName/code/apk/size/sha256/notes`。
+- GitHub 上传（REST，`uploads.github.com` 实测 139 MB / 25 s）：
+
+```bash
+curl -X POST -H "Authorization: Bearer $GH_TOKEN" \
+  -H "Content-Type: application/vnd.android.package-archive" \
+  --data-binary "@app/build/outputs/apk/leanbackArm64_v8a/release/leanback-arm64_v8a.apk" \
+  "https://uploads.github.com/repos/Pankeca/webhtv-release/releases/<releaseId>/assets?name=leanback-arm64_v8a.apk"
+```
+
+### 本轮代码改动
+
+| # | 需求 | 实现 |
+| --- | --- | --- |
+| 1 | 个人中心概览统计四列三行 | `AccountDialog` 统计区改为浅蓝圆角面板（`#F4F8FF` 底 + `#E3EDFB` 描边 + 12dp 圆角 + 8dp 内边距），四列之间 1dp 分隔线；每列自上而下「名称（11sp 加粗 #202124）/ 本地 N（#1A73E8）/ 云端 N（#137333）」居中 |
+| 2 | 最近观看「更新」数量不正确 | 新增 `HistoryEpisodeCache` 记录未追更影片的最新集数；`UpdateTracker.checkHistory(List<Target>)` 遍历**全部**可见历史记录（不再只查追更项），有追更则同步 `UpdateTrack.count`；提示总数按实际检查条数统计 |
+| 3 | 已看集数 / 更新至 标签显示策略 | `HistoryAdapter` 取 `max(追更集数, 本地缓存, 备注解析)`；已看集数 ≥ 最新集数时隐藏「更新至」，避免两个标签矛盾；`HistoryProgressFormatter` 统一「已看 第X集 · 时间」 |
+| 4 | 标签视觉 | `shape_vod_watched.xml`（`#332D7DFF` 蓝）/ `shape_vod_update.xml`（`#33FF9F43` 橙）6dp 圆角；10sp 文字 `#A8CBFF` / `#FFD59A`，4×1dp 内边距 |
+| 5 | 内置默认弹幕地址 | `BuildConfig.DANMAKU_API_URL`（`-PwebhtvDanmakuUrl` / `WEBHTV_DANMAKU_URL` 覆盖），`DanmakuSetting.getEffectiveApiUrl()` 优先级：用户设置 → 配置 JSON `danmaku` → 内置默认 |
+
+### 弹幕服务（EdgeOne Makers，已上线）
+
+用 `https://github.com/Veneno515/danmu_api` 部署在 EdgeOne Makers：
+
+| 项 | 值 |
+| --- | --- |
+| 线上地址（已内置进 5.6.3） | `https://danmu.940214.xyz` |
+| 接口 | `POST /danmaku`，body `{"name":"...","episode":"1"}`，返回 `[{name,url}]` |
+| EdgeOne 项目 | `webhtv-danmu2`，ProjectId `makers-ogmxyjalspdn`，海外区（不含中国大陆） |
+| 默认域名 | `https://webhtv-danmu2.edgeone.dev`（有登录墙 401，**不能**直接给 App 用） |
+| 自定义域名 | `danmu.940214.xyz`，CNAME → `danmu.940214.xyz.pages.dnsoe8.com`（Cloudflare，灰云不代理） |
+| 免费证书 | EdgeOne 控制台域名管理的 HTTPS 配置里申请，签发后 HTTPS 正常 |
+| 源码 | `/home/s/webtv/.build/danmu/Veneno515-danmu_api-fbd4b19` |
+
+部署步骤（CLI，需已 `edgeone` 登录）：
+
+```bash
+cp -a <danmu_api 源码> /tmp/danmu_deploy
+cd /tmp/danmu_deploy
+# 上游文件名有误：node-functions/[[...path]]..js → 改成 [[...path]].js
+# edgeone.json 删掉 rewrites（校验不通过）
+edgeone validate
+edgeone makers deploy . -n webhtv-danmu2 -a overseas
+```
+
+### 踩坑记录（EdgeOne）
+
+- 新建项目部署报 `FailedOperation / teo.CreatePagesResources`：先是平台瞬时故障，**重试即可**，与控制台报错一致，不是配置问题。
+- EdgeOne Pages 默认域名（`*.edgeone.cool` / `*.edgeone.dev`，包括 `webhtv-sync.edgeone.dev`）都有登录墙，必须绑自定义域名才能公网访问；全球区项目的「添加自定义域名」按钮是灰的，海外区可用。
+- 国外域名的 DNS 在 Cloudflare：只加 CNAME（灰云、不代理），TXT 归属权验证通过后才签发免费证书。
+- `wrangler` 未登录且无 Cloudflare Token，故未走 Cloudflare Workers 方案。
+
+## 十四、5.6.3 发布与换机交接（2026-10-28）
+
+### 版本
+
+`versionCode 563 / versionName 5.6.3`，相对 5.6.2 只增加了内置默认弹幕地址：
+
+```groovy
+buildConfigField "String", "DANMAKU_API_URL", "\"... ?: 'https://danmu.940214.xyz'\""
+```
+
+### 构建进度（换机前）
+
+| 变体 | 状态 |
+| --- | --- |
+| `mobile-arm64_v8a` | 已完成，已装到 TB331FC 平板实机运行（5.6.3 正常拉起） |
+| `mobile-armeabi_v7a` | 已完成 |
+| `leanback-arm64_v8a` | 未开始 |
+| `leanback-armeabi_v7a` | 未开始 |
+
+`versionCode` 已改成 563 但 **5.6.2 已发布过 562**，5.6.3 尚未上传 GitHub / 更新 CNB 清单，换机后按第十三节的发布流程补完即可：
+
+```bash
+cd <项目根> && set -a && . secrets/webhtv-release.env && set +a
+export JAVA_HOME=<jdk21 路径>
+./gradlew :app:assembleLeanbackArm64_v8aRelease --no-daemon
+./gradlew :app:assembleLeanbackArmeabi_v7aRelease --no-daemon
+```
+
+发布位置沿用：GitHub `Pankeca/webhtv-release`（Release v5.6.3 + 4 个 APK 资源），CNB `mytools-2026/app-release` 的 4 个 `*.json` 清单。
+
+### 换机必读
+
+1. **签名证书必须一起带走**，否则新包无法覆盖安装（签名不同）：`secrets/webhtv-release.jks` + `secrets/webhtv-release.env`，已随项目复制到 U 盘 `WebTV/secrets/`。口令只在那份 env 文件里，仓库内没有。
+2. 构建前先 `source secrets/webhtv-release.env`，否则会退化成 debug 签名。
+3. 证书指纹（SHA-256）：`5c3b6ccce5f7f1418599de9b85dd91a4b5839b38fe5f30a43ef17ad1cf7fb7f7`，新机器可用 `apksigner verify --print-certs` 校验。
+4. 已排除 `app/build`、`.gradle`、`.git`，到新机器首次编译会重新下载/生成，属正常现象。
+
+## 十五、编译资源优化与在线构建（2026-10-28）
+
+本机（4 核 / 7.6G 内存 / 2G swap，swap 已用到 1.3G）编一个变体就会卡死，原因是原来的 `-Xmx4g` + `parallel=true` 同时开多个编译进程，内存被挤到 swap。已改成：
+
+```properties
+org.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8 --add-exports jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED
+org.gradle.caching=true
+org.gradle.parallel=false
+org.gradle.workers.max=2
+```
+
+实测 `compileMobileArm64_v8aDebugJavaWithJavac` 42 秒、峰值约 1G，不再抖。改完仍需注意：
+
+- **一次只编一个变体**，不要同时跑两个 Gradle；每次编完等 CPU 落下再开下一个。
+- 加 swap 能显著减少卡死（需要 sudo）：`sudo fallocate -l 8G /swapfile2 && sudo chmod 600 /swapfile2 && sudo mkswap /swapfile2 && sudo swapon /swapfile2`
+- 内存紧张时关掉浏览器/Android Studio，`free -h` 里 `available` 低于 1.5G 就别开新编译。
+- `--no-daemon` 每次重新起 JVM，慢但不会残留占内存；本机保持这种用法即可。
+
+### GitHub Actions 在线构建
+
+已加 [.github/workflows/build-release.yml](.github/workflows/build-release.yml)：
+
+- 触发：手动（Actions → Build Release APK → Run workflow）或推送 `v*` 标签
+- 4 个变体并行矩阵构建，公开仓是 4 核 / 16G，速度和内存都比本机好
+- 需要的仓库 Secrets：
+
+| Secret | 内容 |
+| --- | --- |
+| `WEBHTV_KEYSTORE_BASE64` | `base64 -w0 secrets/webhtv-release.jks` 的输出 |
+| `WEBHTV_KEY_ALIAS` | `webhtv` |
+| `WEBHTV_STORE_PASSWORD` | JKS 口令（见 `secrets/webhtv-release.env`） |
+| `WEBHTV_KEY_PASSWORD` | 同上 |
+
+- 缺 `WEBHTV_KEYSTORE_BASE64` 时会自动退化成 debug 签名，不会因为没配密钥失败
+- 产物在 Actions 的 Artifacts（`apk-<变体>`，保留 14 天）；推 `v*` 标签时自动创建 Release 并附 4 个 APK
+
+前提是 GitHub 上要有**源码仓库**（当前 `Pankeca/webhtv-release` 只有 Release 资源），换机后把源码推上去，再在 Settings → Secrets and variables → Actions 里填上面 4 项。
+
+
+
+## 十六、5.6.4 手机真机适配与云端业务重做（2026-10-29）
+
+5.6.2 的 9 个问题集中在「小屏真机」上：开发者用的 adb 平板是 800dp 宽、1920 高，所有布局都能一屏显示，看不出问题；真机竖屏约 360×640dp，横屏约 640×360dp，大量固定尺寸控件叠加后就会溢出。本版按小屏尺寸重做适配。
+
+### 1. 详情页（竖屏）
+
+- 站点胶囊在竖屏改为**单行左右滑动**（`FlexboxLayoutManager` + `FlexWrap.NOWRAP`），横屏仍多行；旋转时同步换行策略。
+- flexbox 在 nowrap 下默认 `flexShrink=1`，会把胶囊压成一条条竖排文字；[SiteChipAdapter](app/src/mobile/java/com/fongmi/android/tv/ui/adapter/SiteChipAdapter.java) 里给每个胶囊 `setFlexShrink(0)` 并保持 `WRAP_CONTENT`，超出部分交给 RecyclerView 横向滚动。
+- **竖向无法滚动**的真凶是 [FixedNestedScrollView](app/src/mobile/java/com/fongmi/android/tv/ui/custom/FixedNestedScrollView.java) 里 `onInterceptTouchEvent/onTouchEvent` 直接返回 false、`scrollTo` 强制 y=0、`fling` 置空（为电视遥控器写的），手机上手指根本滚不动，线路和选集自然「消失」。手机端改为标准 `NestedScrollView`。
+- 同时把滚动内容根布局由 `match_parent` 改为 `wrap_content`，内容高于一屏时才有滚动余量。
+
+### 2. 首页顶栏
+
+- `menu_vod.xml` 中刷新/追更/历史/下载由 `always` 改为 `ifRoom`：平板全部平铺，窄屏自动收进「⋮」溢出菜单，不再挤掉标题和账号图标。
+- 窄屏（`screenWidthDp < 600`）搜索框由 150dp 收窄到 104dp。
+- 手机横屏（`screenHeightDp < 480`）顶栏压到 44dp、分类行底部留白减半。
+
+### 3. 下载中心
+
+- 底栏三个按钮 `minWidth` 由 92dp 改为 0、字号 14sp→13sp、内边距收窄，360dp 竖屏可完整放下。
+- 横屏矮屏下顶栏 44dp、页签 40dp、总览行收紧，列表可见高度显著增加。
+
+### 4. 个人中心弹窗
+
+- 一级弹窗滚动区高度按屏高动态计算（竖屏 66%、横屏 54%，并预留标题/按钮高度），不再被系统栏裁掉。
+- 二级菜单（云端同步、公共配置）统一放进 `CustomNestedScrollView`（竖屏 62%、横屏 52% 屏高），横屏条目多时也能滑动查看。
+
+### 5. 云端公共配置（业务重做）
+
+- **服务端** `cloud/edgeone`：`/api/public/get`、`/api/public/list` 改为匿名可读（此前要求登录，未登录永远「公共资源不存在」）。已重新部署到 EdgeOne（项目 `webhtv-sync`）。
+- 已发布基线 `public_config`：
+  - 点播源：纯净版（34 站点）、4K（10 站点）、10 线路（10 站点），均指向 CNB raw JSON；
+  - 设置项：弹幕 load/auto/show 默认开启；
+  - 直播源暂留空，后续可在 App 内「云同步 → 公共配置」由管理员覆盖发布。
+- **业务拆分**：个人中心「云端同步」只负责个人数据备份/恢复（追更、历史、配置项，需登录）；「云配置」只负责拉取公共配置，菜单里原来的「备份本地配置到云端」已删除，避免两套逻辑混淆。
+- `pullPublic` 不再要求登录；新装首次启动（无任何点播源）自动拉取一次公共配置并选中第一个点播源（标记 `public_config_bootstrapped`，失败下次启动重试）。
+
+### 6. 弹幕默认配置
+
+- `danmaku_load` / `danmaku_auto` / `danmaku_show` 默认值改为 `true`，并写入公共配置设置项，新装开箱即用。
+
+### 7. 检查更新下载超时
+
+- `UpdateRoutePlanner.planForApk`：GitHub 直链除 CNB zip 归档兜底外，再补 4 条公共加速线路，直连超时后会自动切换。
+- 发布时必须把 `mobile-*.json` / `leanback-*.json` 里的 `apk` 改为 CNB 地址（GitHub Release 在部分网络下下载 130MB+ 会直接 timeout），本版更新清单按此生成。
+
+### 真机/小屏验证方法
+
+平板可以用 adb 模拟小屏，不必另找手机：
+
+```bash
+adb shell wm size 1080x1920
+adb shell wm density 480      # 逻辑 360x640dp，竖屏手机
+adb shell settings put system accelerometer_rotation 0
+adb shell settings put system user_rotation 0
+# 恢复
+adb shell wm size reset
+adb shell wm density reset
+```
+
+已用该方法确认：竖屏首页顶栏完整（标题+搜索+账号+⋮）、溢出菜单含刷新/追更/历史/下载；详情页站点胶囊单行可横滑、线路行可见。下载中心与个人中心待设备重新连接后复测。

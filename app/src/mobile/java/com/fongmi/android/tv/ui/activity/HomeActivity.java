@@ -34,6 +34,7 @@ import com.fongmi.android.tv.player.Source;
 import com.fongmi.android.tv.receiver.ShortcutReceiver;
 import com.fongmi.android.tv.server.Server;
 import com.fongmi.android.tv.service.PlaybackService;
+import com.fongmi.android.tv.setting.CloudConfigSync;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.ui.custom.FragmentStateManager;
@@ -157,7 +158,14 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     }
 
     private void initConfig() {
-        VodConfig.get().config(mStartupConfig == null ? Config.vod() : mStartupConfig).load(getCallback());
+        // 新装未登录且本地没有任何点播源时，先拉一次管理员发布的公共配置，避免首页空白
+        CloudConfigSync.bootstrapIfNeeded(this::loadConfigs);
+    }
+
+    private void loadConfigs() {
+        // 首次启动拉取公共配置后需重新取第一个点播源，不能沿用启动时的空配置
+        Config config = mStartupConfig == null || mStartupConfig.getId() == 0 ? Config.vod() : mStartupConfig;
+        VodConfig.get().config(config).load(getCallback());
         LiveConfig.get().init().load();
         WallConfig.get().init();
     }

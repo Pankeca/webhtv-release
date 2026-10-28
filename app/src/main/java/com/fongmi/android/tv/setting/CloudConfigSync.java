@@ -24,12 +24,13 @@ import java.util.Map;
 public final class CloudConfigSync {
 
     public static final String PUBLIC_KEY = "public_config";
+    private static final String BOOTSTRAP_KEY = "public_config_bootstrapped";
     private static final String TYPE = "config";
     private static final List<String> EXCLUDED_PREFIX = Arrays.asList(
             "account_", "cloud_", "viewing_", "playback_", "sync_", "config_", "wall_",
             "history_", "keep_", "update_", "download", "admin", "device", "token",
             "server", "webhook", "remote_", "spider_", "debug_", "crash_", "last_",
-            "app_", "site_", "update_tracks", "doh_");
+            "app_", "site_", "update_tracks", "doh_", "public_");
 
     public interface Callback {
 
@@ -130,10 +131,10 @@ public final class CloudConfigSync {
         });
     }
 
-    /** 从云端公共配置更新到本地。 */
+    /** 公共配置只拉取，不要求登录：新装用户也能拿到管理员发布的默认源。 */
     public static void pullPublic(boolean vod, boolean live, boolean settings, int mode, Callback callback) {
-        if (!canSync()) {
-            if (callback != null) callback.error("请先登录账号");
+        if (AuthApi.server().isEmpty()) {
+            if (callback != null) callback.error("未配置云端服务地址");
             return;
         }
         AuthApi.publicGet(PUBLIC_KEY, new AuthApi.Callback() {
@@ -155,6 +156,31 @@ public final class CloudConfigSync {
             @Override
             public void error(String message) {
                 if (callback != null) callback.error("暂无公共配置：" + message);
+            }
+        });
+    }
+
+    /**
+     * 新装首次启动且没有任何点播源时，自动拉取一次公共配置。
+     * 只成功才写标记，失败下次启动会重试；回调保证只执行一次且在主线程。
+     */
+    public static void bootstrapIfNeeded(Runnable onReady) {
+        boolean done = Prefers.getBoolean(BOOTSTRAP_KEY, false);
+        if (done || !Config.getAll(0).isEmpty()) {
+            if (!done) Prefers.put(BOOTSTRAP_KEY, true);
+            if (onReady != null) onReady.run();
+            return;
+        }
+        pullPublic(true, true, true, CloudSyncStore.MODE_CLOUD_FIRST, new Callback() {
+            @Override
+            public void success(String message) {
+                Prefers.put(BOOTSTRAP_KEY, true);
+                if (onReady != null) onReady.run();
+            }
+
+            @Override
+            public void error(String message) {
+                if (onReady != null) onReady.run();
             }
         });
     }

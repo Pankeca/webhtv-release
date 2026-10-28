@@ -17,6 +17,7 @@ import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
 import android.widget.CheckBox;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
@@ -38,6 +39,7 @@ import com.fongmi.android.tv.setting.AccountStore;
 import com.fongmi.android.tv.setting.AccountSync;
 import com.fongmi.android.tv.setting.CloudConfigSync;
 import com.fongmi.android.tv.setting.CloudSyncStore;
+import com.fongmi.android.tv.ui.custom.CustomNestedScrollView;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.Util;
@@ -117,7 +119,10 @@ public class AccountDialog extends BaseAlertDialog {
         window.clearFlags(WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM);
         // 允许输入法顶起窗口，避免输入框被软键盘遮挡
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
-        binding.contentScroll.setMaxHeight((int) (screenHeight * 0.62f));
+        // 滚动区高度按实际可用屏高动态计算：竖屏多显示一些，横屏矮屏避免被系统栏裁掉
+        int reserved = ResUtil.dp2px(land ? 120 : 190);
+        int maxHeight = Math.max(ResUtil.dp2px(160), Math.min((int) (screenHeight * (land ? 0.54f : 0.66f)), screenHeight - reserved));
+        binding.contentScroll.setMaxHeight(maxHeight);
         render();
         if (AccountStore.isLogin()) CloudConfigSync.refreshCounts(() -> {
             if (isAdded()) render();
@@ -253,27 +258,54 @@ public class AccountDialog extends BaseAlertDialog {
 
         LinearLayoutCompat stats = new LinearLayoutCompat(requireContext());
         stats.setOrientation(LinearLayoutCompat.HORIZONTAL);
+        stats.setGravity(Gravity.CENTER_VERTICAL);
+        stats.setPadding(dp(8), dp(8), dp(8), dp(8));
+        GradientDrawable statsBg = new GradientDrawable();
+        statsBg.setColor(Color.parseColor("#F4F8FF"));
+        statsBg.setCornerRadius(dp(12));
+        statsBg.setStroke(dp(1), Color.parseColor("#E3EDFB"));
+        stats.setBackground(statsBg);
         LinearLayoutCompat.LayoutParams statsParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         statsParams.topMargin = dp(10);
         stats.setLayoutParams(statsParams);
-        addStat(stats, getString(R.string.account_stats_keep), keepCount(), CloudSyncStore.cloudKeepCount(), true);
+        addStat(stats, getString(R.string.account_stats_keep), keepCount(), CloudSyncStore.cloudKeepCount(), false);
         addStat(stats, getString(R.string.account_stats_history), AccountSync.localHistoryCount(), CloudSyncStore.cloudHistoryCount(), true);
-        addStat(stats, getString(R.string.account_stats_vod), CloudConfigSync.localVodCount(), CloudSyncStore.cloudVodCount(), false);
-        addStat(stats, getString(R.string.account_stats_live), CloudConfigSync.localLiveCount(), CloudSyncStore.cloudLiveCount(), false);
+        addStat(stats, getString(R.string.account_stats_vod), CloudConfigSync.localVodCount(), CloudSyncStore.cloudVodCount(), true);
+        addStat(stats, getString(R.string.account_stats_live), CloudConfigSync.localLiveCount(), CloudSyncStore.cloudLiveCount(), true);
         root.addView(stats);
         return root;
     }
 
-    /** 每项统计拆成「本地 N / 云端 N / 名称」三行，读者不用猜斜杠前后是什么。 */
-    private void addStat(LinearLayoutCompat parent, String label, int local, int cloud, boolean margin) {
+    /** 每项统计三行：名称（加粗）/ 本地 N（蓝）/ 云端 N（绿），列间用细分隔线划分。 */
+    private void addStat(LinearLayoutCompat parent, String label, int local, int cloud, boolean divider) {
+        if (divider) {
+            View line = new View(requireContext());
+            line.setBackgroundColor(Color.parseColor("#E1E9F6"));
+            LinearLayoutCompat.LayoutParams lineParams = new LinearLayoutCompat.LayoutParams(dp(1), dp(30));
+            lineParams.leftMargin = dp(2);
+            lineParams.rightMargin = dp(2);
+            parent.addView(line, lineParams);
+        }
         LinearLayoutCompat column = new LinearLayoutCompat(requireContext());
         column.setOrientation(LinearLayoutCompat.VERTICAL);
-        column.addView(text(getString(R.string.account_stats_local, local), 13, Color.parseColor("#202124"), true));
-        column.addView(text(getString(R.string.account_stats_cloud, cloud), 10, Color.parseColor("#5F6368"), false));
-        column.addView(text(label, 10, Color.parseColor("#5F6368"), false));
-        LinearLayoutCompat.LayoutParams params = new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
-        if (margin) params.rightMargin = dp(6);
-        parent.addView(column, params);
+        column.setGravity(Gravity.CENTER_HORIZONTAL);
+        MaterialTextView title = text(label, 11, Color.parseColor("#202124"), true);
+        title.setGravity(Gravity.CENTER);
+        title.setMaxLines(1);
+        column.addView(title);
+        MaterialTextView localView = text(getString(R.string.account_stats_local, local), 11, Color.parseColor("#1A73E8"), false);
+        localView.setGravity(Gravity.CENTER);
+        localView.setMaxLines(1);
+        LinearLayoutCompat.LayoutParams localParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        localParams.topMargin = dp(3);
+        column.addView(localView, localParams);
+        MaterialTextView cloudView = text(getString(R.string.account_stats_cloud, cloud), 11, Color.parseColor("#137333"), false);
+        cloudView.setGravity(Gravity.CENTER);
+        cloudView.setMaxLines(1);
+        LinearLayoutCompat.LayoutParams cloudParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        cloudParams.topMargin = dp(1);
+        column.addView(cloudView, cloudParams);
+        parent.addView(column, new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
     }
 
     /** 二级菜单入口：并排两列，图标 + 标题 + 状态角标，点击弹出对应二级菜单。 */
@@ -353,9 +385,17 @@ public class AccountDialog extends BaseAlertDialog {
     }
 
     private void showOptionsDialog(CharSequence title, View content) {
+        // 二级菜单条目多，横屏矮屏会被裁掉：统放进可滚动容器，按屏高限制最大高度
+        CustomNestedScrollView scroll = new CustomNestedScrollView(requireContext());
+        scroll.setFillViewport(false);
+        scroll.setClipToPadding(false);
+        scroll.addView(content, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        int screenHeight = ResUtil.getScreenHeight(requireContext());
+        int maxHeight = (int) (screenHeight * (ResUtil.isLand(requireContext()) ? 0.52f : 0.62f));
+        scroll.setMaxHeight(Math.max(ResUtil.dp2px(160), maxHeight));
         optionsDialog = new MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_WebHTV_LightDialog)
                 .setTitle(title)
-                .setView(content)
+                .setView(scroll)
                 .setNegativeButton(R.string.dialog_close, null)
                 .setOnDismissListener(dialog -> {
                     optionsDialog = null;
@@ -408,10 +448,6 @@ public class AccountDialog extends BaseAlertDialog {
         content.addView(buttonRow(getString(R.string.account_config_pull), true, view -> {
             dismissOptions();
             pullPublicConfig();
-        }));
-        content.addView(buttonRow(getString(R.string.account_config_backup), false, view -> {
-            dismissOptions();
-            backupConfig();
         }));
         content.addView(note(getString(R.string.account_config_note)));
         showOptionsDialog(getString(R.string.account_section_config), content);
@@ -595,41 +631,6 @@ public class AccountDialog extends BaseAlertDialog {
                     Notify.show(message);
                 }
             });
-        });
-    }
-
-    private void backupConfig() {
-        if (!syncConfigVod && !syncConfigLive && !syncConfigSettings) {
-            Notify.show(R.string.account_config_none_selected);
-            return;
-        }
-        // 上传会用本地内容覆盖云端备份，先明确提示，避免误覆盖。
-        new MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_WebHTV_LightDialog)
-                .setTitle(R.string.account_config_backup_confirm_title)
-                .setMessage(R.string.account_config_backup_confirm_message)
-                .setNegativeButton(R.string.dialog_negative, null)
-                .setPositiveButton(R.string.dialog_positive, (dialog, which) -> doBackupConfig())
-                .show();
-    }
-
-    private void doBackupConfig() {
-        binding.progress.setVisibility(View.VISIBLE);
-        Notify.show(R.string.account_config_backing_up);
-        CloudConfigSync.backup(syncConfigVod, syncConfigLive, syncConfigSettings, new CloudConfigSync.Callback() {
-            @Override
-            public void success(String message) {
-                if (!isAdded()) return;
-                binding.progress.setVisibility(View.GONE);
-                render();
-                Notify.show(message);
-            }
-
-            @Override
-            public void error(String message) {
-                if (!isAdded()) return;
-                binding.progress.setVisibility(View.GONE);
-                Notify.show(message);
-            }
         });
     }
 

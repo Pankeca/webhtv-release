@@ -5,6 +5,7 @@ import android.text.TextUtils;
 
 import androidx.media3.ui.danmaku.DanmakuConfig;
 
+import com.fongmi.android.tv.BuildConfig;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.utils.Util;
 import com.github.catvod.utils.Prefers;
@@ -12,7 +13,7 @@ import com.github.catvod.utils.Prefers;
 public class DanmakuSetting {
 
     public static boolean isLoad() {
-        return Prefers.getBoolean("danmaku_load");
+        return Prefers.getBoolean("danmaku_load", true);
     }
 
     public static void putLoad(boolean danmakuLoad) {
@@ -20,7 +21,7 @@ public class DanmakuSetting {
     }
 
     public static boolean isAuto() {
-        return Prefers.getBoolean("danmaku_auto");
+        return Prefers.getBoolean("danmaku_auto", true);
     }
 
     public static void putAuto(boolean auto) {
@@ -44,7 +45,7 @@ public class DanmakuSetting {
     }
 
     public static boolean isShow() {
-        return Prefers.getBoolean("danmaku_show");
+        return Prefers.getBoolean("danmaku_show", true);
     }
 
     public static void putShow(boolean danmakuShow) {
@@ -302,7 +303,9 @@ public class DanmakuSetting {
         String userUrl = getApiUrl();
         if (!TextUtils.isEmpty(userUrl)) return userUrl.trim();
         String configUrl = VodConfig.get().getConfig().getDanmaku();
-        return configUrl == null ? "" : configUrl.trim();
+        if (configUrl != null && !TextUtils.isEmpty(configUrl.trim())) return configUrl.trim();
+        // 内置默认弹幕服务（自建 danmu_api），保证开箱即用
+        return BuildConfig.DANMAKU_API_URL == null ? "" : BuildConfig.DANMAKU_API_URL.trim();
     }
 
     public static String getValidApiUrl() {

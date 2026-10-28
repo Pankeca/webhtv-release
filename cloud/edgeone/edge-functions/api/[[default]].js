@@ -6,8 +6,8 @@
 //   GET  /api/playback/sync     (pull changes since cursor)
 //   POST /api/backup/save       (snapshot backup: keeps / update tracks)
 //   GET  /api/backup/load?type=keep
-//   GET  /api/public/list       (shared folder, login required)
-//   GET  /api/public/get?key=   (shared folder, login required)
+//   GET  /api/public/list       (shared folder, anonymous)
+//   GET  /api/public/get?key=   (shared folder, anonymous)
 //   POST /api/public/put        (shared folder, admin code required)
 //   POST /api/public/delete     (shared folder, admin code required)
 //
@@ -598,13 +598,9 @@ async function route(context) {
             return await loadBackup(kv, user, request);
         }
         if (path === '/api/public/list' && request.method === 'GET') {
-            const user = await authUser(kv, request);
-            if (!user) return fail(401, '登录已失效');
             return await listPublic(kv, request);
         }
         if (path === '/api/public/get' && request.method === 'GET') {
-            const user = await authUser(kv, request);
-            if (!user) return fail(401, '登录已失效');
             return await getPublic(kv, request);
         }
         if (path === '/api/public/put' && request.method === 'POST') return await putPublic(kv, request);

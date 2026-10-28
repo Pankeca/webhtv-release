@@ -13,28 +13,28 @@
         android:icon="@drawable/ic_popup_refresh"
         android:title="@string/live_refresh"
         app:iconTint="@color/white"
-        app:showAsAction="always" />
+        app:showAsAction="ifRoom" />
 
     <item
         android:id="@+id/keep"
         android:icon="@drawable/ic_popup_keep"
         android:title="@string/app_keep"
         app:iconTint="@color/white"
-        app:showAsAction="always" />
+        app:showAsAction="ifRoom" />
 
     <item
         android:id="@+id/history"
         android:icon="@drawable/ic_popup_history"
         android:title="@string/app_history"
         app:iconTint="@color/white"
-        app:showAsAction="always" />
+        app:showAsAction="ifRoom" />
 
     <item
         android:id="@+id/download"
         android:icon="@drawable/ic_menu_download"
         android:title="@string/download_manager_title"
         app:iconTint="@color/white"
-        app:showAsAction="always" />
+        app:showAsAction="ifRoom" />
 
     <item
         android:id="@+id/web_home_fullscreen"

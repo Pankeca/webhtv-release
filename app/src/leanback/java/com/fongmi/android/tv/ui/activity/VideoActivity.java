@@ -244,6 +244,8 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     private long mAudioSeekPreviewOffset;
     private int mAudioSeekPreviewDirection;
     private int mAudioSeekPreviewRepeat;
+    /** 用户主动点「换源」时置位，搜索返回后即使关闭了自动换源也要强制切换。 */
+    private boolean forceNextSource;
     private boolean mAudioSeekPreviewing;
     private final Map<String, String> mAudioQueueFlags = new HashMap<>();
     private final Map<String, String> mAudioQueueTitles = new HashMap<>();
@@ -2471,7 +2473,21 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     }
 
     private void onChange() {
+        if (!hasOtherSite()) {
+            Notify.show(R.string.play_switch_no_site);
+            return;
+        }
+        Notify.show(R.string.play_switching);
+        forceNextSource = true;
         checkSearch(true);
+    }
+
+    private boolean hasOtherSite() {
+        String key = getKey();
+        for (Site item : VodConfig.get().getSites()) {
+            if (!TextUtils.equals(key, item.getKey()) && isPass(item)) return true;
+        }
+        return false;
     }
 
     private void onFullscreen() {
@@ -5671,6 +5687,7 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
 
     private void checkSearch(boolean force) {
         if (!force && !PlayerSetting.isAutoChange()) return;
+        forceNextSource = force;
         if (mQuickAdapter.getItemCount() == 0) initSearch(mBinding.name.getText().toString(), true);
         else if (isAutoMode() || force) nextSite();
     }
@@ -5713,7 +5730,7 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
         if (!isInitAuto() && !items.isEmpty()) {
             showQuickSearchDialog(items);
         }
-        if (isInitAuto() && PlayerSetting.isAutoChange()) nextSite();
+        if (isInitAuto() && (PlayerSetting.isAutoChange() || forceNextSource)) nextSite();
         if (items.isEmpty()) return;
         App.removeCallbacks(mR4);
     }
@@ -5774,7 +5791,14 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
     }
 
     private void nextSite() {
-        if (mQuickAdapter.getItemCount() == 0) return;
+        if (mQuickAdapter.getItemCount() == 0) {
+            if (forceNextSource) {
+                forceNextSource = false;
+                Notify.show(R.string.play_switch_no_site);
+            }
+            return;
+        }
+        forceNextSource = false;
         int position = mQuickAdapter.getBestPosition();
         Vod item = mQuickAdapter.get(position);
         Notify.show(getString(R.string.play_switch_site, item.getSiteName()));

@@ -18,6 +18,7 @@ import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.bean.History;
 import com.fongmi.android.tv.databinding.ActivityHistoryBinding;
 import com.fongmi.android.tv.event.RefreshEvent;
+import com.fongmi.android.tv.track.HistoryEpisodeCache;
 import com.fongmi.android.tv.track.UpdateTrack;
 import com.fongmi.android.tv.track.UpdateTracker;
 import com.fongmi.android.tv.ui.adapter.HistoryAdapter;
@@ -77,18 +78,20 @@ public class HistoryActivity extends BaseActivity implements HistoryAdapter.OnCl
         });
     }
 
-    /** 手动更新：刷新当前列表中已追更的剧集集数，并提示更新详情。 */
+    /** 手动更新：检查当前列表全部记录（含未追更），并提示更新详情。 */
     private void onUpdate() {
-        List<String> keys = new ArrayList<>();
+        List<UpdateTracker.Target> targets = new ArrayList<>();
         for (History item : mAdapter.getItems()) {
-            if (UpdateTrack.find(item.getKey()) != null) keys.add(item.getKey());
+            UpdateTrack track = UpdateTrack.find(item.getKey());
+            int known = track != null ? track.getCount() : Math.max(HistoryEpisodeCache.get(item.getKey()), UpdateTracker.parseEpisode(item.getVodRemarks()));
+            targets.add(new UpdateTracker.Target(item.getKey(), item.getSiteKey(), item.getVodId(), item.getVodName(), known));
         }
-        if (keys.isEmpty()) {
+        if (targets.isEmpty()) {
             Notify.show(R.string.track_update_none);
             return;
         }
         Notify.show(R.string.track_update_checking);
-        UpdateTracker.checkKeys(keys, message -> {
+        UpdateTracker.checkHistory(targets, message -> {
             Notify.show(message);
             getHistory();
         });
