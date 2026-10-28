@@ -43,6 +43,11 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      # chaquopy 的 buildPython 固定为 3.10，runner 自带的 3.12 不匹配
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
       - uses: android-actions/setup-android@v3
         with:
           packages: "platforms;android-37.0 build-tools;37.0.0 ndk;29.0.14206865 cmake;3.22.1"
