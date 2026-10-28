@@ -206,8 +206,9 @@ public class AccountDialog extends BaseAlertDialog {
     private void renderAccount() {
         binding.content.addView(headerCard(AccountStore.name(), getString(R.string.account_uid, AccountStore.uid()), true));
         binding.content.addView(statsCard());
-        binding.content.addView(entryRow(getString(R.string.account_section_sync), getString(R.string.account_entry_sync_desc), syncSummary(), view -> showSyncOptions()));
-        binding.content.addView(entryRow(getString(R.string.account_section_config), getString(R.string.account_entry_config_desc), configSummary(), view -> showConfigOptions()));
+        binding.content.addView(entryRow(
+                entryTile(getString(R.string.account_section_sync), syncSummary(), view -> showSyncOptions()),
+                entryTile(getString(R.string.account_section_config), configSummary(), view -> showConfigOptions())));
         binding.content.addView(securityCard());
     }
 
@@ -258,40 +259,49 @@ public class AccountDialog extends BaseAlertDialog {
         return tile;
     }
 
-    /** 二级菜单入口：标题 + 说明 + 摘要 + 右侧箭头。 */
-    private View entryRow(String title, String desc, String summary, View.OnClickListener listener) {
+    /** 二级菜单入口：并排两列，点击弹出对应二级菜单。 */
+    private View entryRow(View left, View right) {
         LinearLayoutCompat row = new LinearLayoutCompat(requireContext());
         row.setOrientation(LinearLayoutCompat.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(14), dp(12), dp(12), dp(12));
-        row.setBackground(cardBackground());
-        row.setClickable(true);
-        row.setOnClickListener(listener);
         LinearLayoutCompat.LayoutParams rowParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         rowParams.topMargin = dp(10);
         row.setLayoutParams(rowParams);
-
-        LinearLayoutCompat texts = new LinearLayoutCompat(requireContext());
-        texts.setOrientation(LinearLayoutCompat.VERTICAL);
-        texts.addView(text(title, 15, Color.parseColor("#202124"), true));
-        MaterialTextView summaryView = text(summary, 12, Color.parseColor("#1A73E8"), false);
-        LinearLayoutCompat.LayoutParams summaryParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        summaryParams.topMargin = dp(2);
-        summaryView.setLayoutParams(summaryParams);
-        summaryView.setMaxLines(1);
-        texts.addView(summaryView);
-        MaterialTextView descView = text(desc, 12, Color.parseColor("#80868B"), false);
-        LinearLayoutCompat.LayoutParams descParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        descParams.topMargin = dp(2);
-        descView.setLayoutParams(descParams);
-        texts.addView(descView);
-        row.addView(texts, new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-
-        MaterialTextView arrow = text("›", 24, Color.parseColor("#9AA0A6"), false);
-        LinearLayoutCompat.LayoutParams arrowParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        arrowParams.leftMargin = dp(10);
-        row.addView(arrow, arrowParams);
+        row.addView(left, new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        LinearLayoutCompat.LayoutParams rightParams = new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        rightParams.leftMargin = dp(8);
+        row.addView(right, rightParams);
         return row;
+    }
+
+    /** 单个入口卡片：标题 + 摘要 + 右侧箭头。 */
+    private View entryTile(String title, String summary, View.OnClickListener listener) {
+        LinearLayoutCompat tile = new LinearLayoutCompat(requireContext());
+        tile.setOrientation(LinearLayoutCompat.VERTICAL);
+        tile.setPadding(dp(12), dp(10), dp(12), dp(10));
+        tile.setBackground(cardBackground());
+        tile.setClickable(true);
+        tile.setOnClickListener(listener);
+
+        LinearLayoutCompat head = new LinearLayoutCompat(requireContext());
+        head.setOrientation(LinearLayoutCompat.HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        MaterialTextView titleView = text(title, 14, Color.parseColor("#202124"), true);
+        titleView.setMaxLines(1);
+        titleView.setEllipsize(TextUtils.TruncateAt.END);
+        head.addView(titleView, new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        MaterialTextView arrow = text("›", 18, Color.parseColor("#9AA0A6"), false);
+        LinearLayoutCompat.LayoutParams arrowParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        arrowParams.leftMargin = dp(4);
+        head.addView(arrow, arrowParams);
+        tile.addView(head);
+
+        MaterialTextView summaryView = text(summary, 11, Color.parseColor("#1A73E8"), false);
+        summaryView.setMaxLines(2);
+        LinearLayoutCompat.LayoutParams summaryParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        summaryParams.topMargin = dp(4);
+        summaryView.setLayoutParams(summaryParams);
+        tile.addView(summaryView);
+        return tile;
     }
 
     private String syncSummary() {

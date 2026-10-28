@@ -21,11 +21,21 @@ public final class UpdateRoutePlanner {
         return routes;
     }
 
+    /** 直连失败时依次尝试的公共加速线路，避免 413/超时后无法继续更新。 */
+    private static final String[] FALLBACK_PROXIES = {"ghfast", "gh_acmsz", "github_chenc", "gh_monlor"};
+
     private static void addGithub(List<UpdateTarget> routes, String githubUrl, GithubProxy.Config proxy) {
         if (githubUrl == null || githubUrl.trim().isEmpty()) return;
         try {
             routes.add(UpdateTarget.github(proxy.rewrite(githubUrl)));
         } catch (Exception ignored) {
+        }
+        for (String id : FALLBACK_PROXIES) {
+            if (id.equals(proxy.id)) continue;
+            try {
+                routes.add(UpdateTarget.github(GithubProxy.resolve(id, "", "").rewrite(githubUrl)));
+            } catch (Exception ignored) {
+            }
         }
     }
 

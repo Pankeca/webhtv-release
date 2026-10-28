@@ -44,6 +44,8 @@ public class HistoryAdapter extends BaseDiffAdapter<History, HistoryAdapter.View
 
         void onItemSelect(History item);
 
+        void onItemDelete(History item);
+
         boolean onLongClick();
     }
 
@@ -100,6 +102,15 @@ public class HistoryAdapter extends BaseDiffAdapter<History, HistoryAdapter.View
         setItems(remain, done);
     }
 
+    /** 删除模式下点海报上的垃圾桶图标：直接删除单条。 */
+    public void deleteItem(History item, Runnable done) {
+        List<History> remain = new ArrayList<>(getItems());
+        remain.remove(item);
+        selected.remove(item);
+        item.deleteAndSync();
+        setItems(remain, done);
+    }
+
     @Override
     public void clear() {
         super.clear();
@@ -131,9 +142,18 @@ public class HistoryAdapter extends BaseDiffAdapter<History, HistoryAdapter.View
         holder.binding.delete.setVisibility(!delete ? View.GONE : View.VISIBLE);
         if (delete) {
             boolean checked = selected.contains(item);
-            holder.binding.delete.setImageResource(checked ? R.drawable.ic_vod_check_on : R.drawable.ic_vod_check_off);
-            holder.binding.delete.setBackgroundColor(checked ? 0x40000000 : 0x14000000);
+            // 未勾选时显示垃圾桶（点图标直接删单条），勾选后显示红底白勾，避免残留空心圈
+            holder.binding.delete.setImageResource(checked ? R.drawable.ic_vod_check_on : R.drawable.ic_vod_delete);
+            holder.binding.delete.setBackgroundColor(checked ? 0x40000000 : 0x80000000);
+        } else {
+            holder.binding.delete.setImageResource(R.drawable.ic_vod_delete);
+            holder.binding.delete.setBackgroundColor(0x80000000);
         }
+        holder.binding.delete.setOnClickListener(view -> {
+            if (!isDelete()) return;
+            if (selected.contains(item)) listener.onItemSelect(item);
+            else listener.onItemDelete(item);
+        });
         String watchedTime = HistoryProgressFormatter.format(item.getPosition(), item.getDuration());
         String episode = item.getVodRemarks();
         boolean hasEpisode = !TextUtils.isEmpty(episode) && !TextUtils.isEmpty(watchedTime) && !same;

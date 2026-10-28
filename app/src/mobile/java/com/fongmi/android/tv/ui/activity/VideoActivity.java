@@ -17,7 +17,6 @@ import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.SystemClock;
 import android.provider.Settings;
 import android.text.InputType;
 import android.text.TextUtils;
@@ -2358,58 +2357,72 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         DownloadDialog.show(this, getKey(), getSite().getName(), getId(), mBinding.name.getText().toString(), getPic(), flagName, mEpisodeAdapter.getItems());
     }
 
-    private long lastTrackTap;
+    private boolean trackPending;
 
-    /** 单击直接追更，双击才打开更新时间设置；用户不必先了解更新时间才能追更。 */
+    private final Runnable trackSingle = () -> {
+        trackPending = false;
+        onUpdateTrackQuick();
+    };
+
+    /** 单击切换追更/取消追更，双击进入更新时间设置（进入设置即视为追更）。 */
     private void onTrackTap() {
-        long now = SystemClock.elapsedRealtime();
-        if (now - lastTrackTap < 350) {
-            lastTrackTap = 0;
+        if (trackPending) {
+            mBinding.track.removeCallbacks(trackSingle);
+            trackPending = false;
             onUpdateTrackSettings();
         } else {
-            lastTrackTap = now;
-            onUpdateTrackQuick();
+            trackPending = true;
+            mBinding.track.postDelayed(trackSingle, 260);
         }
     }
 
+    /** 单击：未追更则直接开启，已追更则取消追更。 */
     private void onUpdateTrackQuick() {
-        Keep keep = Keep.find(getHistoryKey());
-        if (keep == null) {
-            keep = new Keep();
-            keep.setKey(getHistoryKey());
-            keep.setCid(VodConfig.getCid());
-            keep.setVodPic(mHistory.getVodPic());
-            keep.setVodName(mHistory.getVodName());
-            keep.setSiteName(getSite().getName());
-            keep.save();
+        if (mBinding == null || isFinishing() || isDestroyed()) return;
+        UpdateTrack track = UpdateTrack.find(getHistoryKey());
+        if (track != null) {
+            UpdateTrack.remove(getHistoryKey());
+            Keep keep = Keep.find(getHistoryKey());
+            if (keep != null) keep.delete();
             checkKeepImg();
+            Notify.show(R.string.track_off);
+            setTrackButton();
+            return;
         }
+        Keep keep = ensureTrackKeep();
+        UpdateTrack.set(keep, UpdateTrack.DAYS_EVERY);
+        UpdateTrack.markSeen(getHistoryKey(), getEpisodeCount());
+        Notify.show(R.string.track_on);
+        setTrackButton();
+    }
+
+    private Keep ensureTrackKeep() {
+        Keep keep = Keep.find(getHistoryKey());
+        if (keep != null) return keep;
+        keep = new Keep();
+        keep.setKey(getHistoryKey());
+        keep.setCid(VodConfig.getCid());
+        keep.setVodPic(mHistory.getVodPic());
+        keep.setVodName(mHistory.getVodName());
+        keep.setSiteName(getSite().getName());
+        keep.save();
+        checkKeepImg();
+        return keep;
+    }
+
+    /** 双击：先按「每天」追更，再打开日程设置；直接关闭弹窗也保持追更状态。 */
+    private void onUpdateTrackSettings() {
+        Keep keep = ensureTrackKeep();
         UpdateTrack track = UpdateTrack.find(getHistoryKey());
         if (track == null) {
             UpdateTrack.set(keep, UpdateTrack.DAYS_EVERY);
             UpdateTrack.markSeen(getHistoryKey(), getEpisodeCount());
-            Notify.show(R.string.track_on);
-        } else {
-            Notify.show(R.string.track_already);
+            setTrackButton();
         }
-        setTrackButton();
-    }
-
-    private void onUpdateTrackSettings() {
-        Keep keep = Keep.find(getHistoryKey());
-        if (keep == null) {
-            keep = new Keep();
-            keep.setKey(getHistoryKey());
-            keep.setCid(VodConfig.getCid());
-            keep.setVodPic(mHistory.getVodPic());
-            keep.setVodName(mHistory.getVodName());
-            keep.setSiteName(getSite().getName());
-            keep.save();
-            checkKeepImg();
-        }
+        UpdateTrack existing = UpdateTrack.find(getHistoryKey());
+        int current = existing == null ? UpdateTrack.DAYS_EVERY : existing.getDays();
         Keep finalKeep = keep;
-        UpdateTrack track = UpdateTrack.find(getHistoryKey());
-        ScheduleDialog.show(this, track == null ? UpdateTrack.DAYS_NONE : track.getDays(), days -> {
+        ScheduleDialog.show(this, current, days -> {
             if (days == UpdateTrack.DAYS_NONE) {
                 UpdateTrack.remove(getHistoryKey());
                 Keep kept = Keep.find(getHistoryKey());

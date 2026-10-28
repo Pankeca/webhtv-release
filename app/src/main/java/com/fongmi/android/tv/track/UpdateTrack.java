@@ -93,10 +93,8 @@ public class UpdateTrack {
     }
 
     public static void remove(String key) {
-        UpdateTrack item = find(key);
-        if (item == null) return;
         List<UpdateTrack> items = list();
-        items.remove(item);
+        if (!items.removeIf(it -> TextUtils.equals(it.key, key))) return;
         persist(items);
     }
 

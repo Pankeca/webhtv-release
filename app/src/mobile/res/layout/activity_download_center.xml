@@ -26,25 +26,20 @@
         android:paddingStart="8dp"
         android:paddingEnd="8dp">
 
-        <com.google.android.material.tabs.TabLayout
-            android:id="@+id/tabs"
+        <!-- 自定义页签容器：两列等宽，切换时位置完全固定 -->
+        <androidx.appcompat.widget.LinearLayoutCompat
+            android:id="@+id/tabsBar"
             android:layout_width="0dp"
             android:layout_height="54dp"
             android:layout_weight="1"
-            android:background="@color/transparent"
-            app:tabGravity="fill"
-            app:tabIndicatorColor="#FFFF6B72"
-            app:tabIndicatorFullWidth="false"
-            app:tabIndicatorHeight="3dp"
-            app:tabMode="fixed"
-            app:tabSelectedTextColor="#FFFF6B72"
-            app:tabTextAppearance="@style/TextAppearance.WebHTV.DownloadTab"
-            app:tabTextColor="#FFABA6C2" />
+            android:orientation="horizontal" />
 
         <com.google.android.material.textview.MaterialTextView
             android:id="@+id/expandAll"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:gravity="end|center_vertical"
+            android:minWidth="120dp"
             android:paddingStart="10dp"
             android:paddingTop="8dp"
             android:paddingEnd="12dp"

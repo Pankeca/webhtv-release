@@ -34,7 +34,6 @@ import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.Task;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
-import com.google.android.material.tabs.TabLayout;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -69,6 +68,7 @@ public class DownloadCenterActivity extends BaseActivity implements DownloadTask
     private ActivityDownloadCenterBinding mBinding;
     private final TextView[] tabLabels = new TextView[2];
     private final TextView[] tabCounts = new TextView[2];
+    private final View[] tabIndicators = new View[2];
     private final Set<String> selected = new HashSet<>();
     private final Map<String, Boolean> expanded = new LinkedHashMap<>();
     private final Map<String, TextView> chipLabels = new LinkedHashMap<>();
@@ -114,22 +114,6 @@ public class DownloadCenterActivity extends BaseActivity implements DownloadTask
 
     @Override
     protected void initEvent() {
-        mBinding.tabs.addOnTabSelectedListener(new TabLayout.OnTabSelectedListener() {
-            @Override
-            public void onTabSelected(TabLayout.Tab tab) {
-                tabIndex = tab.getPosition();
-                selected.clear();
-                render();
-            }
-
-            @Override
-            public void onTabUnselected(TabLayout.Tab tab) {
-            }
-
-            @Override
-            public void onTabReselected(TabLayout.Tab tab) {
-            }
-        });
         mBinding.selectAll.setOnClickListener(view -> {
             selected.clear();
             if (mBinding.selectAll.isChecked()) for (DownloadTask task : visibleTasks()) selected.add(task.getId());
@@ -192,12 +176,20 @@ public class DownloadCenterActivity extends BaseActivity implements DownloadTask
     private void swipeTab(int direction) {
         int target = tabIndex + direction;
         if (target < 0 || target > 1) return;
-        mBinding.tabs.selectTab(mBinding.tabs.getTabAt(target));
+        selectTab(target);
         View content = mBinding.scroll;
         if (content.getVisibility() != View.VISIBLE || content.getWidth() == 0) return;
         content.setTranslationX(direction * content.getWidth() * 0.15f);
         content.setAlpha(0.35f);
         content.animate().translationX(0f).alpha(1f).setDuration(180).setInterpolator(new DecelerateInterpolator()).start();
+    }
+
+    /** 切换页签：两列等宽固定，切换时只改变颜色与指示条，不移动文字。 */
+    private void selectTab(int index) {
+        if (index < 0 || index > 1 || index == tabIndex) return;
+        tabIndex = index;
+        selected.clear();
+        render();
     }
 
     @Override
@@ -227,11 +219,16 @@ public class DownloadCenterActivity extends BaseActivity implements DownloadTask
     private void initTabs() {
         addTab(0, R.string.download_tab_active);
         addTab(1, R.string.download_tab_done);
-        mBinding.tabs.selectTab(mBinding.tabs.getTabAt(0));
     }
 
-    /** 自定义页签：文字固定宽度、数量固定槽位，切换或数量变化时文字不会左右偏移。 */
+    /** 自定义页签：两列等宽、文字固定宽度，切换或数量变化时位置完全不移动。 */
     private void addTab(int index, int titleRes) {
+        LinearLayoutCompat container = new LinearLayoutCompat(this);
+        container.setOrientation(LinearLayoutCompat.VERTICAL);
+        container.setGravity(Gravity.CENTER);
+        container.setClickable(true);
+        container.setOnClickListener(view -> selectTab(index));
+
         LinearLayoutCompat row = new LinearLayoutCompat(this);
         row.setOrientation(LinearLayoutCompat.HORIZONTAL);
         row.setGravity(Gravity.CENTER);
@@ -243,9 +240,20 @@ public class DownloadCenterActivity extends BaseActivity implements DownloadTask
         LinearLayoutCompat.LayoutParams countParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         countParams.leftMargin = dp(4);
         row.addView(count, countParams);
+
+        View indicator = new View(this);
+        LinearLayoutCompat.LayoutParams indicatorParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(3));
+        indicatorParams.topMargin = dp(6);
+        indicatorParams.leftMargin = dp(18);
+        indicatorParams.rightMargin = dp(18);
+        indicator.setLayoutParams(indicatorParams);
+
+        container.addView(row);
+        container.addView(indicator);
         tabLabels[index] = label;
         tabCounts[index] = count;
-        mBinding.tabs.addTab(mBinding.tabs.newTab().setCustomView(row));
+        tabIndicators[index] = indicator;
+        mBinding.tabsBar.addView(container, new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1));
     }
 
     private void updateTabColors() {
@@ -253,6 +261,7 @@ public class DownloadCenterActivity extends BaseActivity implements DownloadTask
             int color = i == tabIndex ? COLOR_ACCENT : COLOR_TEXT_DIM;
             if (tabLabels[i] != null) tabLabels[i].setTextColor(color);
             if (tabCounts[i] != null) tabCounts[i].setTextColor(color);
+            if (tabIndicators[i] != null) tabIndicators[i].setBackgroundColor(i == tabIndex ? COLOR_ACCENT : 0x00000000);
         }
     }
 
@@ -288,7 +297,8 @@ public class DownloadCenterActivity extends BaseActivity implements DownloadTask
         for (Map.Entry<String, List<DownloadTask>> entry : groups.entrySet()) mBinding.content.addView(groupCard(entry.getKey(), entry.getValue()));
 
         mBinding.selectAll.setChecked(!visible.isEmpty() && selected.size() >= visible.size());
-        mBinding.expandAll.setVisibility(visible.isEmpty() ? View.GONE : View.VISIBLE);
+        // 用 INVISIBLE 占位，避免「全部展开/收起」出现或消失时挤动页签位置
+        mBinding.expandAll.setVisibility(visible.isEmpty() ? View.INVISIBLE : View.VISIBLE);
         boolean allExpanded = !groups.isEmpty();
         for (Map.Entry<String, List<DownloadTask>> entry : groups.entrySet()) if (!isExpanded(entry.getKey(), entry.getValue().size())) allExpanded = false;
         mBinding.expandAll.setText(allExpanded ? R.string.download_collapse_all : R.string.download_expand_all);
@@ -426,13 +436,13 @@ public class DownloadCenterActivity extends BaseActivity implements DownloadTask
         return total;
     }
 
-    /** 底栏：下载中页全选紧挨「全部开始」，已下载页全选放在「删除」左侧，避免最左难以点击。 */
+    /** 底栏：下载中页全选紧挨「全部开始」左侧，已下载页全选放在「删除」左侧，避免最左难以点击。 */
     private void layoutBottomBar() {
         if (bottomTab == tabIndex) return;
         bottomTab = tabIndex;
         LinearLayoutCompat bar = mBinding.bottomBar;
         bar.removeView(mBinding.selectAll);
-        int index = tabIndex == 0 ? bar.indexOfChild(mBinding.startAll) + 1 : bar.indexOfChild(mBinding.delete);
+        int index = tabIndex == 0 ? bar.indexOfChild(mBinding.startAll) : bar.indexOfChild(mBinding.delete);
         bar.addView(mBinding.selectAll, index);
         LinearLayoutCompat.LayoutParams params = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         params.setMarginStart(dp(10));

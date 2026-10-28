@@ -164,7 +164,8 @@ public final class AccountSync {
 
     public static int localHistoryCount() {
         try {
-            return AppDatabase.get().getHistoryDao().findAll().size();
+            // 与「最近观看」页面完全一致：当前配置、保留期内的记录
+            return com.fongmi.android.tv.bean.History.get().size();
         } catch (Throwable e) {
             return 0;
         }

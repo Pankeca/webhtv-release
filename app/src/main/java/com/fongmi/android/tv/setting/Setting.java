@@ -88,13 +88,28 @@ public class Setting {
     public static final int WALL_MIDNIGHT_MOON = 34;
     public static final int WALL_CYAN_CRYSTAL = 35;
     public static final int WALL_LAVENDER_CRYSTAL = 36;
-    /** 护眼纯色皮肤：低亮度低饱和，适合长时间观影。 */
-    public static final int WALL_SOLID_CHARCOAL = 37;
-    public static final int WALL_SOLID_NIGHT_BLUE = 38;
-    public static final int WALL_SOLID_MOSS = 39;
-    public static final int WALL_SOLID_PLUM = 40;
-    public static final int WALL_SOLID_COCOA = 41;
-    public static final int WALL_SOLID_SLATE = 42;
+    /** 护眼纯色皮肤：配色参考 tvbox 1.1.17 皮肤中心（低亮度低饱和，适合长时间观影）。 */
+    public static final int WALL_SOLID_DEFAULT = 37;
+    public static final int WALL_SOLID_STAR = 38;
+    public static final int WALL_SOLID_GLOW = 39;
+    public static final int WALL_SOLID_SMOKE = 40;
+    public static final int WALL_SOLID_INK = 41;
+    public static final int WALL_SOLID_SHADOW = 42;
+    public static final int WALL_SOLID_LOTUS = 43;
+    public static final int WALL_SOLID_IMPERIAL = 44;
+    public static final int WALL_SOLID_HAZE = 45;
+    public static final int WALL_SOLID_SKY = 46;
+    public static final int WALL_SOLID_ABYSS = 47;
+    public static final int WALL_SOLID_WATER = 48;
+    public static final int WALL_SOLID_BAMBOO = 49;
+    public static final int WALL_SOLID_PINE = 50;
+    public static final int WALL_SOLID_MIST = 51;
+    public static final int WALL_SOLID_ROSE = 52;
+    public static final int WALL_SOLID_PEACH = 53;
+    public static final int WALL_SOLID_BLOSSOM = 54;
+    public static final int WALL_SOLID_ASH = 55;
+    public static final int WALL_SOLID_EYEBROW = 56;
+    public static final int WALL_SOLID_SOOT = 57;
     public static final int WALL_GREEN = 1;
 
     private static final int[] DEFAULT_WALLS = {
@@ -207,11 +222,13 @@ public class Setting {
     }
 
     public static boolean isSolidWall(int wall) {
-        return wall >= WALL_SOLID_CHARCOAL && wall <= WALL_SOLID_SLATE;
+        return wall >= WALL_SOLID_DEFAULT && wall <= WALL_SOLID_SOOT;
     }
 
     public static int[] getSolidWalls() {
-        return new int[]{WALL_SOLID_CHARCOAL, WALL_SOLID_NIGHT_BLUE, WALL_SOLID_MOSS, WALL_SOLID_PLUM, WALL_SOLID_COCOA, WALL_SOLID_SLATE};
+        int[] walls = new int[WALL_SOLID_SOOT - WALL_SOLID_DEFAULT + 1];
+        for (int i = 0; i < walls.length; i++) walls[i] = WALL_SOLID_DEFAULT + i;
+        return walls;
     }
 
     public static int getSolidWallByColor(int color) {
@@ -257,12 +274,27 @@ public class Setting {
         if (wall == WALL_MIDNIGHT_MOON) return 0xFF4935B4;
         if (wall == WALL_CYAN_CRYSTAL) return 0xFF168BA6;
         if (wall == WALL_LAVENDER_CRYSTAL) return 0xFF8875D0;
-        if (wall == WALL_SOLID_CHARCOAL) return 0xFF121418;
-        if (wall == WALL_SOLID_NIGHT_BLUE) return 0xFF101A26;
-        if (wall == WALL_SOLID_MOSS) return 0xFF111C16;
-        if (wall == WALL_SOLID_PLUM) return 0xFF171324;
-        if (wall == WALL_SOLID_COCOA) return 0xFF1E1713;
-        if (wall == WALL_SOLID_SLATE) return 0xFF141C1F;
+        if (wall == WALL_SOLID_DEFAULT) return 0xFF1E1E1E;
+        if (wall == WALL_SOLID_STAR) return 0xFF121428;
+        if (wall == WALL_SOLID_GLOW) return 0xFF34344A;
+        if (wall == WALL_SOLID_SMOKE) return 0xFF3A3A3A;
+        if (wall == WALL_SOLID_INK) return 0xFF000000;
+        if (wall == WALL_SOLID_SHADOW) return 0xFF1D1D1D;
+        if (wall == WALL_SOLID_LOTUS) return 0xFF5A4A6A;
+        if (wall == WALL_SOLID_IMPERIAL) return 0xFF1A1026;
+        if (wall == WALL_SOLID_HAZE) return 0xFF3A2D48;
+        if (wall == WALL_SOLID_SKY) return 0xFF2E4A6A;
+        if (wall == WALL_SOLID_ABYSS) return 0xFF0B1A2A;
+        if (wall == WALL_SOLID_WATER) return 0xFF1C324A;
+        if (wall == WALL_SOLID_BAMBOO) return 0xFF2E5A45;
+        if (wall == WALL_SOLID_PINE) return 0xFF0B2018;
+        if (wall == WALL_SOLID_MIST) return 0xFF1C3D2E;
+        if (wall == WALL_SOLID_ROSE) return 0xFF6A4050;
+        if (wall == WALL_SOLID_PEACH) return 0xFF3A1F2B;
+        if (wall == WALL_SOLID_BLOSSOM) return 0xFF522F3D;
+        if (wall == WALL_SOLID_ASH) return 0xFF4F5560;
+        if (wall == WALL_SOLID_EYEBROW) return 0xFF232830;
+        if (wall == WALL_SOLID_SOOT) return 0xFF393E48;
         return 0xFF2B8ECB;
     }
 
@@ -294,12 +326,27 @@ public class Setting {
         if (wall == WALL_MIDNIGHT_MOON) return "午夜月影";
         if (wall == WALL_CYAN_CRYSTAL) return "水晶青蓝";
         if (wall == WALL_LAVENDER_CRYSTAL) return "薰衣水晶";
-        if (wall == WALL_SOLID_CHARCOAL) return "护眼炭黑";
-        if (wall == WALL_SOLID_NIGHT_BLUE) return "护眼深海蓝";
-        if (wall == WALL_SOLID_MOSS) return "护眼墨绿";
-        if (wall == WALL_SOLID_PLUM) return "护眼暗紫";
-        if (wall == WALL_SOLID_COCOA) return "护眼暖棕";
-        if (wall == WALL_SOLID_SLATE) return "护眼青灰";
+        if (wall == WALL_SOLID_DEFAULT) return "经典黑";
+        if (wall == WALL_SOLID_STAR) return "星河";
+        if (wall == WALL_SOLID_GLOW) return "流霞";
+        if (wall == WALL_SOLID_SMOKE) return "烟墨";
+        if (wall == WALL_SOLID_INK) return "玄墨";
+        if (wall == WALL_SOLID_SHADOW) return "墨影";
+        if (wall == WALL_SOLID_LOTUS) return "藕荷";
+        if (wall == WALL_SOLID_IMPERIAL) return "紫宸";
+        if (wall == WALL_SOLID_HAZE) return "紫烟";
+        if (wall == WALL_SOLID_SKY) return "天青";
+        if (wall == WALL_SOLID_ABYSS) return "沧溟";
+        if (wall == WALL_SOLID_WATER) return "云水";
+        if (wall == WALL_SOLID_BAMBOO) return "竹青";
+        if (wall == WALL_SOLID_PINE) return "松墨";
+        if (wall == WALL_SOLID_MIST) return "青岚";
+        if (wall == WALL_SOLID_ROSE) return "藕粉";
+        if (wall == WALL_SOLID_PEACH) return "绛桃";
+        if (wall == WALL_SOLID_BLOSSOM) return "桃夭";
+        if (wall == WALL_SOLID_ASH) return "素灰";
+        if (wall == WALL_SOLID_EYEBROW) return "黛灰";
+        if (wall == WALL_SOLID_SOOT) return "烟灰";
         return "梦幻紫霞";
     }
 

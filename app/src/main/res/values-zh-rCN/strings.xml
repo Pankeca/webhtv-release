@@ -742,6 +742,12 @@
     <string name="history_watched_episode">已看 %1$s · %2$s</string>
     <string name="history_update_to">更新至 第 %1$d 集</string>
     <string name="menu_select_all">全选</string>
+    <string name="menu_update">更新</string>
+    <string name="track_update_checking">正在检查新剧集…</string>
+    <string name="track_update_none">暂无可更新的追更记录</string>
+    <string name="track_update_latest">全部已是最新（共 %1$d 部）</string>
+    <string name="track_update_result">%1$d 部有更新：%2$s</string>
+    <string name="track_update_item">《%1$s》更新至第 %2$d 集</string>
     <string name="select_required">请先勾选要删除的内容</string>
     <string name="dialog_delete_selected">确定删除选中的 %1$d 项？</string>
     <string name="sync_item_keep">追更数据</string>

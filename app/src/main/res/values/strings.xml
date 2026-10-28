@@ -744,6 +744,12 @@
     <string name="history_watched_episode">Watched %1$s · %2$s</string>
     <string name="history_update_to">Updated to ep. %1$d</string>
     <string name="menu_select_all">Select all</string>
+    <string name="menu_update">Update</string>
+    <string name="track_update_checking">Checking for new episodes...</string>
+    <string name="track_update_none">No tracked shows to update</string>
+    <string name="track_update_latest">All up to date (%1$d shows checked)</string>
+    <string name="track_update_result">%1$d show(s) updated: %2$s</string>
+    <string name="track_update_item">%1$s → ep. %2$d</string>
     <string name="select_required">Select items to delete first</string>
     <string name="dialog_delete_selected">Delete the %1$d selected item(s)?</string>
     <string name="sync_item_keep">Favorites</string>

@@ -19,6 +19,7 @@ import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.Config;
 import com.fongmi.android.tv.bean.Keep;
 import com.fongmi.android.tv.track.UpdateTrack;
+import com.fongmi.android.tv.track.UpdateTracker;
 import com.fongmi.android.tv.databinding.ActivityKeepBinding;
 import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.impl.Callback;
@@ -30,6 +31,9 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import org.greenrobot.eventbus.Subscribe;
 import org.greenrobot.eventbus.ThreadMode;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class KeepActivity extends BaseActivity implements KeepAdapter.OnClickListener {
 
@@ -77,6 +81,24 @@ public class KeepActivity extends BaseActivity implements KeepAdapter.OnClickLis
 
     private void onSync() {
         SyncDialog.create().keep().show(this);
+    }
+
+    /** 手动更新：拉取每部追更剧的最新集数，并提示本次更新详情。 */
+    private void onUpdate() {
+        if (mAdapter.getItemCount() == 0) {
+            Notify.show(R.string.track_update_none);
+            return;
+        }
+        List<String> keys = new ArrayList<>();
+        for (Keep keep : mAdapter.getItems()) {
+            if (UpdateTrack.find(keep.getKey()) == null) UpdateTrack.set(keep, UpdateTrack.DAYS_EVERY);
+            keys.add(keep.getKey());
+        }
+        Notify.show(R.string.track_update_checking);
+        UpdateTracker.checkKeys(keys, message -> {
+            Notify.show(message);
+            getKeep();
+        });
     }
 
     private void onDelete() {
@@ -139,6 +161,16 @@ public class KeepActivity extends BaseActivity implements KeepAdapter.OnClickLis
         syncSelectAll();
     }
 
+    /** 删除模式下点海报垃圾桶：直接删除该条。 */
+    @Override
+    public void onItemDelete(Keep item) {
+        mAdapter.deleteItem(item, () -> {
+            mBinding.progressLayout.showContent(true, mAdapter.getItemCount());
+            if (mAdapter.getItemCount() == 0) mAdapter.setDelete(false);
+            syncSelectAll();
+        });
+    }
+
     @Override
     public boolean onLongClick() {
         mAdapter.setDelete(!mAdapter.isDelete());
@@ -170,6 +202,7 @@ public class KeepActivity extends BaseActivity implements KeepAdapter.OnClickLis
         if (item.getItemId() == android.R.id.home) onBackInvoked();
         else if (item.getItemId() == R.id.delete) onDelete();
         else if (item.getItemId() == R.id.sync) onSync();
+        else if (item.getItemId() == R.id.update) onUpdate();
         return super.onOptionsItemSelected(item);
     }
 

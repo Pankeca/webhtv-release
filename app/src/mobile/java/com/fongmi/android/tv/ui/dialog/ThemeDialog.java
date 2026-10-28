@@ -17,14 +17,8 @@ public class ThemeDialog extends BaseAlertDialog implements ThemeAdapter.OnClick
             0xFF7E9B8E, 0xFF7F94AE, 0xFF8E86A8, 0xFFB08A8A,
             0xFFA8917A, 0xFF6E8F92, 0xFF9A8FA6, 0xFF8A9A7B,
             0xFF7B8FA6, 0xFFA29A86, 0xFF97899B, 0xFF6F8F7F};
-    /** 护眼纯色皮肤：切换后壁纸与主题色同步为对应纯色。 */
-    private static final int[] SKINS = {
-            Setting.getBuiltInWallColor(Setting.WALL_SOLID_CHARCOAL),
-            Setting.getBuiltInWallColor(Setting.WALL_SOLID_NIGHT_BLUE),
-            Setting.getBuiltInWallColor(Setting.WALL_SOLID_MOSS),
-            Setting.getBuiltInWallColor(Setting.WALL_SOLID_PLUM),
-            Setting.getBuiltInWallColor(Setting.WALL_SOLID_COCOA),
-            Setting.getBuiltInWallColor(Setting.WALL_SOLID_SLATE)};
+    /** 护眼纯色皮肤：配色参考 tvbox 1.1.17 皮肤中心，切换后壁纸与主题色同步为对应纯色。 */
+    private static final int[] SKINS = buildSkins();
     private DialogThemeBinding binding;
 
     public static void show(Fragment fragment) {
@@ -46,6 +40,13 @@ public class ThemeDialog extends BaseAlertDialog implements ThemeAdapter.OnClick
         binding.themeRecycler.setAdapter(new ThemeAdapter(this, COLORS, Setting.getThemeColor()));
         binding.skinRecycler.setAdapter(new ThemeAdapter(this::onSkinClick, SKINS, selectedSkin()));
         binding.reset.setOnClickListener(view -> onReset());
+    }
+
+    private static int[] buildSkins() {
+        int[] walls = Setting.getSolidWalls();
+        int[] colors = new int[walls.length];
+        for (int i = 0; i < walls.length; i++) colors[i] = Setting.getBuiltInWallColor(walls[i]);
+        return colors;
     }
 
     private int selectedSkin() {

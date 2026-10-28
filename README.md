@@ -225,3 +225,24 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST https://sync.940214.xyz/api/aut
 - 个人中心「账号安全」恢复「修改密码 / 退出登录 / 注销账号」三按钮（首轮改版时退出登录被误删，本轮补回）。
 
 真机验证（同为 Lenovo TB331FC）：登录态个人中心宫格与两个二级菜单、追更单击/双击、全选打钩与「确定删除选中的 N 项？」、下载中心 Tab 不位移与底栏按钮位置、增强功能图标默认隐藏、护眼纯色皮肤与重置、最近观看集数显示均已截图确认。
+
+## 九、交互与 UI 优化（2026-10-28 第三轮）
+
+| # | 需求 | 实现 |
+| --- | --- | --- |
+| 1 | 云端同步、云端公共配置同一行 | `AccountDialog.entryRow(View, View)` 左右两列各 `weight=1`、间距 8dp，入口改为竖排小卡（14sp 标题 + 11sp 摘要 + 右上「›」） |
+| 2 | 历史播放记录数量不准 | `AccountSync.localHistoryCount()` 直接返回 `History.get().size()`，与「最近观看」列表口径完全一致（当前配置 + 保留期） |
+| 3 | 取消全选后残留勾选圈 / 恢复删除图标直删 | `KeepAdapter`/`HistoryAdapter`：删除模式未勾选显示垃圾桶 `ic_vod_delete`、勾选显示红底白勾 `ic_vod_check_on`，取消全选即回到垃圾桶；新增 `onItemDelete()` + `deleteItem()`，删除模式下点海报垃圾桶直接删该条 |
+| 4 | 追更/历史新增「更新」按钮 | `menu_keep`/`menu_history` 在 `sync` 前插入 `update`（刷新图标）；`UpdateTracker.checkKeys()` 拉详情后 `countEpisodes()` 更新 `count/seen`，Toast 汇总 `全部已是最新（共 N 部）` 或 `N 部有更新：《名》更新至第 N 集` |
+| 5 | 下载中心页签切换位移 | `activity_download_center.xml` 去掉 `TabLayout`，改用等宽两列 `LinearLayoutCompat#tabsBar`；`expandAll` 空态改 `INVISIBLE` 并 `minWidth=120dp` 占位，页签宽度不再被挤动 |
+| 6 | 底栏「全选」位置 | `layoutBottomBar()` 把 `selectAll` 插到「全部开始」（下载中）或「删除」（已下载）**之前**，间距统一 10dp |
+| 7 | 纯色皮肤参考 tvbox 1.1.17 | `Setting.WALL_SOLID_*` 扩到 21 色（37–57，取自 tvbox 皮肤中心：经典黑/星河/流霞/烟墨/玄墨/墨影/藕荷/紫宸/紫烟/天青/沧溟/云水/竹青/松墨/青岚/藕粉/绛桃/桃夭/素灰/黛灰/烟灰），`ThemeDialog` 由 `getSolidWalls()` 动态生成取色格 |
+| 8 | 更新报 `Download failed: HTTP 413` | `UpdateRoutePlanner.addGithub()` 除当前代理外再追加 `ghfast / gh_acmsz / github_chenc / gh_monlor` 四条公共加速线路，某条被拒后可自动回退重试 |
+| 9 | 追更按钮单击切换、双击进日程 | `VideoActivity.onTrackTap()` 改为 260ms 延迟判定：单击 `onUpdateTrackQuick()` 有 track 则 `UpdateTrack.remove` + 删 Keep（`track_off`），无则建 Keep 并 `DAYS_EVERY`（`track_on`）；双击 `onUpdateTrackSettings()` 先确保已追更再弹 `ScheduleDialog`，直接取消也保持追更 |
+
+关键缺陷修复：
+
+- `UpdateTrack.remove(String key)` 原先「先 `find()` 拿 A 列表里的对象，再 `list()` 从 B 列表里 `remove()`」，两批对象引用不同，删除永远失败 → 取消追更后按钮仍显示「已追更」、追更条目删不掉。改为 `items.removeIf(it -> TextUtils.equals(it.key, key))`。
+- `ExpandAll` 在「已下载」页由 `GONE→VISIBLE` 会改变 `tabsBar` 可用宽度，是页签位移的真正根因（上一轮只处理了文字宽度变化）。
+
+真机验证（Lenovo TB331FC，`com.fongmi.android.tv.dev`）：个人中心两入口同行且「播放历史 本地 2」与最近观看 2 条一致；追更页删除图标/全选/取消全选无残留圆圈、更新提示「全部已是最新（共 4 部）」；最近观看更新提示「全部已是最新（共 2 部）」；下载中/已下载页签 `uiautomator` 坐标完全一致（`下载中` 文本均 `[385,174][451,203]`），底栏「全选 全部开始 全部暂停 删除」；追更按钮单击「已追更→追更→已追更」、双击弹出「追更设置」且取消后仍为已追更。

@@ -18,6 +18,8 @@ import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.bean.History;
 import com.fongmi.android.tv.databinding.ActivityHistoryBinding;
 import com.fongmi.android.tv.event.RefreshEvent;
+import com.fongmi.android.tv.track.UpdateTrack;
+import com.fongmi.android.tv.track.UpdateTracker;
 import com.fongmi.android.tv.ui.adapter.HistoryAdapter;
 import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.ui.dialog.SyncDialog;
@@ -27,6 +29,9 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import org.greenrobot.eventbus.Subscribe;
 import org.greenrobot.eventbus.ThreadMode;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class HistoryActivity extends BaseActivity implements HistoryAdapter.OnClickListener {
 
@@ -77,6 +82,23 @@ public class HistoryActivity extends BaseActivity implements HistoryAdapter.OnCl
         SyncDialog.create().history().show(this);
     }
 
+    /** 手动更新：刷新当前列表中已追更的剧集集数，并提示更新详情。 */
+    private void onUpdate() {
+        List<String> keys = new ArrayList<>();
+        for (History item : mAdapter.getItems()) {
+            if (UpdateTrack.find(item.getKey()) != null) keys.add(item.getKey());
+        }
+        if (keys.isEmpty()) {
+            Notify.show(R.string.track_update_none);
+            return;
+        }
+        Notify.show(R.string.track_update_checking);
+        UpdateTracker.checkKeys(keys, message -> {
+            Notify.show(message);
+            getHistory();
+        });
+    }
+
     private void onDelete() {
         if (mAdapter.isDelete()) {
             if (mAdapter.getSelectedCount() == 0) {
@@ -120,6 +142,16 @@ public class HistoryActivity extends BaseActivity implements HistoryAdapter.OnCl
         syncSelectAll();
     }
 
+    /** 删除模式下点海报垃圾桶：直接删除该条。 */
+    @Override
+    public void onItemDelete(History item) {
+        mAdapter.deleteItem(item, () -> {
+            mBinding.progressLayout.showContent(true, mAdapter.getItemCount());
+            if (mAdapter.getItemCount() == 0) mAdapter.setDelete(false);
+            syncSelectAll();
+        });
+    }
+
     @Override
     public boolean onLongClick() {
         mAdapter.setDelete(!mAdapter.isDelete());
@@ -151,6 +183,7 @@ public class HistoryActivity extends BaseActivity implements HistoryAdapter.OnCl
         if (item.getItemId() == android.R.id.home) onBackInvoked();
         else if (item.getItemId() == R.id.delete) onDelete();
         else if (item.getItemId() == R.id.sync) onSync();
+        else if (item.getItemId() == R.id.update) onUpdate();
         return super.onOptionsItemSelected(item);
     }
 
