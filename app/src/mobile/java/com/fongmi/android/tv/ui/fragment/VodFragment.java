@@ -328,19 +328,36 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
         Menu menu = mBinding.toolbar.getMenu();
         MenuItem fullscreen = menu.findItem(R.id.web_home_fullscreen);
         if (fullscreen != null) fullscreen.setVisible(Setting.isWebHomeFullscreen() && mWeb != null && mWeb.isVisible());
+        applyCompactToolbar();
+        setSearchAction();
+    }
+
+    /** 小屏竖屏空间有限：隐藏站点名标题、搜索框缩成图标，把追更/最近观看/下载中心保留在顶栏。 */
+    private void applyCompactToolbar() {
+        boolean compact = getResources().getConfiguration().screenWidthDp < 600;
+        mBinding.title.setVisibility(compact ? View.GONE : View.VISIBLE);
+        int logoSize = ResUtil.dp2px(compact ? 28 : 36);
+        ViewGroup.LayoutParams logoParams = mBinding.logo.getLayoutParams();
+        if (logoParams != null) {
+            logoParams.width = logoSize;
+            logoParams.height = logoSize;
+            mBinding.logo.setLayoutParams(logoParams);
+        }
     }
 
     private void setSearchAction() {
         MenuItem item = mBinding.toolbar.getMenu().findItem(R.id.search);
         View search = item == null ? null : item.getActionView();
         if (search == null) return;
-        // 小屏（宽 < 600dp）收窄搜索框，给右侧图标留位置
+        // 小屏（宽 < 600dp）只保留搜索图标，给最近观看/下载中心等按钮留位置
         if (getResources().getConfiguration().screenWidthDp < 600) {
             ViewGroup.LayoutParams params = search.getLayoutParams();
             if (params != null) {
-                params.width = ResUtil.dp2px(104);
+                params.width = ResUtil.dp2px(44);
                 search.setLayoutParams(params);
             }
+            View label = search.findViewById(R.id.searchText);
+            if (label != null) label.setVisibility(View.GONE);
         }
         search.setOnClickListener(view -> SearchActivity.start(requireActivity()));
         search.setOnLongClickListener(view -> {

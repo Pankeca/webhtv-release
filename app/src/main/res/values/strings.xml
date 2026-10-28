@@ -1594,6 +1594,13 @@
     <string name="account_server_saved">Server URL saved</string>
     <string name="account_server_missing">Cloud server URL is not configured</string>
     <string name="account_sync_state">Cloud status</string>
+    <string name="account_restore_mode">Restore mode</string>
+    <string name="account_restore_mode_label">Restore mode: %1$s</string>
+    <string name="account_restore_merge">Merge (fill missing, keep newer local records)</string>
+    <string name="account_restore_cloud">Overwrite (cloud replaces local)</string>
+    <string name="account_restore">Restore from cloud</string>
+    <string name="account_restore_running">Restoring from cloud…</string>
+    <string name="account_restore_done">Restored from cloud</string>
     <string name="account_sync_state_value">Remote sources %1$d/%2$d</string>
     <string name="account_sync_status_value">Connected · sources %1$d/%2$d</string>
     <string name="account_sync_off">Off</string>

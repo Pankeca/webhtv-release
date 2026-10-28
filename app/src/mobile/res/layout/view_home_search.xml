@@ -22,6 +22,7 @@
     <com.google.android.material.textview.MaterialTextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:id="@+id/searchText"
         android:layout_marginStart="6dp"
         android:importantForAccessibility="no"
         android:maxLines="1"

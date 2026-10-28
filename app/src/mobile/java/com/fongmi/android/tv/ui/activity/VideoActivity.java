@@ -6803,7 +6803,8 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     }
 
     private boolean isPass(Site item) {
-        if (isAutoMode() && !item.isChangeable()) return false;
+        // 详情页站点行要与搜索结果保持一致：只要站点支持搜索就纳入，
+        // 不再额外要求 changeable，否则会自动切换白名单外的站点被漏掉。
         return item.isSearchable();
     }
 

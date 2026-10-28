@@ -148,6 +148,25 @@ public final class AccountSync {
         CloudConfigSync.pullPersonal(true, true, true, CloudSyncStore.MODE_MERGE, done);
     }
 
+    /**
+     * 从云端恢复到本地：覆盖模式先清空并回灌云端追更/配置，再合并历史；
+     * 增量模式只补齐本地缺失的记录，保留本地较新的数据。
+     */
+    public static void restore(int mode, Runnable onDone) {
+        CloudConfigSync.Callback done = new CloudConfigSync.Callback() {
+            @Override
+            public void success(String message) {
+                syncHistoryAndFinish(onDone);
+            }
+
+            @Override
+            public void error(String message) {
+                syncHistoryAndFinish(onDone);
+            }
+        };
+        KeepCloudBackup.restore(mode == CloudSyncStore.MODE_CLOUD_FIRST, () -> CloudConfigSync.pullPersonal(true, true, true, mode, done));
+    }
+
     private static void syncHistoryAndFinish(Runnable onDone) {
         Task.execute(() -> {
             if (CloudSyncStore.isHistoryEnabled()) PlaybackRemoteSyncer.sync(SYNC_ID);

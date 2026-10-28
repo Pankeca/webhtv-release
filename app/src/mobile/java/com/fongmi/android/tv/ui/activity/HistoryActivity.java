@@ -39,6 +39,7 @@ public class HistoryActivity extends BaseActivity implements HistoryAdapter.OnCl
     private HistoryAdapter mAdapter;
     private CheckBox mSelectAll;
     private boolean updatingSelectAll;
+    private boolean autoChecked;
 
     public static void start(Activity activity) {
         activity.startActivity(new Intent(activity, HistoryActivity.class));
@@ -75,6 +76,23 @@ public class HistoryActivity extends BaseActivity implements HistoryAdapter.OnCl
             mBinding.progressLayout.showContent(true, mAdapter.getItemCount());
             if (hasChange) mBinding.recycler.scrollToPosition(0);
             syncSelectAll();
+            autoCheckUpdates();
+        });
+    }
+
+    /** 首次进入自动补全集数：只检查还没有「更新至」记录且未追更的条目，避免每次打开都全量请求。 */
+    private void autoCheckUpdates() {
+        if (autoChecked || mAdapter.getItemCount() == 0) return;
+        autoChecked = true;
+        List<UpdateTracker.Target> targets = new ArrayList<>();
+        for (History item : mAdapter.getItems()) {
+            int known = Math.max(UpdateTrack.find(item.getKey()) != null ? UpdateTrack.find(item.getKey()).getCount() : 0, HistoryEpisodeCache.get(item.getKey()));
+            if (known > 0) continue;
+            targets.add(new UpdateTracker.Target(item.getKey(), item.getSiteKey(), item.getVodId(), item.getVodName(), 0));
+        }
+        if (targets.isEmpty()) return;
+        UpdateTracker.checkHistory(targets, message -> {
+            if (!isFinishing()) getHistory();
         });
     }
 

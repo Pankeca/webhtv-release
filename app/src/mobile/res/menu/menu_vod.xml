@@ -20,21 +20,21 @@
         android:icon="@drawable/ic_popup_keep"
         android:title="@string/app_keep"
         app:iconTint="@color/white"
-        app:showAsAction="ifRoom" />
+        app:showAsAction="always" />
 
     <item
         android:id="@+id/history"
         android:icon="@drawable/ic_popup_history"
         android:title="@string/app_history"
         app:iconTint="@color/white"
-        app:showAsAction="ifRoom" />
+        app:showAsAction="always" />
 
     <item
         android:id="@+id/download"
         android:icon="@drawable/ic_menu_download"
         android:title="@string/download_manager_title"
         app:iconTint="@color/white"
-        app:showAsAction="ifRoom" />
+        app:showAsAction="always" />
 
     <item
         android:id="@+id/web_home_fullscreen"

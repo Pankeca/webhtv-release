@@ -165,11 +165,9 @@ public class HistoryAdapter extends BaseDiffAdapter<History, HistoryAdapter.View
         holder.binding.remark.setVisibility(!delete && !showProgress && !same ? View.VISIBLE : View.GONE);
         UpdateTrack track = UpdateTrack.find(item.getKey());
         int updateCount = Math.max(track != null ? track.getCount() : 0, HistoryEpisodeCache.get(item.getKey()));
-        // 未开启追更时，退化为从备注（如「更新至第20集」）解析总集数，避免更新集数整块消失
-        if (updateCount <= 0) updateCount = UpdateTracker.parseEpisode(item.getVodRemarks());
         // 已看到的集数已经追平最新集数时不再重复显示「更新至」，避免两个标签互相矛盾
         int watchedEpisode = UpdateTracker.parseEpisode(episode);
-        boolean showUpdate = !delete && updateCount > 0 && (!hasEpisode || updateCount > watchedEpisode);
+        boolean showUpdate = !delete && updateCount > 0 && (watchedEpisode <= 0 || updateCount > watchedEpisode);
         holder.binding.historyUpdate.setText(holder.itemView.getContext().getString(R.string.history_update_to, updateCount));
         holder.binding.historyUpdate.setVisibility(showUpdate ? View.VISIBLE : View.GONE);
         ImgUtil.load(item.getVodName(), item.getVodPic(), holder.binding.image);

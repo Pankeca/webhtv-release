@@ -1586,6 +1586,13 @@
     <string name="account_server_saved">服务地址已保存</string>
     <string name="account_server_missing">未配置云端服务地址</string>
     <string name="account_sync_state">云端状态</string>
+    <string name="account_restore_mode">恢复方式</string>
+    <string name="account_restore_mode_label">恢复方式：%1$s</string>
+    <string name="account_restore_merge">增量恢复（只补缺失，保留本地较新记录）</string>
+    <string name="account_restore_cloud">覆盖恢复（用云端记录覆盖本地）</string>
+    <string name="account_restore">从云端恢复到本地</string>
+    <string name="account_restore_running">正在从云端恢复…</string>
+    <string name="account_restore_done">已从云端恢复到本地</string>
     <string name="account_sync_state_value">远端同步源 %1$d/%2$d</string>
     <string name="account_sync_status_value">已连接 · 同步源 %1$d/%2$d</string>
     <string name="account_sync_off">已关闭</string>

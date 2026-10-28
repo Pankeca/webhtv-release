@@ -75,6 +75,8 @@ public class AccountDialog extends BaseAlertDialog {
     private boolean syncConfigVod = true;
     private boolean syncConfigLive = true;
     private boolean syncConfigSettings = true;
+    /** 从云端恢复到本地时使用的策略，默认增量。 */
+    private int restoreMode = CloudSyncStore.MODE_MERGE;
     private int adminTaps;
     private boolean adminRevealed;
     private boolean registerMode;
@@ -429,6 +431,8 @@ public class AccountDialog extends BaseAlertDialog {
             Notify.show(checked ? R.string.account_backup_on : R.string.account_backup_off);
         }));
         content.addView(infoRow(getString(R.string.account_sync_state), syncStatus()));
+        content.addView(buttonRow(getString(R.string.account_restore_mode_label, restoreModeLabel()), false, view -> pickRestoreMode()));
+        content.addView(buttonRow(getString(R.string.account_restore), false, view -> restoreFromCloud()));
         content.addView(buttonRow(getString(R.string.account_sync_now), true, view -> {
             dismissOptions();
             syncNow();
@@ -444,6 +448,12 @@ public class AccountDialog extends BaseAlertDialog {
         content.addView(checkRow(getString(R.string.account_config_live), syncConfigLive, checked -> syncConfigLive = checked));
         content.addView(checkRow(getString(R.string.account_config_settings), syncConfigSettings, checked -> syncConfigSettings = checked));
         content.addView(infoRow(getString(R.string.account_config_mode), conflictModeLabel()));
+        content.addView(checkRow(getString(R.string.account_config_mode_merge), syncModeMerge(), checked -> {
+            if (checked) setSyncMode(CloudSyncStore.MODE_MERGE);
+        }));
+        content.addView(checkRow(getString(R.string.account_config_mode_cloud), !syncModeMerge(), checked -> {
+            if (checked) setSyncMode(CloudSyncStore.MODE_CLOUD_FIRST);
+        }));
         content.addView(switchRow(getString(R.string.account_config_remember), getString(R.string.account_config_remember_desc), CloudSyncStore.isConflictRemembered(), checked -> CloudSyncStore.setConflictRemembered(checked)));
         content.addView(buttonRow(getString(R.string.account_config_pull), true, view -> {
             dismissOptions();
@@ -1059,6 +1069,49 @@ public class AccountDialog extends BaseAlertDialog {
         if (mode == CloudSyncStore.MODE_CLOUD_FIRST) return getString(R.string.account_config_mode_cloud);
         if (mode == CloudSyncStore.MODE_LOCAL_FIRST) return getString(R.string.account_config_mode_local);
         return getString(R.string.account_config_mode_merge);
+    }
+
+    private boolean syncModeMerge() {
+        return CloudSyncStore.conflictMode() != CloudSyncStore.MODE_CLOUD_FIRST;
+    }
+
+    private void setSyncMode(int mode) {
+        CloudSyncStore.setConflictMode(mode);
+        CloudSyncStore.setConflictRemembered(true);
+        dismissOptions();
+        showConfigOptions();
+    }
+
+    private String restoreModeLabel() {
+        return getString(restoreMode == CloudSyncStore.MODE_CLOUD_FIRST ? R.string.account_config_mode_cloud : R.string.account_config_mode_merge);
+    }
+
+    /** 恢复前明确选择增量还是覆盖，避免「记住选择」把入口藏起来。 */
+    private void pickRestoreMode() {
+        int checked = restoreMode == CloudSyncStore.MODE_CLOUD_FIRST ? 1 : 0;
+        String[] items = {getString(R.string.account_restore_merge), getString(R.string.account_restore_cloud)};
+        new MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_WebHTV_LightDialog)
+                .setTitle(R.string.account_restore_mode)
+                .setSingleChoiceItems(items, checked, (dialog, which) -> {
+                    restoreMode = which == 1 ? CloudSyncStore.MODE_CLOUD_FIRST : CloudSyncStore.MODE_MERGE;
+                    dialog.dismiss();
+                    dismissOptions();
+                    showSyncOptions();
+                })
+                .setNegativeButton(R.string.dialog_negative, null)
+                .show();
+    }
+
+    private void restoreFromCloud() {
+        dismissOptions();
+        binding.progress.setVisibility(View.VISIBLE);
+        Notify.show(R.string.account_restore_running);
+        AccountSync.restore(restoreMode, () -> {
+            if (!isAdded()) return;
+            binding.progress.setVisibility(View.GONE);
+            render();
+            Notify.show(R.string.account_restore_done);
+        });
     }
 
     private View note(String value) {
