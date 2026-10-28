@@ -1660,7 +1660,7 @@
     <string name="account_config_remember_desc">Skip the conflict prompt and always use the selected mode</string>
     <string name="account_config_pull">Get public config from cloud</string>
     <string name="account_config_backup">Back up local config to cloud</string>
-    <string name="account_config_note">Selected items are also uploaded with your personal sync. Cloud data is isolated per account. Overwrite only changes matching entries and never deletes your local sources or history.</string>
+    <string name="account_config_note">Only pulls the administrator-published public sources and default settings. Your local sources and history are never uploaded or deleted.</string>
     <string name="account_config_none_selected">Select at least one item</string>
     <string name="account_config_backup_confirm_title">Back up to cloud</string>
     <string name="account_config_backup_confirm_message">Local configuration will overwrite the cloud backup for the selected items. Cloud-only entries are kept. Continue?</string>

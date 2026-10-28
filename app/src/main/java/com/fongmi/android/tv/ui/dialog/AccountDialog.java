@@ -374,7 +374,7 @@ public class AccountDialog extends BaseAlertDialog {
     }
 
     private String configSummary() {
-        return getString(R.string.account_entry_config_state, CloudSyncStore.isConfigEnabled() ? getString(R.string.setting_on) : getString(R.string.setting_off));
+        return getString(R.string.account_config_pull);
     }
 
     private LinearLayoutCompat optionsContent() {

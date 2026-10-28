@@ -1638,9 +1638,9 @@
     <string name="account_config_backing_up">正在备份到云端…</string>
     <string name="account_section_config">云端公共配置</string>
     <string name="account_entry_sync_desc">备份开关、云端状态与立即同步</string>
-    <string name="account_entry_config_desc">从云端拉取或备份点播源、直播源与设置</string>
+    <string name="account_entry_config_desc">从云端拉取公共点播源、直播源与默认设置</string>
     <string name="account_entry_sync_state">追更 %1$d · 历史 %2$d</string>
-    <string name="account_entry_config_state">自动备份：%1$s</string>
+    <string name="account_entry_config_state">仅拉取 · 公共源</string>
     <string name="account_config_vod">点播源</string>
     <string name="account_config_live">直播源</string>
     <string name="account_config_settings">设置配置项</string>
@@ -1652,7 +1652,7 @@
     <string name="account_config_remember_desc">以后不再询问，直接按所选方式同步</string>
     <string name="account_config_pull">从云端获取公共配置</string>
     <string name="account_config_backup">备份本地配置到云端</string>
-    <string name="account_config_note">勾选的内容项会随个人同步一起上传。云端数据按账号隔离；覆盖只更新同名配置，不会删除本地点播源/直播源与播放历史。</string>
+    <string name="account_config_note">仅拉取管理员发布的公共点播源/直播源与默认设置，不会上传或删除你的本地数据。</string>
     <string name="account_config_none_selected">请至少勾选一项</string>
     <string name="account_config_backup_confirm_title">备份到云端</string>
     <string name="account_config_backup_confirm_message">将用本地配置覆盖云端对应内容项的备份（云端独有项会保留）。是否继续？</string>
