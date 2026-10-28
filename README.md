@@ -265,3 +265,16 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST https://sync.940214.xyz/api/aut
 - 修复：新增 `CnbArchiveTransfer`，当 HTTP 直链返回 413 时自动改下同仓库 `/-/git/archive/{ref}.zip`（实测 90 MB、4.8 s），流式解包出 `app.apk` 并按清单 `size` 校验；`UpdateTarget.Kind.ARCHIVE` + `UpdateRoutePlanner.addCnbArchive()/planForApk()` 生成「直链 → 归档」两条路由，`Updater.createTransfer()` 按类型分流。
 - 改动范围仅限更新下载路由（`update/` 包与 `Updater`），未触碰站源/线路更新与站点配置逻辑。
 - 真机验证：日志 `route 1/2 kind=GITHUB host=cnb.cool` → `413` → `route 2/2 kind=ARCHIVE host=cnb.cool` → 约 13 s 后弹出系统安装器「影视(5.6.0) 将替换当前版本」（验证后已拒绝安装，避免覆盖调试包）。
+
+## 十一、追更入口回退、详情页控件重排与更新源分端（2026-10-28 第五轮，v5.6.1）
+
+> 本节回退第十节第 4 项：**保留**「检查剧集更新」按钮，删除的是工具栏原有的「同步」按钮。
+
+| # | 需求 | 实现 |
+| --- | --- | --- |
+| 1 | 恢复检查更新、删除自带的同步按钮 | `menu_keep`/`menu_history` 改回 `update`（`ic_action_refresh`）并移除 `sync`；`KeepActivity/HistoryActivity` 删除 `onSync()` 与 `SyncDialog` 依赖，恢复 `onUpdate()` → `UpdateTracker.checkKeys()`，提示「正在检查新剧集…」→「N 部有更新：…」/「全部已是最新」 |
+| 2 | 详情页选集行重排 + 开关美化 | 四个布局变体（`layout`、`layout-land`、`layout-sw600dp`、`layout-sw600dp-land`）统一为「选集 → 倒序图标 → 本地优先 → 开关」；`SwitchCompat` 加 `switchMinWidth=44dp` 与 `switch_track_tint`（开 #1A73E8 / 关 #9AA0A6）、`switch_thumb_tint`（白色），单色高对比，不用花花绿绿 |
+| 3 | 追更长按进「我的追更」、提示单行 | `VideoActivity` 给追更按钮加 `setOnLongClickListener` → `KeepActivity.start()`，并清掉单击延迟任务（与长按下载按钮进下载中心一致）；`track_on` 缩短为「已开启追更 · 双击可设日程」，系统 Toast 保证单行 |
+| 4 | 升版本并区分更新源 | `versionCode 561 / versionName 5.6.1`；`BuildConfig.UPDATE_MANIFEST_BASE` + `getDefaultManifestUrl()` 按 `mobile/leanback` × ABI 读取 `update-mobile-arm64_v8a.json`、`update-leanback-armeabi_v7a.json` 等，手机端与电视端互不串包；manifest 的 `apk` 若为完整 https 地址，直接走 `planForApk()`（含 CNB 归档兜底） |
+| 5 | 个人中心视觉再调整 | 弹窗底色改 `shape_account_dialog`（#F5F7FB）；hero 卡白→浅蓝渐变加 1dp 描边；统计拆为「本地 N / 云端 N / 名称」三行；安全行 `linkRow()` 文字居中 |
+

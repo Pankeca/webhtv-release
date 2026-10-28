@@ -818,26 +818,6 @@
                             android:textColor="@color/white"
                             android:textSize="16sp" />
 
-                        <androidx.appcompat.widget.SwitchCompat
-                            android:id="@+id/playLocal"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="12dp"
-                            android:checked="true"
-                            android:minWidth="0dp"
-                            android:minHeight="0dp"
-                            tools:checked="true" />
-
-                        <com.google.android.material.textview.MaterialTextView
-                            android:id="@+id/playLocalText"
-                            style="@style/Video.ContextText"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="4dp"
-                            android:text="@string/detail_play_local"
-                            android:textColor="@color/white"
-                            android:textSize="13sp" />
-
                         <androidx.appcompat.widget.AppCompatImageView
                             android:id="@+id/reverse"
                             android:layout_width="20dp"
@@ -847,6 +827,29 @@
                             android:src="@drawable/ic_action_reverse"
                             android:visibility="gone"
                             tools:visibility="visible" />
+
+                        <com.google.android.material.textview.MaterialTextView
+                            android:id="@+id/playLocalText"
+                            style="@style/Video.ContextText"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="12dp"
+                            android:text="@string/detail_play_local"
+                            android:textColor="@color/white"
+                            android:textSize="13sp" />
+
+                        <androidx.appcompat.widget.SwitchCompat
+                            android:id="@+id/playLocal"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="6dp"
+                            android:checked="true"
+                            android:minWidth="0dp"
+                            android:minHeight="0dp"
+                            app:switchMinWidth="44dp"
+                            app:thumbTint="@color/switch_thumb_tint"
+                            app:trackTint="@color/switch_track_tint"
+                            tools:checked="true" />
 
                         <View
                             android:layout_width="0dp"

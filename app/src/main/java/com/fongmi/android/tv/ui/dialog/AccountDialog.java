@@ -218,8 +218,9 @@ public class AccountDialog extends BaseAlertDialog {
         root.setOrientation(LinearLayoutCompat.VERTICAL);
         root.setPadding(dp(14), dp(12), dp(14), dp(12));
         GradientDrawable background = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-                new int[]{Color.parseColor("#E8F0FE"), Color.parseColor("#F5F8FF")});
+                new int[]{Color.parseColor("#FFFFFF"), Color.parseColor("#E6F0FE")});
         background.setCornerRadius(dp(16));
+        background.setStroke(dp(1), Color.parseColor("#DDE8F8"));
         root.setBackground(background);
         LinearLayoutCompat.LayoutParams rootParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         rootParams.topMargin = dp(8);
@@ -263,10 +264,12 @@ public class AccountDialog extends BaseAlertDialog {
         return root;
     }
 
+    /** 每项统计拆成「本地 N / 云端 N / 名称」三行，读者不用猜斜杠前后是什么。 */
     private void addStat(LinearLayoutCompat parent, String label, int local, int cloud, boolean margin) {
         LinearLayoutCompat column = new LinearLayoutCompat(requireContext());
         column.setOrientation(LinearLayoutCompat.VERTICAL);
-        column.addView(text(getString(R.string.account_stats_pairs, local, cloud), 13, Color.parseColor("#202124"), true));
+        column.addView(text(getString(R.string.account_stats_local, local), 13, Color.parseColor("#202124"), true));
+        column.addView(text(getString(R.string.account_stats_cloud, cloud), 10, Color.parseColor("#5F6368"), false));
         column.addView(text(label, 10, Color.parseColor("#5F6368"), false));
         LinearLayoutCompat.LayoutParams params = new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
         if (margin) params.rightMargin = dp(6);
@@ -423,18 +426,18 @@ public class AccountDialog extends BaseAlertDialog {
         return card;
     }
 
-    /** 紧凑的可点击行：标题 + 箭头，用来代替整宽按钮，把一级菜单压进一屏。 */
+    /** 紧凑的可点击行：文字居中，代替整宽按钮，把一级菜单压进一屏。 */
     private View linkRow(String label, String color, View.OnClickListener listener) {
         LinearLayoutCompat row = new LinearLayoutCompat(requireContext());
         row.setOrientation(LinearLayoutCompat.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(6), 0, dp(4), 0);
+        row.setGravity(Gravity.CENTER);
         row.setClickable(true);
         row.setFocusable(true);
         row.setBackgroundResource(R.drawable.ripple_round_14);
         row.setOnClickListener(listener);
-        row.addView(text(label, 14, Color.parseColor(color), false), new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        row.addView(text("›", 16, Color.parseColor("#C0C4CC"), false));
+        MaterialTextView labelView = text(label, 14, Color.parseColor(color), false);
+        labelView.setGravity(Gravity.CENTER);
+        row.addView(labelView, new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         LinearLayoutCompat.LayoutParams params = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36));
         params.topMargin = dp(2);
         row.setLayoutParams(params);

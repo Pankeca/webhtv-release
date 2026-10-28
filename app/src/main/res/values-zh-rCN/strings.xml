@@ -1626,7 +1626,8 @@
     <string name="account_stats_vod">点播源</string>
     <string name="account_stats_live">直播源</string>
     <string name="account_stats_value">本地 %1$d · 云端 %2$d</string>
-    <string name="account_stats_pairs">%1$d/%2$d</string>
+    <string name="account_stats_local">本地 %1$d</string>
+    <string name="account_stats_cloud">云端 %1$d</string>
     <string name="account_sync_done_detail">同步完成：%1$s</string>
     <string name="account_sync_part_keep">追更 %1$d 条</string>
     <string name="account_sync_part_history">历史 %1$d 条</string>
@@ -1686,7 +1687,7 @@
     <string name="track_title">追更设置</string>
     <string name="track_need_keep">请先收藏本片，再长按收藏按钮开启追更</string>
     <string name="track_off">已关闭追更</string>
-    <string name="track_on">已开启追更 · 双击追更按钮可设置追更日程</string>
+    <string name="track_on">已开启追更 · 双击可设日程</string>
     <string name="track_already">已追更，双击可设置更新时间</string>
     <string name="track_day_off">关闭</string>
     <string name="track_day_auto">每天</string>
@@ -1698,6 +1699,12 @@
     <string name="track_sat">周六</string>
     <string name="track_sun">周日</string>
     <string name="track_new_ep">%1$s 更新啦，已更新至 %2$d 集</string>
+    <string name="menu_update">更新</string>
+    <string name="track_update_checking">正在检查新剧集…</string>
+    <string name="track_update_none">暂无可更新的追更记录</string>
+    <string name="track_update_latest">全部已是最新（共 %1$d 部）</string>
+    <string name="track_update_result">%1$d 部有更新：%2$s</string>
+    <string name="track_update_item">《%1$s》更新至第 %2$d 集</string>
     <string name="track_badge">有更新</string>
     <string name="track_action">追更</string>
     <string name="track_action_on">已追更</string>

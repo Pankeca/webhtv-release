@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 个人中心弹窗底色：浅灰蓝衬白卡片，避免纯白大面积发平。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+
+    <solid android:color="#F5F7FB" />
+
+    <corners android:radius="16dp" />
+
+</shape>

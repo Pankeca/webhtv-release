@@ -209,8 +209,9 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
             stable = awaitUpdate(customFuture, Update.CHANNEL_STABLE, deadline);
             beta = stable;
         } else {
-            Future<Update> stableFuture = Task.executor().submit(() -> getUpdate(Update.CHANNEL_STABLE));
-            Future<Update> betaFuture = Task.executor().submit(() -> getUpdate(Update.CHANNEL_BETA));
+            // 默认读自有更新源：手机端 update-mobile-arm64_v8a.json、电视端 update-leanback-*.json 各自独立
+            Future<Update> stableFuture = Task.executor().submit(() -> readUpdate(Update.CHANNEL_STABLE, getDefaultManifestUrl(Update.CHANNEL_STABLE), Map.of(), ""));
+            Future<Update> betaFuture = Task.executor().submit(() -> readUpdate(Update.CHANNEL_BETA, getDefaultManifestUrl(Update.CHANNEL_BETA), Map.of(), ""));
             stable = awaitUpdate(stableFuture, Update.CHANNEL_STABLE, deadline);
             beta = awaitUpdate(betaFuture, Update.CHANNEL_BETA, deadline);
         }
@@ -375,6 +376,11 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
                 .replace("\\'", "'");
     }
 
+    /** 自有更新源清单地址：端名与 ABI 已包含在文件名中，手机端/电视端不会互相覆盖。 */
+    private String getDefaultManifestUrl(String channel) {
+        return BuildConfig.UPDATE_MANIFEST_BASE + "/" + getManifestName(channel);
+    }
+
     private String getManifestName(String channel) {
         return getAssetName(channel, "json");
     }
@@ -461,8 +467,7 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
     private List<UpdateTarget> getRoutes(Update update) {
         try {
             List<UpdateTarget> routes = new ArrayList<>();
-            String customUrl = Setting.getUpdateCustomUrl();
-            if (!TextUtils.isEmpty(customUrl) && !TextUtils.isEmpty(update.apk) && update.apk.startsWith("https://")) {
+            if (!TextUtils.isEmpty(update.apk) && update.apk.startsWith("https://")) {
                 routes.addAll(UpdateRoutePlanner.planForApk(update.apk));
                 return routes;
             }

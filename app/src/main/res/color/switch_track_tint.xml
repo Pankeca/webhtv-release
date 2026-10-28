@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 详情页开关轨道：开启用单一强调蓝，关闭用中性灰，保证一眼能看出状态。 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:color="#1A73E8" android:state_checked="true" />
+    <item android:color="#9AA0A6" />
+</selector>

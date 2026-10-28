@@ -1634,7 +1634,8 @@
     <string name="account_stats_vod">VOD sources</string>
     <string name="account_stats_live">Live sources</string>
     <string name="account_stats_value">Local %1$d · Cloud %2$d</string>
-    <string name="account_stats_pairs">%1$d/%2$d</string>
+    <string name="account_stats_local">Local %1$d</string>
+    <string name="account_stats_cloud">Cloud %1$d</string>
     <string name="account_sync_done_detail">Synced: %1$s</string>
     <string name="account_sync_part_keep">tracking %1$d</string>
     <string name="account_sync_part_history">history %1$d</string>
@@ -1694,7 +1695,7 @@
     <string name="track_title">Update tracking</string>
     <string name="track_need_keep">Add to favorites first, then long-press to enable update tracking</string>
     <string name="track_off">Update tracking disabled</string>
-    <string name="track_on">Tracking on · double-tap the button to set a schedule</string>
+    <string name="track_on">Tracking on · double-tap to set schedule</string>
     <string name="track_already">Already tracking · double-tap to set the interval</string>
     <string name="track_day_off">Off</string>
     <string name="track_day_auto">Every day</string>
@@ -1706,6 +1707,12 @@
     <string name="track_sat">Saturday</string>
     <string name="track_sun">Sunday</string>
     <string name="track_new_ep">%1$s updated: %2$d episodes available now</string>
+    <string name="menu_update">Update</string>
+    <string name="track_update_checking">Checking for new episodes…</string>
+    <string name="track_update_none">No tracked shows to update</string>
+    <string name="track_update_latest">All up to date (%1$d shows checked)</string>
+    <string name="track_update_result">%1$d show(s) updated: %2$s</string>
+    <string name="track_update_item">%1$s → ep. %2$d</string>
     <string name="track_badge">New episodes</string>
     <string name="track_action">Track</string>
     <string name="track_action_on">Tracking</string>

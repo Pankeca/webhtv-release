@@ -4,7 +4,7 @@
     android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="@drawable/shape_shell_proxy_dialog"
+    android:background="@drawable/shape_account_dialog"
     android:orientation="vertical"
     android:paddingStart="20dp"
     android:paddingTop="16dp"

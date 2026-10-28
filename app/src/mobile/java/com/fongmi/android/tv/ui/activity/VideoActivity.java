@@ -833,6 +833,15 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         mBinding.more.setOnClickListener(view -> onMore());
         mBinding.shortDisplay.setOnClickListener(view -> onShortDisplay());
         mBinding.track.setOnClickListener(view -> onTrackTap());
+        // 长按直接进入「我的追更」，与长按下载按钮进入下载中心的逻辑一致
+        mBinding.track.setOnLongClickListener(view -> {
+            if (trackPending) {
+                mBinding.track.removeCallbacks(trackSingle);
+                trackPending = false;
+            }
+            KeepActivity.start(this);
+            return true;
+        });
         setTrackButton();
         mBinding.search.setOnClickListener(view -> onSearch());
         mBinding.download.setOnClickListener(view -> onDownload());

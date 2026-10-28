@@ -38,10 +38,12 @@ android {
         applicationId "com.fongmi.android.tv"
         minSdk libs.versions.minSdk.get().toInteger()
         targetSdk libs.versions.targetSdk.get().toInteger()
-        versionCode 560
-        versionName "5.6.0"
+        versionCode 561
+        versionName "5.6.1"
         buildConfigField "String", "DEFAULT_CLOUD_SERVER", "\"${(project.findProperty('webhtvCloudServer') ?: 'https://sync.940214.xyz').toString().replace('\\', '\\\\').replace('\"', '\\\"')}\""
         buildConfigField "String", "ADMIN_CODE", "\"${(project.findProperty('webhtvAdminCode') ?: 'webhtv').toString().replace('\\', '\\\\').replace('\"', '\\\"')}\""
+        // 自有更新源：手机端与电视端按「端名-ABI」读取各自的 update-*.json，避免电视端拿到手机包。
+        buildConfigField "String", "UPDATE_MANIFEST_BASE", "\"${(project.findProperty('webhtvUpdateBase') ?: 'https://cnb.cool/mytools-2026/app-release/-/git/raw/main').toString().replace('\\', '\\\\').replace('\"', '\\\"')}\""
         buildConfigField "String", "BUILD_TIME", "\"${buildTime}\""
         buildConfigField "String", "BUILD_TAG", "\"${releaseTag}\""
         buildConfigField "String", "GIT_REVISION", "\"${gitRevision}\""
