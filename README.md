@@ -546,6 +546,7 @@ adb shell wm density reset
 ### 构建记录
 
 - GitHub Actions 运行 `40758229210`：四端全部 success（约 12 分钟）。文案修正后已提交并触发新一轮构建。
+- GitHub Actions 运行 `40869836003`（tag `v5.6.4`，提交 `9f6b837`）：四端全部 success（约 11 分钟），签名密钥 Secrets 齐全，APK 由 Release 证书签名。
 
 ### 5.6.4 二轮修复（真机反馈）
 
@@ -571,5 +572,22 @@ adb shell wm density reset
 1. 详情页横屏视频小窗过大，站点/线路/选集空间不足；横屏切竖屏后简介与选集集数文字消失，且被强制转回横屏。
 2. 手机横屏首页状态栏与底栏占空间过大，剧集可视面积小：需按设备自动识别（手机横屏隐藏状态栏、底部按钮移到站点名称旁），并在设置里提供「平板 / 手机」模式切换。
 3. 弹幕设置参考 NewBox 改为多渠道弹幕来源，并复用其来源配置；NewBox 源码地址待用户提供后开工。
+
+### 发布记录（v5.6.4，2026-10-29）
+
+| 项目 | 地址 |
+| --- | --- |
+| GitHub Release | `https://github.com/Pankeca/webhtv-release/releases/tag/v5.6.4` |
+| 更新清单（CNB） | `https://cnb.cool/mytools-2026/app-release/-/git/raw/main/<端名>-<ABI>.json` |
+
+| 产物 | 大小 | SHA-256（前 8 位） |
+| --- | --- | --- |
+| `mobile-arm64_v8a.apk` | 139,254,369 | `be948b9d` |
+| `mobile-armeabi_v7a.apk` | 117,069,529 | `e7a22ccc` |
+| `leanback-arm64_v8a.apk` | 139,298,363 | `37330f9c` |
+| `leanback-armeabi_v7a.apk` | 117,113,523 | `04f967af` |
+
+- CNB `app-release` 已更新 4 个清单到 `versionName 5.6.4 / code 564`，`apk` 指向 GitHub Release 直链，`UpdateRoutePlanner` 会追加加速线路兜底。
+- 校验方式：GitHub Release API 返回的 asset `digest` 与清单 `sha256` 一致；构建日志中 `Restore keystore` 未走 debug 分支，且执行了 `validateSigning*Release` 任务。
 
 
