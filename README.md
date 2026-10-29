@@ -556,4 +556,20 @@ adb shell wm density reset
 5. 弹幕：TVBox/FongMi 本身不内置公共弹幕源，需接入弹弹play开放平台（dev.dandanplay.com）申请 AppId/AppSecret；可可影视为自有关闭接口，需等凭证后接入。
 6. 弹幕代理已上线 `webhtv-sync`：`POST /api/danmaku`（匹配）+ `GET /api/danmaku/comment/{episodeId}`（弹幕 JSON，缓存 10 分钟），签名算法 `base64(sha256(AppId+Timestamp+Path+AppSecret))`。凭证放 EdgeOne 项目环境变量 `DANDAN_APP_ID` / `DANDAN_APP_SECRET`；未配置时返回空数组，App 显示暂无弹幕而不报错。APK 默认地址已改为 `https://sync.940214.xyz/api/danmaku`。
 
+### 5.6.4 三轮修复（真机反馈，2026-10-29）
+
+1. **全屏底栏**只保留 10 个按钮：上集 / 下集 / 选集 / 播放源 / 倍速 / 字幕 / 原始 / 片头 / 片尾 / 弹幕；音轨、画面、循环、还原、播放器、解码、播放参数、LUT、卡拉 OK、标题收进右上角「设置」面板（[ControlDialog](app/src/mobile/java/com/fongmi/android/tv/ui/dialog/ControlDialog.java) 补了播放参数入口）。
+2. **弹幕按钮**：底栏胶囊单击切换显示、长按打开弹幕设置；开启时图标高亮、关闭时 45% 透明度；左侧独立弹幕图标不再显示。
+3. **详情页站点**：站点数量标签移到「站点」标题右侧；站点胶囊固定单行横滑（不再按横竖屏切换 `NOWRAP/WRAP`），换站后列表重建会把横向滚动拉回起点，避免停在旧偏移显示空白。
+4. **选集弹窗**新增站点二级菜单：3 列网格、默认折叠、样式与选集一致（[SiteGridAdapter](app/src/mobile/java/com/fongmi/android/tv/ui/adapter/SiteGridAdapter.java)），选中站点后关闭面板并继续当前集。
+5. **换源**由「自动切到下一个站点」改为站点选择弹窗，当前站点高亮；只有尚未搜到其他站点时才回退自动换源。
+6. **追更列表**补齐「已看第 N 集 / 更新至第 N 集」标签，与最近观看同一套样式；标签容器改用 `INVISIBLE`，避免 `GONE` 后塌到海报顶部压住站点名。
+7. **云端同步**统一为单一双向入口：增量合并（并集回写、本地同 key 优先）/ 本地覆盖云端 / 云端覆盖本地；追更、追更跟踪与配置项都走增量，不再需要记忆开关。
+
+### 待办（下一轮适配）
+
+1. 详情页横屏视频小窗过大，站点/线路/选集空间不足；横屏切竖屏后简介与选集集数文字消失，且被强制转回横屏。
+2. 手机横屏首页状态栏与底栏占空间过大，剧集可视面积小：需按设备自动识别（手机横屏隐藏状态栏、底部按钮移到站点名称旁），并在设置里提供「平板 / 手机」模式切换。
+3. 弹幕设置参考 NewBox 改为多渠道弹幕来源，并复用其来源配置；NewBox 源码地址待用户提供后开工。
+
 
