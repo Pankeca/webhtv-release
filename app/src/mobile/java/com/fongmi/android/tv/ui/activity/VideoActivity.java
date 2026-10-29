@@ -243,7 +243,9 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     private boolean forceNextSource;
     private LinearLayoutCompat mSiteRow;
     private RecyclerView mSiteList;
+    private TextView mSiteCount;
     private SiteChipAdapter mSiteAdapter;
+    private long mDanmakuLongClickTime;
     /** 当前影片已铺开的同名站点，快搜分站点逐条回传时在这里累积。 */
     private final List<Vod> mSiteVods = new ArrayList<>();
     /** 每个站点已更新到第几集（取该站点集数最多的线路）。 */
@@ -867,6 +869,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         mBinding.control.next.setOnClickListener(view -> checkNext());
         mBinding.control.prev.setOnClickListener(view -> checkPrev());
         mBinding.control.setting.setOnClickListener(view -> onSetting());
+        mBinding.control.settings.setOnClickListener(view -> onSetting());
         mBinding.control.title.setOnLongClickListener(view -> onChange());
         mBinding.control.right.back.setOnClickListener(view -> onBack());
         mBinding.control.right.lock.setOnClickListener(view -> onLock());
@@ -902,7 +905,16 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         mBinding.control.action.ending.setOnClickListener(view -> onEnding());
         mBinding.control.action.repeat.setOnClickListener(view -> onRepeat());
         mBinding.control.action.opening.setOnClickListener(view -> onOpening());
-        mBinding.control.action.danmaku.setOnClickListener(view -> onDanmaku());
+        mBinding.control.action.danmaku.setOnClickListener(view -> {
+            // 长按刚结束时会补发一次 click，这里直接忽略，避免同时切换开关
+            if (System.currentTimeMillis() - mDanmakuLongClickTime < 1500) return;
+            onDanmakuShow();
+        });
+        mBinding.control.action.danmaku.setOnLongClickListener(view -> {
+            mDanmakuLongClickTime = System.currentTimeMillis();
+            onDanmaku();
+            return true;
+        });
         mBinding.control.action.episodes.setOnClickListener(view -> onEpisodes());
         mBinding.audioPlay.setOnClickListener(view -> checkPlay());
         mBinding.audioNext.setOnClickListener(view -> checkNext());
@@ -1100,27 +1112,31 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
 
     private void setupActionButtons() {
         mActionButtons = new HashMap<>();
-        addActionButton(PlayerButtonSetting.PLAYER, mBinding.control.action.player);
-        addActionButton(PlayerButtonSetting.DECODE, mBinding.control.action.decode);
-        addActionButton(PlayerButtonSetting.PLAY_PARAMS, mBinding.control.action.playParams);
-        addActionButton(PlayerButtonSetting.SPEED, mBinding.control.action.speed);
-        addActionButton(PlayerButtonSetting.SCALE, mBinding.control.action.scale);
-        addActionButton(PlayerButtonSetting.LUT, mBinding.control.action.lut);
-        addActionButton(PlayerButtonSetting.RESET, mBinding.control.action.reset);
-        addActionButton(PlayerButtonSetting.REPEAT, mBinding.control.action.repeat);
-        addActionButton(PlayerButtonSetting.TEXT, mBinding.control.action.text);
-        addActionButton(PlayerButtonSetting.AUDIO, mBinding.control.action.audio);
-        addActionButton(PlayerButtonSetting.VIDEO, mBinding.control.action.video);
-        addActionButton(PlayerButtonSetting.OPENING, mBinding.control.action.opening);
-        addActionButton(PlayerButtonSetting.ENDING, mBinding.control.action.ending);
-        addActionButton(PlayerButtonSetting.DANMAKU, mBinding.control.action.danmaku);
-        addActionButton(PlayerButtonSetting.TITLE, mBinding.control.action.title);
+        // 全屏底栏只保留：上集 / 下集 / 选集 / 播放源 / 倍速 / 字幕 / 原始 / 片头 / 片尾 / 弹幕
         addActionButton(PlayerButtonSetting.PREV, mBinding.control.action.prev);
         addActionButton(PlayerButtonSetting.NEXT, mBinding.control.action.next);
         addActionButton(PlayerButtonSetting.EPISODES, mBinding.control.action.episodes);
         addActionButton(PlayerButtonSetting.CHANGE, mBinding.control.action.change2);
+        addActionButton(PlayerButtonSetting.SPEED, mBinding.control.action.speed);
+        addActionButton(PlayerButtonSetting.TEXT, mBinding.control.action.text);
+        addActionButton(PlayerButtonSetting.SCALE, mBinding.control.action.scale);
+        addActionButton(PlayerButtonSetting.OPENING, mBinding.control.action.opening);
+        addActionButton(PlayerButtonSetting.ENDING, mBinding.control.action.ending);
+        addActionButton(PlayerButtonSetting.DANMAKU, mBinding.control.action.danmaku);
         PlayerButtonSetting.applyOrder(mBinding.control.action.container, mActionButtons);
+        // 其余标签已归入右上角「设置」面板：只保留视图供设置面板读取状态，不再挂到底栏
+        detachActionButtons(mBinding.control.action.audio, mBinding.control.action.video, mBinding.control.action.repeat,
+                mBinding.control.action.reset, mBinding.control.action.player, mBinding.control.action.decode,
+                mBinding.control.action.playParams, mBinding.control.action.lut, mBinding.control.action.karaoke,
+                mBinding.control.action.title);
         setupCustomActionButtons();
+    }
+
+    private void detachActionButtons(View... views) {
+        for (View view : views) {
+            ViewParent parent = view.getParent();
+            if (parent instanceof ViewGroup) ((ViewGroup) parent).removeView(view);
+        }
     }
 
     private void addActionButton(String id, View view) {
@@ -1458,13 +1474,21 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         label.setTextSize(16);
         label.setTextColor(Color.WHITE);
         header.addView(label, new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        // 站点数量紧跟在「站点」标题右侧，不再放到胶囊行末尾
+        mSiteCount = new TextView(this);
+        mSiteCount.setTextSize(12);
+        mSiteCount.setTextColor(Color.WHITE);
+        mSiteCount.setBackgroundResource(R.drawable.shape_site_count);
+        LinearLayoutCompat.LayoutParams countParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        countParams.setMarginStart(dp(8));
+        header.addView(mSiteCount, countParams);
         row.addView(header, new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         RecyclerView list = new RecyclerView(this);
         FlexboxLayoutManager manager = new FlexboxLayoutManager(this, FlexDirection.ROW);
-        // 竖屏宽度有限：站点固定单行左右滑动，避免站点过多时铺满底部把线路和选集挤出屏幕
-        boolean portrait = getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT;
-        manager.setFlexWrap(portrait ? FlexWrap.NOWRAP : FlexWrap.WRAP);
+        // 站点始终固定单行左右滑动，避免站点过多时铺满底部把线路和选集挤出屏幕
+        manager.setFlexWrap(FlexWrap.NOWRAP);
         list.setLayoutManager(manager);
         list.setItemAnimator(null);
         list.setClipToPadding(false);
@@ -1529,10 +1553,13 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     /** 站点行数据来自累积的站点列表，快搜每回来一个站点就整行刷新一次。 */
     private void syncSiteChips() {
         if (mSiteAdapter == null) return;
-        // 先同步选中项，setItems 才能把正在使用的站点排到最前面
+        // 先同步选中项，再整行刷新
         mSiteAdapter.setSelectedKey(getKey());
         mSiteAdapter.setItems(mSiteVods);
         mSiteAdapter.setEpisodeCounts(mSiteEpisodes);
+        if (mSiteCount != null) mSiteCount.setText(getString(R.string.detail_site_count, mSiteVods.size()));
+        // 换站后列表被重建，把横向滚动位置拉回起点，否则会停在旧的滚动偏移上显示空白
+        if (mSiteList != null && !mSiteVods.isEmpty()) mSiteList.scrollToPosition(0);
         updateSiteRow();
     }
 
@@ -2335,16 +2362,48 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     }
 
     private boolean onChange() {
-        // 用户主动换源：解除手动站点锁定，并在「自动换源」关闭时也强制切到下一个站点
+        // 换源改成与选集一致的站点选择弹窗：先手动选站点，选中后才切换
         mManualSite = false;
-        if (!hasOtherSite()) {
-            Notify.show(R.string.play_switch_no_site);
+        if (mSiteVods.size() < 2) {
+            // 还没搜到其他站点时退回自动换源，避免弹窗里只有当前站点
+            if (!hasOtherSite()) {
+                Notify.show(R.string.play_switch_no_site);
+                return true;
+            }
+            Notify.show(R.string.play_switching);
+            forceNextSource = true;
+            checkSearch(true);
             return true;
         }
-        Notify.show(R.string.play_switching);
-        forceNextSource = true;
-        checkSearch(true);
+        showSourcePicker();
         return true;
+    }
+
+    /** 全屏播放的换源弹窗：站点胶囊网格，当前站点高亮，点选后直接切换。 */
+    private void showSourcePicker() {
+        RecyclerView list = new RecyclerView(this);
+        FlexboxLayoutManager manager = new FlexboxLayoutManager(this, FlexDirection.ROW, FlexWrap.WRAP);
+        list.setLayoutManager(manager);
+        list.setItemAnimator(null);
+        list.setClipToPadding(false);
+        list.setPadding(dp(20), dp(8), dp(20), dp(8));
+        list.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        AlertDialog[] holder = new AlertDialog[1];
+        SiteChipAdapter adapter = new SiteChipAdapter(item -> {
+            if (holder[0] != null) holder[0].dismiss();
+            Notify.show(R.string.play_switching);
+            onSiteClick(item);
+        });
+        adapter.setSelectedKey(getKey());
+        adapter.setEpisodeCounts(mSiteEpisodes);
+        adapter.setItems(new ArrayList<>(mSiteVods));
+        list.setAdapter(adapter);
+        holder[0] = new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.detail_site_switch)
+                .setView(list)
+                .setNegativeButton(R.string.dialog_negative, null)
+                .create();
+        holder[0].show();
     }
 
     private boolean hasOtherSite() {
@@ -4586,7 +4645,10 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
 
     private void onEpisodes() {
         syncSelectedEpisode(getFlag());
-        EpisodeListDialog.create().flags(mFlagAdapter.getItems()).reverse(mHistory.isRevSort()).show(this);
+        EpisodeListDialog.create().flags(mFlagAdapter.getItems()).reverse(mHistory.isRevSort())
+                .sites(mSiteVods, getKey())
+                .siteListener(this::onSiteClick)
+                .show(this);
     }
 
     private void onChoose() {
@@ -4788,13 +4850,13 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         }
         setTrackVisible();
         hideWidgetOverlay();
-        mBinding.control.danmaku.setVisibility(isLock() || !player().haveDanmaku() ? View.GONE : View.VISIBLE);
+        // 底栏已有弹幕胶囊按钮，左侧独立图标不再显示
+        mBinding.control.danmaku.setVisibility(View.GONE);
         mBinding.control.setting.setVisibility(View.GONE);
+        mBinding.control.settings.setVisibility(isLock() ? View.GONE : View.VISIBLE);
         mBinding.control.right.back.setVisibility(isFullscreen() && !isLock() ? View.VISIBLE : View.GONE);
         mBinding.control.right.rotate.setVisibility(isFullscreen() && !isLock() ? View.VISIBLE : View.GONE);
         mBinding.control.fullscreen.setVisibility(isLock() ? View.GONE : View.VISIBLE);
-        boolean showPlayParams = PlayerButtonSetting.isVisible(PlayerButtonSetting.PLAY_PARAMS);
-        mBinding.control.action.playParams.setVisibility(showPlayParams ? View.VISIBLE : View.GONE);
         mBinding.control.osdDiagnostics.setVisibility(PlayerSetting.isOsdDiagnostics() && PlayerButtonSetting.isVisible(PlayerButtonSetting.PLAY_PARAMS) && !player().isEmpty() ? View.VISIBLE : View.GONE);
         mBinding.control.osdDiagnostics.setAlpha(mOsd != null && mOsd.isDiagnosticsVisible() ? 1f : 0.30f);
         mBinding.control.action.playParams.setSelected(mOsd != null && mOsd.isDiagnosticsVisible());
@@ -5163,6 +5225,11 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
 
     private void checkDanmakuImg() {
         mBinding.control.danmaku.setImageResource(DanmakuSetting.isShow() ? R.drawable.ic_control_danmaku_on : R.drawable.ic_control_danmaku_off);
+        // 底栏弹幕胶囊：开启时高亮 + 带勾图标（参考可可影视的开关样式）
+        Drawable icon = ResUtil.getDrawable(DanmakuSetting.isShow() ? R.drawable.ic_control_danmaku_on : R.drawable.ic_control_danmaku_off);
+        mBinding.control.action.danmaku.setCompoundDrawablesRelativeWithIntrinsicBounds(icon, null, null, null);
+        mBinding.control.action.danmaku.setSelected(DanmakuSetting.isShow());
+        mBinding.control.action.danmaku.setAlpha(DanmakuSetting.isShow() ? 1f : 0.45f);
     }
 
     private void createKeep() {
@@ -7178,9 +7245,9 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     @Override
     public void onConfigurationChanged(@NonNull Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
-        // 详情页不重建时同步站点行的换行策略：竖屏单行横滑，横屏多行
+        // 详情页不重建时确保站点行仍是单行横滑
         if (mSiteList != null && mSiteList.getLayoutManager() instanceof FlexboxLayoutManager) {
-            ((FlexboxLayoutManager) mSiteList.getLayoutManager()).setFlexWrap(newConfig.orientation == Configuration.ORIENTATION_PORTRAIT ? FlexWrap.NOWRAP : FlexWrap.WRAP);
+            ((FlexboxLayoutManager) mSiteList.getLayoutManager()).setFlexWrap(FlexWrap.NOWRAP);
         }
         if (shouldRecreateAudioStageForOrientation(newConfig)) {
             setAudioOnly(true);

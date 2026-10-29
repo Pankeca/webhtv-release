@@ -552,6 +552,86 @@ async function pullChanges(kv, user, request) {
     return ok({changes: changes, deleted: deleted, nextSince: String(nextSince)});
 }
 
+const DANDAN_BASE = 'https://api.dandanplay.net';
+const DANDAN_MATCH_PATH = '/api/v2/match';
+
+function envValue(context, key) {
+    if (context && context.env && context.env[key]) return String(context.env[key]);
+    if (typeof process !== 'undefined' && process.env && process.env[key]) return String(process.env[key]);
+    return '';
+}
+
+function base64Bytes(buffer) {
+    let out = '';
+    const bytes = new Uint8Array(buffer);
+    for (let i = 0; i < bytes.length; i++) out += String.fromCharCode(bytes[i]);
+    return btoa(out);
+}
+
+/** 弹弹play 签名验证模式：base64(sha256(AppId + Timestamp + Path + AppSecret)) */
+async function dandanHeaders(context, path) {
+    const appId = envValue(context, 'DANDAN_APP_ID');
+    const appSecret = envValue(context, 'DANDAN_APP_SECRET');
+    if (!appId || !appSecret) return null;
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const raw = new TextEncoder().encode(appId + timestamp + path + appSecret);
+    const digest = await crypto.subtle.digest('SHA-256', raw);
+    return {
+        'X-AppId': appId,
+        'X-Timestamp': timestamp,
+        'X-Signature': base64Bytes(digest),
+        'Accept': 'application/json',
+    };
+}
+
+async function danmakuMatch(context, request) {
+    try {
+        const body = await request.json().catch(() => ({}));
+        const name = String(body.name || '').trim();
+        const episode = String(body.episode || '').trim();
+        if (!name) return json(200, []);
+        const headers = await dandanHeaders(context, DANDAN_MATCH_PATH);
+        // 未配置 AppId/AppSecret 时返回空数组，App 侧显示「暂无弹幕」而不是报错
+        if (!headers) return json(200, []);
+        const fileName = /\.[a-z0-9]{2,5}$/i.test(name + episode) ? `${name} ${episode}` : `${name} ${episode}.mp4`;
+        const upstream = await fetch(DANDAN_BASE + DANDAN_MATCH_PATH, {
+            method: 'POST',
+            headers: {...headers, 'Content-Type': 'application/json'},
+            body: JSON.stringify({fileName: fileName.replace(/\s+/g, ' ').trim()}),
+        });
+        if (!upstream.ok) return json(200, []);
+        const data = await upstream.json().catch(() => null);
+        const match = data && data.isMatched && data.matches && data.matches.length ? data.matches[0] : null;
+        if (!match || !match.episodeId) return json(200, []);
+        const origin = new URL(request.url).origin;
+        const title = [match.animeTitle, match.episodeTitle].filter(Boolean).join(' ');
+        return json(200, [{name: title || name, url: `${origin}/api/danmaku/comment/${match.episodeId}`}]);
+    } catch (e) {
+        return json(200, []);
+    }
+}
+
+async function danmakuComment(context, request, episodeId) {
+    if (!/^\d{1,20}$/.test(episodeId)) return fail(400, 'episodeId 无效');
+    const headers = await dandanHeaders(context, `/api/v2/comment/${episodeId}`);
+    if (!headers) return json(200, {comments: []});
+    try {
+        const query = new URL(request.url).search || '?withRelated=true&chConvert=1';
+        const upstream = await fetch(`${DANDAN_BASE}/api/v2/comment/${episodeId}${query}`, {headers: headers});
+        const text = await upstream.text();
+        return new Response(text, {
+            status: 200,
+            headers: {
+                'content-type': 'application/json; charset=utf-8',
+                'cache-control': 'public, max-age=600',
+                'access-control-allow-origin': '*',
+            },
+        });
+    } catch (e) {
+        return json(200, {comments: []});
+    }
+}
+
 async function route(context) {
     const request = context.request;
     if (request.method === 'OPTIONS') return new Response(null, {status: 204, headers: JSON_HEADERS});
@@ -559,6 +639,12 @@ async function route(context) {
     if (!kv) return fail(500, 'KV 未绑定：请把命名空间绑定为 my_kv');
     const path = new URL(request.url).pathname.replace(/\/+$/, '') || '/';
     try {
+        if ((path === '/api/danmaku' || path === '/api/danmaku/match') && request.method === 'POST') {
+            return await danmakuMatch(context, request);
+        }
+        if (path.startsWith('/api/danmaku/comment/') && request.method === 'GET') {
+            return await danmakuComment(context, request, path.substring('/api/danmaku/comment/'.length));
+        }
         if (path === '/api/auth/register' && request.method === 'POST') return await register(kv, request);
         if (path === '/api/auth/login' && request.method === 'POST') return await login(kv, request);
         if (path === '/api/auth/logout' && request.method === 'POST') return await logout(kv, request);

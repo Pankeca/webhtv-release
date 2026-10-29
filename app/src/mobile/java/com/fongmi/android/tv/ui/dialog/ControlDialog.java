@@ -172,6 +172,7 @@ public class ControlDialog extends BaseBottomSheetDialog implements ParseAdapter
         binding.repeat.setOnClickListener(v -> active(binding.repeat, parent.control.action.repeat));
         binding.decode.setOnClickListener(v -> click(binding.decode, parent.control.action.decode));
         binding.codecCapability.setOnClickListener(v -> ((Listener) requireActivity()).onCodecCapabilityPanel());
+        binding.playParams.setOnClickListener(v -> dismiss(parent.control.action.playParams));
         binding.panDiagnostic.setOnClickListener(v -> onPanDiagnostic());
         binding.lut.setOnClickListener(v -> onLut());
         binding.ending.setOnClickListener(v -> click(binding.ending, parent.control.action.ending));

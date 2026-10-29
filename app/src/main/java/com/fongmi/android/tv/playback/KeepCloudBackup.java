@@ -16,7 +16,9 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Snapshot backup of favorites and update tracking ("收藏追更"). The snapshot
@@ -69,6 +71,81 @@ public final class KeepCloudBackup {
     /** Restores the cloud snapshot only when this device has nothing local yet. */
     public static void restoreIfEmpty() {
         restore(false, null);
+    }
+
+    /** 增量双向同步：云端独有的追更/追更跟踪补到本地，随后把两侧并集回写云端（本地同 key 优先）。 */
+    public static void merge(Runnable onDone) {
+        if (!canBackup()) {
+            if (onDone != null) App.post(onDone);
+            return;
+        }
+        Task.execute(() -> AuthApi.backupLoad(TYPE, new AuthApi.Callback() {
+            @Override
+            public void success(JsonObject response) {
+                Task.execute(() -> {
+                    mergeCloud(response);
+                    backup(false);
+                    App.post(() -> {
+                        if (onDone != null) onDone.run();
+                    });
+                });
+            }
+
+            @Override
+            public void error(String message) {
+                // 云端暂无备份时按本地快照上传
+                backup(false);
+                App.post(() -> {
+                    if (onDone != null) onDone.run();
+                });
+            }
+        }));
+    }
+
+    private static void mergeCloud(JsonObject response) {
+        try {
+            JsonObject data = payload(response);
+            if (data == null) return;
+            Set<String> keepKeys = new HashSet<>();
+            for (Keep keep : AppDatabase.get().getKeepDao().findAll()) keepKeys.add(keep.getKey());
+            Set<String> trackKeys = new HashSet<>();
+            for (UpdateTrack track : UpdateTrack.list()) trackKeys.add(track.getKey());
+            boolean changed = false;
+            if (data.has("keeps") && data.get("keeps").isJsonArray()) {
+                List<Keep> items = App.gson().fromJson(data.getAsJsonArray("keeps"), new com.google.gson.reflect.TypeToken<List<Keep>>() {
+                }.getType());
+                if (items != null) {
+                    for (Keep item : items) {
+                        if (item == null || TextUtils.isEmpty(item.getKey())) continue;
+                        if (!keepKeys.add(item.getKey())) continue;
+                        AppDatabase.get().getKeepDao().insertOrUpdate(item);
+                        changed = true;
+                    }
+                }
+            }
+            if (data.has("tracks") && data.get("tracks").isJsonArray()) {
+                for (JsonElement element : data.getAsJsonArray("tracks")) {
+                    try {
+                        UpdateTrack item = App.gson().fromJson(element, UpdateTrack.class);
+                        if (item == null || TextUtils.isEmpty(item.getKey())) continue;
+                        if (!trackKeys.add(item.getKey())) continue;
+                        UpdateTrack.save(item);
+                        changed = true;
+                    } catch (Throwable ignored) {
+                    }
+                }
+            }
+            if (changed) RefreshEvent.keep();
+        } catch (Throwable e) {
+            SpiderDebug.log("keep-backup", "merge failed: %s", e.toString());
+        }
+    }
+
+    private static JsonObject payload(JsonObject response) {
+        if (response == null || !response.has("data") || !response.get("data").isJsonObject()) return null;
+        JsonObject record = response.getAsJsonObject("data");
+        if (record.has("data") && record.get("data").isJsonObject()) return record.getAsJsonObject("data");
+        return record;
     }
 
     /** 从云端恢复追更/追更跟踪；force=true 时覆盖本地（先清空本地记录）。 */

@@ -55,6 +55,7 @@
     <string name="detail_site_row">Site</string>
     <string name="detail_site_switch">Switch site</string>
     <string name="detail_site_episodes">%1$d episodes</string>
+    <string name="detail_site_count">%1$d sites</string>
     <string name="detail_play_local">Local first</string>
     <string name="detail_episode">Episode</string>
     <string name="detail_quality">Quality</string>
@@ -126,5 +127,7 @@
         <item>Fullscreen</item>
         <item>Standard</item>
     </string-array>
+
+    <string name="play_source">Source</string>
 
 </resources>

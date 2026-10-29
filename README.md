@@ -554,5 +554,6 @@ adb shell wm density reset
 3. 详情页站点行：去掉自动模式下 `changeable` 过滤，站点胶囊与搜索结果保持一致，只要求站点可搜索。
 4. 云端同步：新增「恢复方式（增量/覆盖）」与「从云端恢复到本地」；公共配置页新增可见的「增量合并 / 云端覆盖本地」选项，不再依赖记忆开关。
 5. 弹幕：TVBox/FongMi 本身不内置公共弹幕源，需接入弹弹play开放平台（dev.dandanplay.com）申请 AppId/AppSecret；可可影视为自有关闭接口，需等凭证后接入。
+6. 弹幕代理已上线 `webhtv-sync`：`POST /api/danmaku`（匹配）+ `GET /api/danmaku/comment/{episodeId}`（弹幕 JSON，缓存 10 分钟），签名算法 `base64(sha256(AppId+Timestamp+Path+AppSecret))`。凭证放 EdgeOne 项目环境变量 `DANDAN_APP_ID` / `DANDAN_APP_SECRET`；未配置时返回空数组，App 显示暂无弹幕而不报错。APK 默认地址已改为 `https://sync.940214.xyz/api/danmaku`。
 
 

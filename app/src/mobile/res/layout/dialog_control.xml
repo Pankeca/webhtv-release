@@ -118,6 +118,20 @@
 
             </androidx.appcompat.widget.LinearLayoutCompat>
 
+            <!-- 播放参数：底栏已收起，统一在设置面板里调整 -->
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:orientation="horizontal">
+
+                <com.google.android.material.textview.MaterialTextView
+                    android:id="@+id/playParams"
+                    style="@style/ControlSheetButton"
+                    android:text="@string/play_params" />
+
+            </androidx.appcompat.widget.LinearLayoutCompat>
+
             <com.google.android.material.textview.MaterialTextView
                 android:id="@+id/parseText"
                 style="@style/ControlSheetTitle"

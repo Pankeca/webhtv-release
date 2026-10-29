@@ -95,6 +95,11 @@ public class AuthApi {
         return requestPath("GET", "/api/public/list", AccountStore.token(), null, null, callback);
     }
 
+    /** 后端健康检查：确认当前云端服务地址可用。 */
+    public static Future health(Callback callback) {
+        return requestPath("GET", "/api/health", null, null, null, callback);
+    }
+
     public static Future publicGet(String key, Callback callback) {
         return requestPath("GET", "/api/public/get?key=" + Uri.encode(key), AccountStore.token(), null, null, callback);
     }

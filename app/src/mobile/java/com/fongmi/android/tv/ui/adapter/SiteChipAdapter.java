@@ -3,10 +3,12 @@ package com.fongmi.android.tv.ui.adapter;
 import android.text.SpannableStringBuilder;
 import android.text.TextUtils;
 import android.text.style.RelativeSizeSpan;
+import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.ViewGroup;
 
 import androidx.annotation.NonNull;
+import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.flexbox.FlexboxLayoutManager;
@@ -96,13 +98,18 @@ public class SiteChipAdapter extends RecyclerView.Adapter<SiteChipAdapter.ViewHo
         Vod item = mItems.get(position);
         String name = TextUtils.isEmpty(item.getSiteName()) ? item.getName() : item.getSiteName();
         Integer count = mEpisodes.get(item.getSiteKey());
+        holder.binding.text.setBackgroundResource(R.drawable.shape_video_item);
+        holder.binding.text.setTextColor(ContextCompat.getColorStateList(holder.binding.text.getContext(), R.color.selector_video_text));
+        holder.binding.text.setTextSize(14);
+        holder.binding.text.setGravity(Gravity.CENTER);
         holder.binding.text.setText(buildText(holder, name, count == null ? 0 : count));
         holder.binding.text.setSelected(TextUtils.equals(selectedKey, item.getSiteKey()));
+        holder.binding.text.setClickable(true);
         holder.binding.text.setOnClickListener(view -> listener.onItemClick(item));
         RecyclerView.LayoutParams params = (RecyclerView.LayoutParams) holder.binding.text.getLayoutParams();
         int spacing = ResUtil.dp2px(8);
         params.setMargins(0, 0, spacing, spacing);
-        // 竖屏单行横滑时 flexbox 默认会把子项压缩进一行，胶囊被压成竖排文字；
+        // 站点始终单行横滑：flexbox 默认会把子项压缩进一行，胶囊被压成竖排文字；
         // 明确不收缩 + 自适应宽度，超出的部分交给 RecyclerView 横向滚动。
         params.width = ViewGroup.LayoutParams.WRAP_CONTENT;
         if (params instanceof FlexboxLayoutManager.LayoutParams) {

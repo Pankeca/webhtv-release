@@ -1,5 +1,6 @@
 package com.fongmi.android.tv.ui.adapter;
 
+import android.text.TextUtils;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -8,8 +9,14 @@ import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.fongmi.android.tv.Product;
+import com.fongmi.android.tv.bean.History;
 import com.fongmi.android.tv.bean.Keep;
 import com.fongmi.android.tv.databinding.AdapterVodBinding;
+import com.fongmi.android.tv.db.AppDatabase;
+import com.fongmi.android.tv.track.HistoryEpisodeCache;
+import com.fongmi.android.tv.track.UpdateTrack;
+import com.fongmi.android.tv.track.UpdateTracker;
+import com.fongmi.android.tv.utils.HistoryProgressFormatter;
 import com.fongmi.android.tv.utils.ImgUtil;
 import com.fongmi.android.tv.utils.ResUtil;
 
@@ -56,6 +63,15 @@ public class KeepAdapter extends BaseDiffAdapter<Keep, KeepAdapter.ViewHolder> {
         Keep.deleteAll();
     }
 
+    /** 追更条目对应的最近观看记录，用于显示已看集数与观看进度。 */
+    private History findHistory(Keep item) {
+        try {
+            return AppDatabase.get().getHistoryDao().find(item.getCid(), item.getKey());
+        } catch (Throwable e) {
+            return null;
+        }
+    }
+
     private void setClickListener(View root, Keep item) {
         root.setOnLongClickListener(view -> listener.onLongClick());
         root.setOnClickListener(view -> {
@@ -79,8 +95,19 @@ public class KeepAdapter extends BaseDiffAdapter<Keep, KeepAdapter.ViewHolder> {
         setClickListener(holder.itemView, item);
         holder.binding.name.setText(item.getVodName());
         holder.binding.remark.setVisibility(View.GONE);
-        holder.binding.historyProgress.setVisibility(View.GONE);
-        holder.binding.historyUpdate.setVisibility(View.GONE);
+        // 与「最近观看」保持同一套标签样式：已看第N集 / 更新至第N集
+        History history = findHistory(item);
+        String watchedTime = history == null ? "" : HistoryProgressFormatter.format(history.getPosition(), history.getDuration());
+        String episode = history == null ? "" : history.getVodRemarks();
+        boolean hasEpisode = !TextUtils.isEmpty(episode) && !TextUtils.isEmpty(watchedTime);
+        holder.binding.historyProgress.setText(hasEpisode
+                ? holder.itemView.getContext().getString(com.fongmi.android.tv.R.string.history_watched_episode, episode, watchedTime)
+                : holder.itemView.getContext().getString(com.fongmi.android.tv.R.string.history_watched_time, watchedTime));
+        holder.binding.historyProgress.setVisibility(!delete && !watchedTime.isEmpty() ? View.VISIBLE : View.GONE);
+        UpdateTrack track = UpdateTrack.find(item.getKey());
+        int updateCount = Math.max(Math.max(track != null ? track.getCount() : 0, HistoryEpisodeCache.get(item.getKey())), UpdateTracker.parseEpisode(episode));
+        holder.binding.historyUpdate.setText(holder.itemView.getContext().getString(com.fongmi.android.tv.R.string.history_update_to, updateCount));
+        holder.binding.historyUpdate.setVisibility(!delete && updateCount > 0 ? View.VISIBLE : View.GONE);
         holder.binding.site.setVisibility(View.VISIBLE);
         holder.binding.site.setText(item.getSiteName());
         holder.binding.delete.setVisibility(!delete ? View.GONE : View.VISIBLE);

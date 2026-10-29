@@ -55,6 +55,7 @@
     <string name="detail_site_row">站点</string>
     <string name="detail_site_switch">切换站点</string>
     <string name="detail_site_episodes">更新至%1$d集</string>
+    <string name="detail_site_count">共%1$d个站点</string>
     <string name="detail_play_local">本地优先</string>
     <string name="detail_episode">选集</string>
     <string name="detail_quality">画质</string>
@@ -126,5 +127,7 @@
         <item>全屏</item>
         <item>标准</item>
     </string-array>
+
+    <string name="play_source">播放源</string>
 
 </resources>

@@ -164,10 +164,10 @@ public class HistoryAdapter extends BaseDiffAdapter<History, HistoryAdapter.View
         // 集数已并入已看行时不再重复显示 remark
         holder.binding.remark.setVisibility(!delete && !showProgress && !same ? View.VISIBLE : View.GONE);
         UpdateTrack track = UpdateTrack.find(item.getKey());
-        int updateCount = Math.max(track != null ? track.getCount() : 0, HistoryEpisodeCache.get(item.getKey()));
-        // 已看到的集数已经追平最新集数时不再重复显示「更新至」，避免两个标签互相矛盾
-        int watchedEpisode = UpdateTracker.parseEpisode(episode);
-        boolean showUpdate = !delete && updateCount > 0 && (watchedEpisode <= 0 || updateCount > watchedEpisode);
+        // 追更缓存、最近观看缓存、站点备注（如「更新至第12集」）任一有值即可显示最新集数
+        int updateCount = Math.max(Math.max(track != null ? track.getCount() : 0, HistoryEpisodeCache.get(item.getKey())), UpdateTracker.parseEpisode(episode));
+        // 只要知道最新集数就展示「更新至 第N集」，不再因已看集数追平而隐藏（用户明确需要看到该信息）
+        boolean showUpdate = !delete && updateCount > 0;
         holder.binding.historyUpdate.setText(holder.itemView.getContext().getString(R.string.history_update_to, updateCount));
         holder.binding.historyUpdate.setVisibility(showUpdate ? View.VISIBLE : View.GONE);
         ImgUtil.load(item.getVodName(), item.getVodPic(), holder.binding.image);

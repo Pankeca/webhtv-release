@@ -95,7 +95,23 @@
                 android:layout_height="48dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:scaleType="center"
-                android:src="@drawable/ic_control_setting" />
+                android:src="@drawable/ic_control_setting"
+                android:visibility="gone" />
+
+            <!-- 右上角「设置」：其余标签统一从这里进入 -->
+            <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/settings"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:gravity="center"
+                android:paddingStart="8dp"
+                android:paddingEnd="10dp"
+                android:text="@string/nav_setting"
+                android:textColor="@color/white"
+                android:textSize="14sp"
+                android:visibility="gone"
+                tools:visibility="visible" />
 
         </androidx.appcompat.widget.LinearLayoutCompat>
     </androidx.appcompat.widget.LinearLayoutCompat>

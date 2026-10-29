@@ -19,6 +19,7 @@ public final class CloudSyncStore {
     private static final String KEY_CONFIG_COUNT = "cloud_backup_config_count";
     private static final String KEY_CONFLICT_MODE = "cloud_conflict_mode";
     private static final String KEY_CONFLICT_REMEMBER = "cloud_conflict_remember";
+    private static final String KEY_SYNC_MODE = "cloud_sync_mode";
 
     /** 冲突处理：增量合并 / 云端覆盖本地 / 本地覆盖云端。 */
     public static final int MODE_MERGE = 0;
@@ -131,5 +132,14 @@ public final class CloudSyncStore {
 
     public static void setConflictRemembered(boolean remember) {
         Prefers.put(KEY_CONFLICT_REMEMBER, remember);
+    }
+
+    /** 本地/云端双向同步方式：默认增量双向，可选本地或云端单向覆盖。 */
+    public static int syncMode() {
+        return Prefers.getInt(KEY_SYNC_MODE, MODE_MERGE);
+    }
+
+    public static void setSyncMode(int mode) {
+        Prefers.put(KEY_SYNC_MODE, mode);
     }
 }

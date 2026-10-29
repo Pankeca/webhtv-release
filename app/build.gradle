@@ -47,7 +47,7 @@ android {
         buildConfigField "String", "DEFAULT_CLOUD_SERVER", "\"${(project.findProperty('webhtvCloudServer') ?: 'https://sync.940214.xyz').toString().replace('\\', '\\\\').replace('\"', '\\\"')}\""
         buildConfigField "String", "ADMIN_CODE", "\"${(project.findProperty('webhtvAdminCode') ?: 'webhtv').toString().replace('\\', '\\\\').replace('\"', '\\\"')}\""
         // 内置弹幕服务地址（可用 -PwebhtvDanmakuUrl 或 WEBHTV_DANMAKU_URL 覆盖）
-        buildConfigField "String", "DANMAKU_API_URL", "\"${(project.findProperty('webhtvDanmakuUrl') ?: System.getenv('WEBHTV_DANMAKU_URL') ?: 'https://danmu.940214.xyz').toString().replace('\\', '\\\\').replace('\"', '\\\"')}\""
+        buildConfigField "String", "DANMAKU_API_URL", "\"${(project.findProperty('webhtvDanmakuUrl') ?: System.getenv('WEBHTV_DANMAKU_URL') ?: 'https://sync.940214.xyz/api/danmaku').toString().replace('\\', '\\\\').replace('\"', '\\\"')}\""
         // 自有更新源：手机端与电视端按「端名-ABI」读取各自的 update-*.json，避免电视端拿到手机包。
         buildConfigField "String", "UPDATE_MANIFEST_BASE", "\"${(project.findProperty('webhtvUpdateBase') ?: 'https://cnb.cool/mytools-2026/app-release/-/git/raw/main').toString().replace('\\', '\\\\').replace('\"', '\\\"')}\""
         buildConfigField "String", "BUILD_TIME", "\"${buildTime}\""

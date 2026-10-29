@@ -23,11 +23,13 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.fongmi.android.tv.bean.Episode;
 import com.fongmi.android.tv.bean.Flag;
+import com.fongmi.android.tv.bean.Vod;
 import com.fongmi.android.tv.databinding.DialogEpisodeListBinding;
 import com.fongmi.android.tv.setting.PlayerSetting;
 import com.fongmi.android.tv.ui.adapter.EpisodeAdapter;
 import com.fongmi.android.tv.ui.adapter.EpisodeGroupAdapter;
 import com.fongmi.android.tv.ui.adapter.FlagAdapter;
+import com.fongmi.android.tv.ui.adapter.SiteGridAdapter;
 import com.fongmi.android.tv.ui.base.ViewType;
 import com.fongmi.android.tv.ui.custom.SpaceItemDecoration;
 import com.fongmi.android.tv.utils.EpisodeTitleCompact;
@@ -45,6 +47,10 @@ public class EpisodeListDialog extends AppCompatDialogFragment implements FlagAd
     private SpaceItemDecoration episodeDecoration;
     private FlagAdapter flagAdapter;
     private List<Flag> flags;
+    private List<Vod> sites;
+    private String siteKey = "";
+    private SiteGridAdapter.OnClickListener siteListener;
+    private boolean siteExpanded;
     private int episodeSpanCount = 4;
     private boolean reverse;
 
@@ -59,6 +65,17 @@ public class EpisodeListDialog extends AppCompatDialogFragment implements FlagAd
 
     public EpisodeListDialog reverse(boolean reverse) {
         this.reverse = reverse;
+        return this;
+    }
+
+    public EpisodeListDialog sites(List<Vod> sites, String siteKey) {
+        this.sites = sites;
+        this.siteKey = siteKey == null ? "" : siteKey;
+        return this;
+    }
+
+    public EpisodeListDialog siteListener(SiteGridAdapter.OnClickListener listener) {
+        this.siteListener = listener;
         return this;
     }
 
@@ -121,9 +138,45 @@ public class EpisodeListDialog extends AppCompatDialogFragment implements FlagAd
 
     private void initView() {
         setRecyclerView();
+        setupSiteList();
         flagAdapter.addAll(flags == null ? new ArrayList<>() : flags);
         setGroups(getSelectedFlag());
         binding.flag.scrollToPosition(flagAdapter.getPosition());
+    }
+
+    /** 选集面板顶部的站点二级菜单：换站后关闭面板，回到播放页继续看同一集。 */
+    private void setupSiteList() {
+        boolean visible = sites != null && sites.size() > 1;
+        binding.siteHeader.setVisibility(visible ? View.VISIBLE : View.GONE);
+        binding.site.setVisibility(visible && siteExpanded ? View.VISIBLE : View.GONE);
+        if (!visible) return;
+        SiteGridAdapter adapter = new SiteGridAdapter(item -> {
+            if (siteListener != null) siteListener.onItemClick(item);
+            dismiss();
+        });
+        adapter.setItems(sites, siteKey);
+        binding.site.setHasFixedSize(true);
+        binding.site.setItemAnimator(null);
+        binding.site.addItemDecoration(new SpaceItemDecoration(3, 8));
+        binding.site.setAdapter(adapter);
+        binding.siteCurrent.setText(getSiteName());
+        binding.siteArrow.setText(siteExpanded ? "▴" : "▾");
+        binding.siteHeader.setOnClickListener(view -> toggleSites());
+    }
+
+    private void toggleSites() {
+        siteExpanded = !siteExpanded;
+        binding.site.setVisibility(siteExpanded ? View.VISIBLE : View.GONE);
+        binding.siteArrow.setText(siteExpanded ? "▴" : "▾");
+    }
+
+    private String getSiteName() {
+        if (sites == null) return "";
+        for (Vod vod : sites) {
+            if (vod == null || !java.util.Objects.equals(vod.getSiteKey(), siteKey)) continue;
+            return vod.getSiteName();
+        }
+        return "";
     }
 
     private void setRecyclerView() {

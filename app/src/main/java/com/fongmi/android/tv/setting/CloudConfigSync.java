@@ -9,13 +9,16 @@ import com.fongmi.android.tv.event.ConfigEvent;
 import com.fongmi.android.tv.utils.Task;
 import com.github.catvod.crawler.SpiderDebug;
 import com.github.catvod.utils.Prefers;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 云端公共配置 / 个人配置备份：点播源、直播源与设置项。
@@ -84,6 +87,72 @@ public final class CloudConfigSync {
                 if (callback != null) callback.error(message);
             }
         });
+    }
+
+    /** 增量上传：与云端已有配置按 url 合并，本地条目覆盖同名项，云端独有条目保留。 */
+    public static void backupMerge(boolean vod, boolean live, boolean settings, Callback callback) {
+        if (!canSync()) {
+            if (callback != null) callback.error("请先登录账号");
+            return;
+        }
+        AuthApi.backupLoad(TYPE, new AuthApi.Callback() {
+            @Override
+            public void success(JsonObject response) {
+                JsonObject data = merge(collect(vod, live, settings), payload(response));
+                AuthApi.backupSave(TYPE, data, new AuthApi.Callback() {
+                    @Override
+                    public void success(JsonObject result) {
+                        CloudSyncStore.markConfigCount(vod ? Config.getAll(0).size() : CloudSyncStore.cloudVodCount(),
+                                live ? Config.getAll(1).size() : CloudSyncStore.cloudLiveCount());
+                        if (callback != null) callback.success(backupSummary(data));
+                    }
+
+                    @Override
+                    public void error(String message) {
+                        if (callback != null) callback.error(message);
+                    }
+                });
+            }
+
+            @Override
+            public void error(String message) {
+                // 云端暂无备份时直接整体上传
+                backup(vod, live, settings, callback);
+            }
+        });
+    }
+
+    /** 以 url 为键做并集：本地优先，云端独有条目追加到末尾。 */
+    private static JsonObject merge(JsonObject local, JsonObject cloud) {
+        if (cloud == null) return local;
+        for (String name : new String[]{"vod", "live"}) {
+            JsonArray cloudItems = arrayOf(cloud, name);
+            if (cloudItems == null) continue;
+            JsonArray localItems = arrayOf(local, name);
+            if (localItems == null) {
+                local.add(name, cloudItems);
+                continue;
+            }
+            Set<String> localUrls = new LinkedHashSet<>();
+            for (JsonElement element : localItems) localUrls.add(urlOf(element));
+            JsonArray result = new JsonArray();
+            for (JsonElement element : localItems) result.add(element);
+            for (JsonElement element : cloudItems) if (!localUrls.contains(urlOf(element))) result.add(element);
+            local.add(name, result);
+        }
+        return local;
+    }
+
+    private static JsonArray arrayOf(JsonObject data, String name) {
+        return data != null && data.has(name) && data.get(name).isJsonArray() ? data.getAsJsonArray(name) : null;
+    }
+
+    private static String urlOf(JsonElement element) {
+        try {
+            return element.getAsJsonObject().has("url") ? element.getAsJsonObject().get("url").getAsString() : "";
+        } catch (Throwable e) {
+            return "";
+        }
     }
 
     /** 从当前账号的个人备份恢复到本地。 */

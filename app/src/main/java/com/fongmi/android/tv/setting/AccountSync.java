@@ -91,6 +91,64 @@ public final class AccountSync {
     }
 
     public static void syncNow(Runnable onDone) {
+        sync(CloudSyncStore.syncMode(), onDone);
+    }
+
+    /**
+     * 本地与云端保持一致的统一入口：
+     * MODE_MERGE 双向增量（本地同 key 优先，补齐云端独有记录）；MODE_LOCAL_FIRST 本地覆盖云端；
+     * MODE_CLOUD_FIRST 云端覆盖本地。
+     */
+    public static void sync(int mode, Runnable onDone) {
+        bindIfNeeded();
+        if (mode == CloudSyncStore.MODE_CLOUD_FIRST) {
+            restore(CloudSyncStore.MODE_CLOUD_FIRST, onDone);
+            return;
+        }
+        if (mode == CloudSyncStore.MODE_LOCAL_FIRST) {
+            upload(CloudSyncStore.MODE_LOCAL_FIRST, onDone);
+            return;
+        }
+        KeepCloudBackup.merge(() -> Task.execute(() -> {
+            if (CloudSyncStore.isHistoryEnabled()) PlaybackRemoteSyncer.sync(SYNC_ID);
+            if (!CloudSyncStore.isConfigEnabled()) {
+                finish(onDone);
+                return;
+            }
+            CloudConfigSync.backupMerge(true, true, true, new CloudConfigSync.Callback() {
+                @Override
+                public void success(String message) {
+                    pullConfigMerge(onDone);
+                }
+
+                @Override
+                public void error(String message) {
+                    finish(onDone);
+                }
+            });
+        }));
+    }
+
+    /** 增量模式上传并集后再拉一次，把云端独有的配置补到本地。 */
+    private static void pullConfigMerge(Runnable onDone) {
+        CloudConfigSync.pullPersonal(true, true, true, CloudSyncStore.MODE_MERGE, new CloudConfigSync.Callback() {
+            @Override
+            public void success(String message) {
+                finish(onDone);
+            }
+
+            @Override
+            public void error(String message) {
+                finish(onDone);
+            }
+        });
+    }
+
+    /**
+     * 主动上传到云端：
+     * MODE_LOCAL_FIRST 用本地数据覆盖云端同名记录；MODE_MERGE 只把本地新增内容与云端增量合并。
+     */
+    public static void upload(int mode, Runnable onDone) {
         bindIfNeeded();
         Task.execute(() -> {
             if (CloudSyncStore.isHistoryEnabled()) PlaybackRemoteSyncer.sync(SYNC_ID);
@@ -99,22 +157,24 @@ public final class AccountSync {
             Runnable finish = () -> App.post(() -> {
                 if (onDone != null) onDone.run();
             });
-            // 配置备份是异步网络请求，需等它回写云端数量后再通知刷新，否则统计会滞后
-            if (CloudSyncStore.isConfigEnabled()) {
-                CloudConfigSync.backup(true, true, true, new CloudConfigSync.Callback() {
-                    @Override
-                    public void success(String message) {
-                        finish.run();
-                    }
-
-                    @Override
-                    public void error(String message) {
-                        finish.run();
-                    }
-                });
-            } else {
+            if (!CloudSyncStore.isConfigEnabled()) {
                 finish.run();
+                return;
             }
+            CloudConfigSync.Callback callback = new CloudConfigSync.Callback() {
+                @Override
+                public void success(String message) {
+                    finish.run();
+                }
+
+                @Override
+                public void error(String message) {
+                    finish.run();
+                }
+            };
+            // 配置备份是异步网络请求，需等它回写云端数量后再通知刷新，否则统计会滞后
+            if (mode == CloudSyncStore.MODE_MERGE) CloudConfigSync.backupMerge(true, true, true, callback);
+            else CloudConfigSync.backup(true, true, true, callback);
         });
     }
 

@@ -18,6 +18,8 @@ import android.view.inputmethod.EditorInfo;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
@@ -75,8 +77,6 @@ public class AccountDialog extends BaseAlertDialog {
     private boolean syncConfigVod = true;
     private boolean syncConfigLive = true;
     private boolean syncConfigSettings = true;
-    /** 从云端恢复到本地时使用的策略，默认增量。 */
-    private int restoreMode = CloudSyncStore.MODE_MERGE;
     private int adminTaps;
     private boolean adminRevealed;
     private boolean registerMode;
@@ -398,7 +398,7 @@ public class AccountDialog extends BaseAlertDialog {
         optionsDialog = new MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_WebHTV_LightDialog)
                 .setTitle(title)
                 .setView(scroll)
-                .setNegativeButton(R.string.dialog_close, null)
+                .setNegativeButton(R.string.dialog_close, (dialog, which) -> dialog.dismiss())
                 .setOnDismissListener(dialog -> {
                     optionsDialog = null;
                     if (isAdded()) render();
@@ -412,7 +412,7 @@ public class AccountDialog extends BaseAlertDialog {
         optionsDialog = null;
     }
 
-    /** 云端同步二级菜单：备份开关、状态与立即同步。 */
+    /** 云端同步二级菜单：备份开关、上传策略与恢复策略。 */
     private void showSyncOptions() {
         long keepAt = CloudSyncStore.keepBackupAt();
         long historyAt = CloudSyncStore.historyBackupAt();
@@ -431,36 +431,80 @@ public class AccountDialog extends BaseAlertDialog {
             Notify.show(checked ? R.string.account_backup_on : R.string.account_backup_off);
         }));
         content.addView(infoRow(getString(R.string.account_sync_state), syncStatus()));
-        content.addView(buttonRow(getString(R.string.account_restore_mode_label, restoreModeLabel()), false, view -> pickRestoreMode()));
-        content.addView(buttonRow(getString(R.string.account_restore), false, view -> restoreFromCloud()));
-        content.addView(buttonRow(getString(R.string.account_sync_now), true, view -> {
-            dismissOptions();
-            syncNow();
-        }));
+
+        // 上传与恢复合并为一个「同步方式」：三种策略最终都是让本地与云端保持一致
+        int mode = CloudSyncStore.syncMode();
+        content.addView(sectionLabel(getString(R.string.account_sync_mode_label)));
+        RadioGroup group = radioGroup(false);
+        RadioButton merge = radioButton(getString(R.string.account_sync_mode_merge), mode == CloudSyncStore.MODE_MERGE);
+        RadioButton local = radioButton(getString(R.string.account_sync_mode_local), mode == CloudSyncStore.MODE_LOCAL_FIRST);
+        RadioButton cloud = radioButton(getString(R.string.account_sync_mode_cloud), mode == CloudSyncStore.MODE_CLOUD_FIRST);
+        group.addView(merge);
+        group.addView(local);
+        group.addView(cloud);
+        group.setOnCheckedChangeListener((g, id) -> {
+            if (id == View.NO_ID) return;
+            CloudSyncStore.setSyncMode(id == local.getId() ? CloudSyncStore.MODE_LOCAL_FIRST
+                    : id == cloud.getId() ? CloudSyncStore.MODE_CLOUD_FIRST : CloudSyncStore.MODE_MERGE);
+        });
+        content.addView(group);
+        content.addView(buttonRow(getString(R.string.account_sync_now), true, view -> syncWithCloud()));
+        content.addView(note(getString(R.string.account_sync_mode_note)));
+
         content.addView(note(getString(R.string.account_auto_bind_note)));
         showOptionsDialog(getString(R.string.account_section_sync), content);
     }
 
-    /** 云端公共配置二级菜单：勾选内容项、冲突策略与拉取/备份。 */
+    /** 云端公共配置二级菜单：勾选内容项、冲突策略与拉取。 */
     private void showConfigOptions() {
         LinearLayoutCompat content = optionsContent();
         content.addView(checkRow(getString(R.string.account_config_vod), syncConfigVod, checked -> syncConfigVod = checked));
         content.addView(checkRow(getString(R.string.account_config_live), syncConfigLive, checked -> syncConfigLive = checked));
         content.addView(checkRow(getString(R.string.account_config_settings), syncConfigSettings, checked -> syncConfigSettings = checked));
-        content.addView(infoRow(getString(R.string.account_config_mode), conflictModeLabel()));
-        content.addView(checkRow(getString(R.string.account_config_mode_merge), syncModeMerge(), checked -> {
-            if (checked) setSyncMode(CloudSyncStore.MODE_MERGE);
-        }));
-        content.addView(checkRow(getString(R.string.account_config_mode_cloud), !syncModeMerge(), checked -> {
-            if (checked) setSyncMode(CloudSyncStore.MODE_CLOUD_FIRST);
-        }));
-        content.addView(switchRow(getString(R.string.account_config_remember), getString(R.string.account_config_remember_desc), CloudSyncStore.isConflictRemembered(), checked -> CloudSyncStore.setConflictRemembered(checked)));
+        // 冲突策略同一行二选一，默认增量合并；勾选即时生效，不再重弹窗口刷新
+        content.addView(sectionLabel(getString(R.string.account_config_mode)));
+        content.addView(conflictModeRow());
         content.addView(buttonRow(getString(R.string.account_config_pull), true, view -> {
             dismissOptions();
             pullPublicConfig();
         }));
         content.addView(note(getString(R.string.account_config_note)));
         showOptionsDialog(getString(R.string.account_section_config), content);
+    }
+
+    /** 同一行展示「增量合并 / 云端覆盖本地」，始终有且仅有一个被选中。 */
+    private View conflictModeRow() {
+        RadioGroup group = radioGroup(true);
+        boolean cloudFirst = CloudSyncStore.conflictMode() == CloudSyncStore.MODE_CLOUD_FIRST;
+        RadioButton merge = radioButton(getString(R.string.account_config_mode_merge), !cloudFirst);
+        RadioButton cloud = radioButton(getString(R.string.account_config_mode_cloud), cloudFirst);
+        group.addView(merge, new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        group.addView(cloud, new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        group.setOnCheckedChangeListener((g, id) -> {
+            if (id == View.NO_ID) return;
+            CloudSyncStore.setConflictMode(id == cloud.getId() ? CloudSyncStore.MODE_CLOUD_FIRST : CloudSyncStore.MODE_MERGE);
+            CloudSyncStore.setConflictRemembered(true);
+        });
+        return group;
+    }
+
+    private RadioGroup radioGroup(boolean horizontal) {
+        RadioGroup group = new RadioGroup(requireContext());
+        group.setOrientation(horizontal ? RadioGroup.HORIZONTAL : RadioGroup.VERTICAL);
+        group.setPadding(0, dp(2), 0, dp(2));
+        return group;
+    }
+
+    private RadioButton radioButton(String label, boolean checked) {
+        RadioButton button = new RadioButton(requireContext());
+        button.setId(View.generateViewId());
+        button.setText(label);
+        button.setTextSize(14);
+        button.setTextColor(Color.parseColor("#3C4043"));
+        button.setChecked(checked);
+        button.setButtonTintList(new ColorStateList(new int[][]{{android.R.attr.state_checked}, {}}, new int[]{Color.parseColor("#1A73E8"), Color.parseColor("#8A8F98")}));
+        button.setPadding(0, dp(4), dp(8), dp(4));
+        return button;
     }
 
     private LinearLayoutCompat securityCard() {
@@ -559,31 +603,6 @@ public class AccountDialog extends BaseAlertDialog {
         else AuthApi.register(username, password, callback);
     }
 
-    private void syncNow() {
-        // 已记住同步策略的用户不再重复提示，避免打扰
-        if (CloudSyncStore.isConfigEnabled() && !CloudSyncStore.isConflictRemembered()) {
-            new MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_WebHTV_LightDialog)
-                    .setTitle(R.string.account_sync_confirm_title)
-                    .setMessage(R.string.account_sync_confirm_message)
-                    .setNegativeButton(R.string.dialog_negative, null)
-                    .setPositiveButton(R.string.dialog_positive, (dialog, which) -> doSyncNow())
-                    .show();
-            return;
-        }
-        doSyncNow();
-    }
-
-    private void doSyncNow() {
-        binding.progress.setVisibility(View.VISIBLE);
-        Notify.show(R.string.account_sync_started);
-        AccountSync.syncNow(() -> {
-            if (!isAdded()) return;
-            binding.progress.setVisibility(View.GONE);
-            render();
-            Notify.show(syncResultText());
-        });
-    }
-
     /** 同步完成的反馈：按已开启的备份项，把本次同步的条数/项数说明清楚。 */
     private String syncResultText() {
         List<String> parts = new ArrayList<>();
@@ -622,45 +641,26 @@ public class AccountDialog extends BaseAlertDialog {
             Notify.show(R.string.account_config_none_selected);
             return;
         }
-        chooseConflictMode(mode -> {
-            binding.progress.setVisibility(View.VISIBLE);
-            Notify.show(R.string.account_config_pulling);
-            CloudConfigSync.pullPublic(syncConfigVod, syncConfigLive, syncConfigSettings, mode, new CloudConfigSync.Callback() {
-                @Override
-                public void success(String message) {
-                    if (!isAdded()) return;
-                    binding.progress.setVisibility(View.GONE);
-                    render();
-                    Notify.show(message);
-                }
+        // 冲突策略已在二级菜单内选好（默认增量合并），拉取后界面已关闭，直接回到一级菜单
+        int mode = CloudSyncStore.conflictMode();
+        binding.progress.setVisibility(View.VISIBLE);
+        Notify.show(R.string.account_config_pulling);
+        CloudConfigSync.pullPublic(syncConfigVod, syncConfigLive, syncConfigSettings, mode, new CloudConfigSync.Callback() {
+            @Override
+            public void success(String message) {
+                if (!isAdded()) return;
+                binding.progress.setVisibility(View.GONE);
+                render();
+                Notify.show(message);
+            }
 
-                @Override
-                public void error(String message) {
-                    if (!isAdded()) return;
-                    binding.progress.setVisibility(View.GONE);
-                    Notify.show(message);
-                }
-            });
+            @Override
+            public void error(String message) {
+                if (!isAdded()) return;
+                binding.progress.setVisibility(View.GONE);
+                Notify.show(message);
+            }
         });
-    }
-
-    /** 未记住选择时弹出增量/覆盖选择，默认增量。 */
-    private void chooseConflictMode(java.util.function.IntConsumer onDone) {
-        if (CloudSyncStore.isConflictRemembered()) {
-            onDone.accept(CloudSyncStore.conflictMode());
-            return;
-        }
-        final int[] mode = {CloudSyncStore.MODE_MERGE};
-        String[] items = {getString(R.string.account_config_mode_merge), getString(R.string.account_config_mode_cloud), getString(R.string.account_config_mode_local)};
-        new MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_WebHTV_LightDialog)
-                .setTitle(R.string.account_config_mode)
-                .setSingleChoiceItems(items, CloudSyncStore.conflictMode(), (d, which) -> mode[0] = which)
-                .setNegativeButton(R.string.dialog_negative, null)
-                .setPositiveButton(R.string.dialog_positive, (d, which) -> {
-                    CloudSyncStore.setConflictMode(mode[0]);
-                    onDone.accept(mode[0]);
-                })
-                .show();
     }
 
     private void publishConfig() {
@@ -678,13 +678,50 @@ public class AccountDialog extends BaseAlertDialog {
         });
     }
 
-    /** 后端服务登录：确认管理员权限后保持后端会话可用。 */
+    /** 后端服务设置：管理员可在此修改云端服务地址、检测连通性并重建同步绑定。 */
     private void backendLogin() {
-        if (AccountStore.isAdminUnlocked()) {
-            Notify.show(R.string.account_admin_backend_done);
-        } else {
+        if (!AccountStore.isAdminUnlocked()) {
             promptAdminCode();
+            return;
         }
+        LinearLayoutCompat content = optionsContent();
+        content.addView(infoRow(getString(R.string.account_sync_state), syncStatus()));
+
+        TextInputEditText serverField = passwordField(getString(R.string.account_server));
+        serverField.setInputType(InputType.TYPE_CLASS_TEXT);
+        serverField.setText(AuthApi.server());
+        content.addView(serverField);
+        content.addView(buttonRow(getString(R.string.account_server_save), true, view -> {
+            AuthApi.server(serverField.getText().toString());
+            AccountSync.bind();
+            Notify.show(R.string.account_server_saved);
+            dismissOptions();
+            render();
+        }));
+        content.addView(buttonRow(getString(R.string.account_backend_health), false, view -> checkBackend()));
+        content.addView(buttonRow(getString(R.string.account_backend_rebind), false, view -> {
+            AccountSync.bind();
+            CloudConfigSync.refreshCounts();
+            Notify.show(R.string.account_backend_rebind_done);
+        }));
+        content.addView(note(getString(R.string.account_backend_note)));
+        showOptionsDialog(getString(R.string.account_backend_title), content);
+    }
+
+    /** 检测后端 /api/health，确认服务地址可用。 */
+    private void checkBackend() {
+        Notify.show(R.string.account_backend_checking);
+        AuthApi.health(new AuthApi.Callback() {
+            @Override
+            public void success(com.google.gson.JsonObject data) {
+                Notify.show(R.string.account_backend_health_ok);
+            }
+
+            @Override
+            public void error(String message) {
+                Notify.show(message);
+            }
+        });
     }
 
     private void changePasswordPrompt() {
@@ -1064,53 +1101,16 @@ public class AccountDialog extends BaseAlertDialog {
         return row;
     }
 
-    private String conflictModeLabel() {
-        int mode = CloudSyncStore.conflictMode();
-        if (mode == CloudSyncStore.MODE_CLOUD_FIRST) return getString(R.string.account_config_mode_cloud);
-        if (mode == CloudSyncStore.MODE_LOCAL_FIRST) return getString(R.string.account_config_mode_local);
-        return getString(R.string.account_config_mode_merge);
-    }
-
-    private boolean syncModeMerge() {
-        return CloudSyncStore.conflictMode() != CloudSyncStore.MODE_CLOUD_FIRST;
-    }
-
-    private void setSyncMode(int mode) {
-        CloudSyncStore.setConflictMode(mode);
-        CloudSyncStore.setConflictRemembered(true);
-        dismissOptions();
-        showConfigOptions();
-    }
-
-    private String restoreModeLabel() {
-        return getString(restoreMode == CloudSyncStore.MODE_CLOUD_FIRST ? R.string.account_config_mode_cloud : R.string.account_config_mode_merge);
-    }
-
-    /** 恢复前明确选择增量还是覆盖，避免「记住选择」把入口藏起来。 */
-    private void pickRestoreMode() {
-        int checked = restoreMode == CloudSyncStore.MODE_CLOUD_FIRST ? 1 : 0;
-        String[] items = {getString(R.string.account_restore_merge), getString(R.string.account_restore_cloud)};
-        new MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_WebHTV_LightDialog)
-                .setTitle(R.string.account_restore_mode)
-                .setSingleChoiceItems(items, checked, (dialog, which) -> {
-                    restoreMode = which == 1 ? CloudSyncStore.MODE_CLOUD_FIRST : CloudSyncStore.MODE_MERGE;
-                    dialog.dismiss();
-                    dismissOptions();
-                    showSyncOptions();
-                })
-                .setNegativeButton(R.string.dialog_negative, null)
-                .show();
-    }
-
-    private void restoreFromCloud() {
+    /** 按选中的同步方式让本地与云端保持一致。 */
+    private void syncWithCloud() {
         dismissOptions();
         binding.progress.setVisibility(View.VISIBLE);
-        Notify.show(R.string.account_restore_running);
-        AccountSync.restore(restoreMode, () -> {
+        Notify.show(R.string.account_sync_running);
+        AccountSync.sync(CloudSyncStore.syncMode(), () -> {
             if (!isAdded()) return;
             binding.progress.setVisibility(View.GONE);
             render();
-            Notify.show(R.string.account_restore_done);
+            Notify.show(syncResultText());
         });
     }
 

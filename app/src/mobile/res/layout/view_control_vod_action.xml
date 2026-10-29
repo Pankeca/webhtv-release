@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <HorizontalScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
-    android:layout_width="wrap_content"
+    android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:fillViewport="true"
     android:paddingStart="8dp"
@@ -12,104 +13,10 @@
         android:id="@+id/container"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:gravity="center_vertical"
         android:orientation="horizontal">
 
-        <com.google.android.material.textview.MaterialTextView
-            android:id="@+id/player"
-            style="@style/Control"
-            android:text="@string/play_exo" />
-
-        <com.google.android.material.textview.MaterialTextView
-            android:id="@+id/decode"
-            style="@style/Control"
-            android:text="@string/play_decode" />
-
-        <com.google.android.material.textview.MaterialTextView
-            android:id="@+id/playParams"
-            style="@style/Control"
-            android:text="@string/play_params" />
-
-        <com.google.android.material.textview.MaterialTextView
-            android:id="@+id/speed"
-            style="@style/Control"
-            android:fontFeatureSettings="tnum"
-            android:text="@string/play_speed" />
-
-        <com.google.android.material.textview.MaterialTextView
-            android:id="@+id/scale"
-            style="@style/Control"
-            android:text="@string/play_scale" />
-
-        <com.google.android.material.textview.MaterialTextView
-            android:id="@+id/lut"
-            style="@style/Control"
-            android:text="@string/play_lut" />
-
-        <com.google.android.material.textview.MaterialTextView
-            android:id="@+id/karaoke"
-            style="@style/Control"
-            android:text="@string/player_karaoke_mode"
-            android:visibility="gone" />
-
-        <com.google.android.material.textview.MaterialTextView
-            android:id="@+id/reset"
-            style="@style/Control"
-            android:text="@string/play_reset" />
-
-        <com.google.android.material.textview.MaterialTextView
-            android:id="@+id/repeat"
-            style="@style/Control"
-            android:text="@string/play_repeat" />
-
-        <com.google.android.material.textview.MaterialTextView
-            android:id="@+id/text"
-            style="@style/Control"
-            android:tag="3"
-            android:text="@string/play_track_text" />
-
-        <com.google.android.material.textview.MaterialTextView
-            android:id="@+id/audio"
-            style="@style/Control"
-            android:tag="1"
-            android:text="@string/play_track_audio" />
-
-        <com.google.android.material.textview.MaterialTextView
-            android:id="@+id/video"
-            style="@style/Control"
-            android:tag="2"
-            android:text="@string/play_track_video" />
-
-        <com.google.android.material.textview.MaterialTextView
-            android:id="@+id/opening"
-            style="@style/Control"
-            android:text="@string/play_op" />
-
-        <com.google.android.material.textview.MaterialTextView
-            android:id="@+id/ending"
-            style="@style/Control"
-            android:text="@string/play_ed" />
-
-        <com.google.android.material.textview.MaterialTextView
-            android:id="@+id/danmaku"
-            style="@style/Control"
-            android:text="@string/danmaku"
-            android:visibility="gone"
-            tools:visibility="visible" />
-
-        <com.google.android.material.textview.MaterialTextView
-            android:id="@+id/title"
-            style="@style/Control"
-            android:text="@string/play_title"
-            android:visibility="gone"
-            tools:visibility="visible" />
-
-        <com.google.android.material.textview.MaterialTextView
-            android:id="@+id/discMenu"
-            style="@style/Control"
-            android:text="@string/disc_menu_open"
-            android:contentDescription="@string/disc_menu_open_hint"
-            android:visibility="gone" />
-
+        <!-- 全屏底栏只保留常用项：上集 / 下集 / 选集 / 播放源 / 倍速 / 字幕 / 原始 / 片头 / 片尾 / 弹幕 -->
         <com.google.android.material.textview.MaterialTextView
             android:id="@+id/prev"
             style="@style/Control"
@@ -128,7 +35,111 @@
         <com.google.android.material.textview.MaterialTextView
             android:id="@+id/change2"
             style="@style/Control"
-            android:text="@string/play_change" />
+            android:text="@string/play_source" />
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/speed"
+            style="@style/Control"
+            android:fontFeatureSettings="tnum"
+            android:text="@string/play_speed" />
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/text"
+            style="@style/Control"
+            android:tag="3"
+            android:text="@string/play_track_text" />
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/scale"
+            style="@style/Control"
+            android:text="@string/play_scale" />
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/opening"
+            style="@style/Control"
+            android:text="@string/play_op" />
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/ending"
+            style="@style/Control"
+            android:text="@string/play_ed" />
+
+        <!-- 弹幕：单击开关弹幕，长按打开弹幕设置 -->
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/danmaku"
+            style="@style/Control"
+            android:drawablePadding="4dp"
+            android:text="@string/danmaku" />
+
+        <!-- 以下按钮已收进右上角「设置」面板，仅保留视图供设置面板读取状态 -->
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/audio"
+            style="@style/Control"
+            android:tag="1"
+            android:text="@string/play_track_audio"
+            android:visibility="gone" />
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/video"
+            style="@style/Control"
+            android:tag="2"
+            android:text="@string/play_track_video"
+            android:visibility="gone" />
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/repeat"
+            style="@style/Control"
+            android:text="@string/play_repeat"
+            android:visibility="gone" />
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/reset"
+            style="@style/Control"
+            android:text="@string/play_reset"
+            android:visibility="gone" />
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/player"
+            style="@style/Control"
+            android:text="@string/play_exo"
+            android:visibility="gone" />
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/decode"
+            style="@style/Control"
+            android:text="@string/play_decode"
+            android:visibility="gone" />
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/playParams"
+            style="@style/Control"
+            android:text="@string/play_params"
+            android:visibility="gone" />
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/lut"
+            style="@style/Control"
+            android:text="@string/play_lut"
+            android:visibility="gone" />
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/karaoke"
+            style="@style/Control"
+            android:text="@string/player_karaoke_mode"
+            android:visibility="gone" />
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/title"
+            style="@style/Control"
+            android:text="@string/play_title"
+            android:visibility="gone" />
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/discMenu"
+            style="@style/Control"
+            android:text="@string/disc_menu_open"
+            android:contentDescription="@string/disc_menu_open_hint"
+            android:visibility="gone" />
 
     </androidx.appcompat.widget.LinearLayoutCompat>
 </HorizontalScrollView>
