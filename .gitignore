@@ -17,3 +17,11 @@ local.properties
 *.iml
 captures/
 .DS_Store
+
+# 打包产物（单个 144M，不入库）
+*.apk
+*.aab
+!gradle/wrapper/gradle-wrapper.jar
+
+# 证书口令
+secrets/

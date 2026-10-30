@@ -35,11 +35,11 @@ import androidx.fragment.app.FragmentActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.api.DanmakuApi;
 import com.fongmi.android.tv.bean.Danmaku;
 import com.fongmi.android.tv.player.PlayerManager;
+import com.fongmi.android.tv.setting.DanmakuSourceSetting;
 import com.fongmi.android.tv.ui.custom.CustomRecyclerView;
 import com.fongmi.android.tv.utils.KeyUtil;
 import com.fongmi.android.tv.utils.Notify;
@@ -51,17 +51,12 @@ import com.google.android.material.progressindicator.CircularProgressIndicator;
 import com.google.android.material.textview.MaterialTextView;
 import com.google.android.material.textfield.TextInputEditText;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import okhttp3.Call;
-import okhttp3.Callback;
-import okhttp3.Response;
-
-public final class DanmakuSearchInputDialog extends DialogFragment implements Callback {
+public final class DanmakuSearchInputDialog extends DialogFragment {
 
     private final ResultAdapter adapter;
     private final Map<String, List<Danmaku>> groups;
@@ -74,7 +69,7 @@ public final class DanmakuSearchInputDialog extends DialogFragment implements Ca
     private CircularProgressIndicator progress;
     private TextView empty;
     private PlayerManager player;
-    private volatile Call activeCall;
+    private volatile long searchToken;
     private boolean selected;
     private boolean restoreParent;
     private String selectedSource;
@@ -146,14 +141,14 @@ public final class DanmakuSearchInputDialog extends DialogFragment implements Ca
     @Override
     public void onDestroyView() {
         super.onDestroyView();
-        activeCall = null;
+        searchToken++;
         DanmakuApi.cancel();
     }
 
     private void onItemClick(Danmaku item) {
         selected = true;
         if (SpiderDebug.isEnabled()) SpiderDebug.log("danmaku", "search dialog item click selected=%s name=%s url=%s", item.isSelected(), item.getName(), item.getUrl());
-        player.setDanmaku(item.isSelected() ? Danmaku.empty() : item);
+        if (player != null) player.selectDanmaku(item);
         dismiss();
     }
 
@@ -325,15 +320,20 @@ public final class DanmakuSearchInputDialog extends DialogFragment implements Ca
         }
         input.setError(null);
         showProgress();
-        activeCall = null;
         Util.hideKeyboard(input);
-        Call call = DanmakuApi.newCall(keyword, getEpisode());
-        if (call == null) {
+        if (DanmakuSourceSetting.getEnabledSources().isEmpty()) {
             showError(getString(R.string.danmaku_api_invalid));
             return;
         }
-        activeCall = call;
-        call.enqueue(this);
+        long token = ++searchToken;
+        DanmakuApi.searchAll(keyword, getEpisode(), items -> {
+            if (token != searchToken) return;
+            if (items.isEmpty()) showError(ResUtil.getString(R.string.error_empty));
+            else onSuccess(items);
+        }, () -> {
+            if (token != searchToken) return;
+            showError(ResUtil.getString(R.string.error_empty));
+        });
     }
 
     private String getEpisode() {
@@ -512,24 +512,6 @@ public final class DanmakuSearchInputDialog extends DialogFragment implements Ca
         return drawable;
     }
 
-    @Override
-    public void onResponse(@NonNull Call call, @NonNull Response response) {
-        if (call != activeCall) return;
-        try {
-            String body = response.body() == null ? "" : response.body().string();
-            List<Danmaku> items = DanmakuApi.arrayFrom(body);
-            if (items.isEmpty()) throw new Exception(ResUtil.getString(R.string.error_empty));
-            App.post(() -> onSuccess(items));
-        } catch (Exception e) {
-            App.post(() -> showError(e.getMessage()));
-        }
-    }
-
-    @Override
-    public void onFailure(@NonNull Call call, @NonNull IOException e) {
-        if (call != activeCall) return;
-        App.post(() -> showError(e.getMessage()));
-    }
 
     private int dp(int value) {
         return ResUtil.dp2px(value);

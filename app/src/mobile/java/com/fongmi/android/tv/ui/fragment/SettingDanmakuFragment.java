@@ -10,12 +10,12 @@ import androidx.viewbinding.ViewBinding;
 
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.databinding.FragmentSettingDanmakuBinding;
-import com.fongmi.android.tv.impl.DanmakuListener;
 import com.fongmi.android.tv.setting.DanmakuSetting;
+import com.fongmi.android.tv.setting.DanmakuSourceSetting;
 import com.fongmi.android.tv.ui.base.BaseFragment;
-import com.fongmi.android.tv.ui.dialog.DanmakuApiDialog;
+import com.fongmi.android.tv.ui.dialog.DanmakuSourceDialog;
 
-public class SettingDanmakuFragment extends BaseFragment implements DanmakuListener {
+public class SettingDanmakuFragment extends BaseFragment {
 
     private FragmentSettingDanmakuBinding mBinding;
 
@@ -27,8 +27,8 @@ public class SettingDanmakuFragment extends BaseFragment implements DanmakuListe
         return getString(value ? R.string.setting_on : R.string.setting_off);
     }
 
-    private String getApiStatus() {
-        return getString(DanmakuSetting.hasValidApiUrl() ? R.string.yes : R.string.none);
+    private String getSourceStatus() {
+        return getString(R.string.danmaku_source_status, DanmakuSourceSetting.getSources().size(), DanmakuSourceSetting.countEnabled());
     }
 
     @Override
@@ -38,16 +38,16 @@ public class SettingDanmakuFragment extends BaseFragment implements DanmakuListe
 
     @Override
     protected void initView() {
-        mBinding.danmakuApiText.setText(getApiStatus());
+        mBinding.danmakuSourceText.setText(getSourceStatus());
         mBinding.danmakuAutoText.setText(getSwitch(DanmakuSetting.isAuto()));
         mBinding.danmakuLoadText.setText(getSwitch(DanmakuSetting.isLoad()));
         mBinding.danmakuSpiderText.setText(getSwitch(DanmakuSetting.isSpiderFirst()));
-        updateApiVisibility();
+        updateAutoVisibility();
     }
 
     @Override
     protected void initEvent() {
-        mBinding.danmakuApi.setOnClickListener(this::onDanmakuApi);
+        mBinding.danmakuSource.setOnClickListener(this::onDanmakuSource);
         mBinding.danmakuAuto.setOnClickListener(this::setDanmakuAuto);
         mBinding.danmakuLoad.setOnClickListener(this::setDanmakuLoad);
         mBinding.danmakuSpider.setOnClickListener(this::setDanmakuSpider);
@@ -56,34 +56,32 @@ public class SettingDanmakuFragment extends BaseFragment implements DanmakuListe
     private void setDanmakuLoad(View view) {
         DanmakuSetting.putLoad(!DanmakuSetting.isLoad());
         mBinding.danmakuLoadText.setText(getSwitch(DanmakuSetting.isLoad()));
-        updateApiVisibility();
-    }
-
-    private void updateApiVisibility() {
-        // 弹幕地址始终可见：没开弹幕加载时也能先配好在线搜索用的接口地址
-        mBinding.danmakuApi.setVisibility(View.VISIBLE);
         updateAutoVisibility();
     }
 
+    private boolean hasSource() {
+        return !DanmakuSourceSetting.getEnabledSources().isEmpty();
+    }
+
     private void updateAutoVisibility() {
-        boolean show = DanmakuSetting.isLoad() && DanmakuSetting.hasValidApiUrl();
+        boolean show = DanmakuSetting.isLoad() && hasSource();
         mBinding.danmakuAuto.setVisibility(show ? View.VISIBLE : View.GONE);
         updateSpiderVisibility();
     }
 
     private void updateSpiderVisibility() {
-        boolean show = DanmakuSetting.isLoad() && DanmakuSetting.hasValidApiUrl() && DanmakuSetting.isAuto();
+        boolean show = DanmakuSetting.isLoad() && hasSource() && DanmakuSetting.isAuto();
         mBinding.danmakuSpider.setVisibility(show ? View.VISIBLE : View.GONE);
     }
 
-    private void onDanmakuApi(View view) {
-        DanmakuApiDialog.show(this);
+    private void onDanmakuSource(View view) {
+        DanmakuSourceDialog.create()
+                .onDismissAction(this::refreshSourceStatus)
+                .show(requireActivity());
     }
 
-    @Override
-    public void setDanmakuApi(String url) {
-        DanmakuSetting.putApiUrl(url);
-        mBinding.danmakuApiText.setText(getApiStatus());
+    private void refreshSourceStatus() {
+        if (mBinding != null) mBinding.danmakuSourceText.setText(getSourceStatus());
         updateAutoVisibility();
     }
 

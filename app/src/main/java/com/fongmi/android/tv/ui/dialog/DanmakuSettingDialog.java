@@ -64,7 +64,7 @@ public final class DanmakuSettingDialog {
 
         private DialogDanmakuSettingBinding binding;
         private final PlayerManager player;
-        private final boolean restoreParent;
+        private boolean restoreParent;
 
         BottomSheet(PlayerManager player, boolean restoreParent) {
             this.player = player;
@@ -92,7 +92,11 @@ public final class DanmakuSettingDialog {
 
         @Override
         protected void initView() {
-            new DanmakuSettingPanel(binding, player).bind();
+            // 从面板里再打开来源/搜索时不再回头弹「弹幕列表」，否则会叠两层弹窗
+            new DanmakuSettingPanel(binding, player, requireActivity(), () -> {
+                restoreParent = false;
+                dismissAllowingStateLoss();
+            }).bind();
         }
 
         @Override
@@ -154,7 +158,7 @@ public final class DanmakuSettingDialog {
 
         private DialogDanmakuSettingBinding binding;
         private final PlayerManager player;
-        private final boolean restoreParent;
+        private boolean restoreParent;
 
         SideSheet(PlayerManager player, boolean restoreParent) {
             this.player = player;
@@ -193,7 +197,11 @@ public final class DanmakuSettingDialog {
         @Override
         public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
             super.onViewCreated(view, savedInstanceState);
-            new DanmakuSettingPanel(binding, player).bind();
+            // 从面板里再打开来源/搜索时不再回头弹「弹幕列表」，否则会叠两层弹窗
+            new DanmakuSettingPanel(binding, player, requireActivity(), () -> {
+                restoreParent = false;
+                dismissAllowingStateLoss();
+            }).bind();
         }
 
         @Override

@@ -32,6 +32,7 @@ import androidx.media3.mpvplayer.MpvPlayer;
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.Constant;
 import com.fongmi.android.tv.R;
+import com.fongmi.android.tv.api.DanmakuHttp;
 import com.fongmi.android.tv.api.SiteApi;
 import com.fongmi.android.tv.bean.Danmaku;
 import com.fongmi.android.tv.bean.Result;
@@ -97,6 +98,7 @@ import com.fongmi.android.tv.player.mpv.MpvResourcePressureController;
 import com.fongmi.android.tv.player.mpv.MpvVulkanBackendPolicy;
 import com.fongmi.android.tv.player.mpv.MpvResourcePressurePolicy;
 import com.fongmi.android.tv.setting.DanmakuSetting;
+import com.fongmi.android.tv.setting.DanmakuSourceSetting;
 import com.fongmi.android.tv.setting.ExoPerformanceSetting;
 import com.fongmi.android.tv.setting.IjkPerformanceSetting;
 import com.fongmi.android.tv.setting.MpvPerformanceSetting;
@@ -146,6 +148,8 @@ public class PlayerManager implements ParseCallback {
     private static final int MPV_AUTO_OUTPUT_PROBE_MAX_ATTEMPTS = 20;
     private static final int LUT_WARMUP_RECOVERED_ERROR_REFRESH_THRESHOLD = 3;
     private static final long DANMAKU_FORCE_RELOAD_DEBOUNCE_MS = 10000;
+    /** 手点来源后等弹幕 XML 的上限，超过就提示用户换源。 */
+    private static final long DANMAKU_LOAD_WATCHDOG_MS = 20000;
     private static final long LIVE_DANMAKU_METRICS_INTERVAL_MS = 15000L;
     private static final long PLAYBACK_TELEMETRY_INTERVAL_MS = 5000L;
     private static final long MPV_FRAME_TIMING_LOG_INTERVAL_MS = 5000L;
@@ -220,6 +224,7 @@ public class PlayerManager implements ParseCallback {
     private float pendingSwitchSpeed = 1f;
     private boolean danmakuLoadInProgress;
     private boolean danmakuForeground = true;
+    private String lastDanmakuNotice;
     private boolean pendingSwitchRepeat;
     private boolean pendingSwitchRestore;
     private boolean audioFocusHeld;
@@ -919,7 +924,7 @@ public class PlayerManager implements ParseCallback {
 
     private void configureDanmakuController(DanmakuController controller) {
         if (controller == null) return;
-        controller.setOkHttpClient(OkHttp.player());
+        controller.setOkHttpClient(DanmakuHttp.client(DanmakuSourceSetting.needsLooseTls(currentDanmakuUrl)));
         controller.setConfig(DanmakuSetting.getConfig());
         controller.setEnabled(DanmakuSetting.isShow());
         controller.setListener(new DanmakuController.Listener() {
@@ -927,14 +932,33 @@ public class PlayerManager implements ParseCallback {
             public void onLoadCompleted(Uri uri, int count) {
                 logDanmakuLoad("completed", uri, count, null);
                 finishDanmakuLoad(uri);
+                notifyDanmakuLoad(uri, count, false);
             }
 
             @Override
             public void onLoadError(Uri uri, IOException error) {
                 logDanmakuLoad("error", uri, -1, error);
                 finishDanmakuLoad(uri);
+                notifyDanmakuLoad(uri, -1, true);
             }
         });
+    }
+
+    /**
+     * 弹幕拉取结束后的可见反馈。
+     *
+     * <p>在此之前「搜到了结果、点进去却没有弹幕」是完全静默的：控制器只把错误写进日志，
+     * 用户看到的就是黑屏没变化。这里对失败和零条各提示一次（同一个地址不重复提示）。
+     */
+    private void notifyDanmakuLoad(Uri uri, int count, boolean failed) {
+        if (!danmakuForeground) return;
+        // 拉取成功且确实有弹幕时不打扰用户，只有「失败」和「0 条」才提示
+        if (!failed && count > 0) return;
+        String url = uri == null ? "" : uri.toString();
+        String key = url + "#" + count;
+        if (TextUtils.equals(lastDanmakuNotice, key)) return;
+        lastDanmakuNotice = key;
+        App.post(() -> Notify.show(failed ? R.string.danmaku_load_failed : R.string.danmaku_load_empty));
     }
 
     private void restoreDanmakuDataSource() {
@@ -944,7 +968,17 @@ public class PlayerManager implements ParseCallback {
         danmakuLoadStartedAtMs = SystemClock.elapsedRealtime();
         danmakuLoadInProgress = true;
         if (SpiderDebug.isEnabled()) SpiderDebug.log("danmaku", "restore controller %s key=%s", DanmakuUrlPolicy.logSummary(currentDanmakuUrl), summarizeUrl(currentDanmakuKey));
+        applyDanmakuHttpClient(currentDanmakuUrl);
         danmakuController.setDataSource(Uri.parse(currentDanmakuUrl));
+    }
+
+    /**
+     * 弹幕拉取走 media3 控制器自带的客户端；IP 直连来源的证书对不上主机名，
+     * 需要按来源切换成宽松校验的客户端，否则一定握手失败。
+     */
+    private void applyDanmakuHttpClient(String url) {
+        if (danmakuController == null) return;
+        danmakuController.setOkHttpClient(DanmakuHttp.client(DanmakuSourceSetting.needsLooseTls(url)));
     }
 
     public void setDanmakuConfig(DanmakuConfig config) {
@@ -5928,14 +5962,50 @@ public class PlayerManager implements ParseCallback {
     }
 
     public void setDanmaku(Danmaku item) {
-        setDanmaku(item, false);
+        setDanmaku(item, false, false);
     }
 
     public void reloadDanmaku(Danmaku item) {
-        setDanmaku(item, true);
+        setDanmaku(item, true, false);
     }
 
-    private void setDanmaku(Danmaku item, boolean force) {
+    /**
+     * 用户在弹幕列表/搜索结果里显式点选某一条。
+     *
+     * <p>与自动匹配的区别在于：这是明确的「我要这条」，
+     * <ul>
+     *   <li>点的是当前已选的那条也要重新拉一次（此前会因为地址相同直接 return，
+     *       上一次若拉取失败就永远补不回来，表现为「点了没反应」）；</li>
+     *   <li>弹幕总开关关着时自动打开，否则拉到了也不渲染，同样表现为「没弹幕」。</li>
+     * </ul>
+     */
+    public void selectDanmaku(Danmaku item) {
+        if (item == null || item.isEmpty()) return;
+        if (!DanmakuSetting.isShow()) {
+            DanmakuSetting.putShow(true);
+            setDanmakuEnabled(true);
+        }
+        setDanmaku(item, true, true);
+        watchDanmakuLoad();
+    }
+
+    /**
+     * 手点来源后的看门狗：media3 的拉取链路在极端情况下可能既不回调成功也不回调失败
+     * （连接被中间设备吞掉、DNS 卡住等），没有这个兜底，界面就一直是「点了没反应」。
+     */
+    private void watchDanmakuLoad() {
+        String key = currentDanmakuKey;
+        if (TextUtils.isEmpty(key)) return;
+        App.post(() -> {
+            if (!danmakuLoadInProgress || !TextUtils.equals(loadingDanmakuKey, key)) return;
+            danmakuLoadInProgress = false;
+            loadingDanmakuKey = null;
+            if (SpiderDebug.isEnabled()) SpiderDebug.log("danmaku", "load timeout %s", summarizeUrl(key));
+            if (danmakuForeground) Notify.show(R.string.danmaku_load_timeout);
+        }, DANMAKU_LOAD_WATCHDOG_MS);
+    }
+
+    private void setDanmaku(Danmaku item, boolean force, boolean userInitiated) {
         if (item.isEmpty()) {
             if (spec != null) spec.setDanmaku(item);
             clearDanmaku("empty_source");
@@ -5955,7 +6025,7 @@ public class PlayerManager implements ParseCallback {
             if (SpiderDebug.isEnabled()) SpiderDebug.log("danmaku", "skip same %s", DanmakuUrlPolicy.logSummary(url));
             return;
         }
-        if (force && shouldSkipForcedDanmakuReload(key)) {
+        if (force && shouldSkipForcedDanmakuReload(key, userInitiated)) {
             if (SpiderDebug.isEnabled()) SpiderDebug.log("danmaku", "skip duplicate reload key=%s %s", summarizeUrl(key), DanmakuUrlPolicy.logSummary(url));
             return;
         }
@@ -5963,6 +6033,7 @@ public class PlayerManager implements ParseCallback {
         if (force && currentDanmakuUrl != null) danmakuController.clearItems();
         currentDanmakuUrl = url;
         currentDanmakuKey = key;
+        applyDanmakuHttpClient(url);
         if (sourceType.isLive()) {
             danmakuController.clearItems();
             loadingDanmakuKey = null;
@@ -5980,9 +6051,11 @@ public class PlayerManager implements ParseCallback {
         danmakuController.setDataSource(Uri.parse(url));
     }
 
-    private boolean shouldSkipForcedDanmakuReload(String key) {
+    private boolean shouldSkipForcedDanmakuReload(String key, boolean userInitiated) {
         if (TextUtils.isEmpty(key) || !TextUtils.equals(currentDanmakuKey, key) || danmakuLoadStartedAtMs <= 0) return false;
         if (danmakuLoadInProgress && (TextUtils.isEmpty(loadingDanmakuKey) || TextUtils.equals(loadingDanmakuKey, key))) return true;
+        // 用户手点的那一下不做防抖：他就是想重试这条，压掉就成了「点了没反应」
+        if (userInitiated) return false;
         long elapsed = SystemClock.elapsedRealtime() - danmakuLoadStartedAtMs;
         return elapsed >= 0 && elapsed < DANMAKU_FORCE_RELOAD_DEBOUNCE_MS;
     }

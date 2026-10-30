@@ -6,12 +6,15 @@ import android.view.ViewGroup;
 import android.widget.CompoundButton;
 import android.widget.TextView;
 
+import androidx.fragment.app.FragmentActivity;
 import androidx.media3.ui.danmaku.DanmakuConfig;
 
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.databinding.DialogDanmakuSettingBinding;
 import com.fongmi.android.tv.player.PlayerManager;
 import com.fongmi.android.tv.setting.DanmakuSetting;
+import com.fongmi.android.tv.setting.DanmakuSourceSetting;
+import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.slider.Slider;
@@ -25,23 +28,80 @@ import java.util.function.LongConsumer;
 
 final class DanmakuSettingPanel {
 
+    private static final int[] MAX_ON_SCREEN = {10, 20, 30, 50, 80, 120, 150, 200};
+
     private final DialogDanmakuSettingBinding binding;
     private final PlayerManager player;
+    private final FragmentActivity activity;
+    private final Runnable closer;
     private int currentTab;
 
-    DanmakuSettingPanel(DialogDanmakuSettingBinding binding, PlayerManager player) {
+    DanmakuSettingPanel(DialogDanmakuSettingBinding binding, PlayerManager player, FragmentActivity activity, Runnable closer) {
         this.binding = binding;
         this.player = player;
+        this.activity = activity;
+        this.closer = closer;
     }
 
     void bind() {
+        bindHeader();
         bindAppearance();
+        bindDisplayExtra();
         bindTiming();
         bindTabs();
         applySheetColors();
         showTab(0);
-        binding.tabAppearance.requestFocus();
+        binding.use.requestFocus();
         binding.reset.setOnClickListener(this::onReset);
+    }
+
+    /**
+     * 面板顶部：总开关 + 来源入口。
+     *
+     * <p>底栏弹幕按钮以前是「点一下切显示/隐藏」，用户看不到任何可调项；改成直接打开这个面板后，
+     * 总开关和来源管理都放在第一屏，和 NewBox 的弹幕控制面板一致。
+     */
+    private void bindHeader() {
+        binding.use.setOnCheckedChangeListener(null);
+        binding.use.setChecked(DanmakuSetting.isShow());
+        binding.use.setOnCheckedChangeListener((source, checked) -> {
+            DanmakuSetting.putShow(checked);
+            if (player != null) player.setDanmakuEnabled(checked);
+        });
+        binding.auto.setOnCheckedChangeListener(null);
+        binding.auto.setChecked(DanmakuSetting.isAuto());
+        binding.auto.setOnCheckedChangeListener((source, checked) -> DanmakuSetting.putAuto(checked));
+        binding.sourceRow.setOnClickListener(view -> openSources());
+        binding.searchRow.setOnClickListener(view -> openSearch());
+        updateSourceStatus();
+    }
+
+    private void updateSourceStatus() {
+        int total = DanmakuSourceSetting.getSources().size();
+        int enabled = DanmakuSourceSetting.countEnabled();
+        binding.sourceStatus.setText(binding.getRoot().getContext().getString(R.string.danmaku_source_status, total, enabled));
+    }
+
+    private void openSources() {
+        FragmentActivity target = activity;
+        if (target == null) return;
+        closePanel();
+        DanmakuSourceDialog.create().show(target);
+    }
+
+    private void openSearch() {
+        FragmentActivity target = activity;
+        if (target == null) return;
+        if (DanmakuSourceSetting.getEnabledSources().isEmpty()) {
+            Notify.show(R.string.danmaku_api_invalid);
+            return;
+        }
+        closePanel();
+        DanmakuSearchDialog.create().player(player).show(target);
+    }
+
+    private void closePanel() {
+        if (closer != null) closer.run();
     }
 
     private void bindAppearance() {
@@ -61,6 +121,38 @@ final class DanmakuSettingPanel {
         setupChoice(DanmakuSetting.getColorMode(), this::colorChipForMode, this::colorModeForChip, this::onColorModeChanged, appearance.colorDefault, appearance.colorColorful, appearance.colorGradient);
         updateStyleSubSettings(DanmakuSetting.getStyleMode());
         updateColorOverrideHint(DanmakuSetting.getColorMode());
+    }
+
+    /** 显示类型（滚动/顶部/底部）与同屏上限，对应 NewBox 面板同名两段。 */
+    private void bindDisplayExtra() {
+        setupToggleChip(binding.typeScroll, DanmakuSetting.isShowScroll(), DanmakuSetting::putShowScroll);
+        setupToggleChip(binding.typeTop, DanmakuSetting.isShowTop(), DanmakuSetting::putShowTop);
+        setupToggleChip(binding.typeBottom, DanmakuSetting.isShowBottom(), DanmakuSetting::putShowBottom);
+        TextView[] chips = maxChips();
+        int current = DanmakuSetting.getMaxOnScreen();
+        for (int i = 0; i < chips.length; i++) {
+            int value = MAX_ON_SCREEN[i];
+            chips[i].setSelected(value == current);
+            chips[i].setOnClickListener(view -> {
+                for (TextView chip : chips) chip.setSelected(chip == view);
+                DanmakuSetting.putMaxOnScreen(value);
+                applyConfig();
+            });
+        }
+    }
+
+    private TextView[] maxChips() {
+        return new TextView[]{binding.max10, binding.max20, binding.max30, binding.max50, binding.max80, binding.max120, binding.max150, binding.max200};
+    }
+
+    private void setupToggleChip(TextView chip, boolean selected, Consumer<Boolean> setter) {
+        chip.setSelected(selected);
+        chip.setOnClickListener(view -> {
+            boolean next = !chip.isSelected();
+            chip.setSelected(next);
+            setter.accept(next);
+            applyConfig();
+        });
     }
 
     private void bindTiming() {
@@ -100,6 +192,10 @@ final class DanmakuSettingPanel {
 
     private void tintText(View view) {
         if (view == binding.reset || view == binding.tabAppearance || view == binding.tabTiming) return;
+        if (view == binding.sourceStatus) {
+            ((TextView) view).setTextColor(ResUtil.getColor(R.color.white_50));
+            return;
+        }
         if (view instanceof MaterialButton) return;
         if (view instanceof TextView) ((TextView) view).setTextColor(ResUtil.getColor(R.color.white_90));
         if (view instanceof ViewGroup) {
@@ -129,7 +225,12 @@ final class DanmakuSettingPanel {
             case 0:
                 DanmakuSetting.resetAppearance();
                 DanmakuSetting.resetDisplay();
+                DanmakuSetting.putShowScroll(true);
+                DanmakuSetting.putShowTop(true);
+                DanmakuSetting.putShowBottom(false);
+                DanmakuSetting.putMaxOnScreen(DanmakuSetting.getDefaultMaxOnScreen());
                 bindAppearance();
+                bindDisplayExtra();
                 applyConfig();
                 break;
             case 1:
@@ -145,6 +246,7 @@ final class DanmakuSettingPanel {
         TextView[] tabs = {binding.tabAppearance, binding.tabTiming};
         for (int i = 0; i < roots.length; i++) roots[i].setVisibility(visibleIf(index == i));
         for (int i = 0; i < tabs.length; i++) tabs[i].setSelected(index == i);
+        binding.displayExtra.setVisibility(visibleIf(index == 0));
         binding.reset.setNextFocusDownId(tabs[currentTab = index].getId());
     }
 

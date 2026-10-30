@@ -567,11 +567,29 @@ adb shell wm density reset
 6. **追更列表**补齐「已看第 N 集 / 更新至第 N 集」标签，与最近观看同一套样式；标签容器改用 `INVISIBLE`，避免 `GONE` 后塌到海报顶部压住站点名。
 7. **云端同步**统一为单一双向入口：增量合并（并集回写、本地同 key 优先）/ 本地覆盖云端 / 云端覆盖本地；追更、追更跟踪与配置项都走增量，不再需要记忆开关。
 
-### 待办（下一轮适配）
+### 5.6.4 适配内测（手机 / 平板，2026-10-29）
 
-1. 详情页横屏视频小窗过大，站点/线路/选集空间不足；横屏切竖屏后简介与选集集数文字消失，且被强制转回横屏。
-2. 手机横屏首页状态栏与底栏占空间过大，剧集可视面积小：需按设备自动识别（手机横屏隐藏状态栏、底部按钮移到站点名称旁），并在设置里提供「平板 / 手机」模式切换。
-3. 弹幕设置参考 NewBox 改为多渠道弹幕来源，并复用其来源配置；NewBox 源码地址待用户提供后开工。
+1. **设备模式**：设置 → 外观新增「设备模式（自动 / 手机 / 平板）」。自动按 `smallestScreenWidthDp` 判断；手动模式通过改写资源配置强制走手机或平板布局，切换后当前页面自动重建。`ResUtil.isPad()` 统一改为读取该设置。
+2. **详情页横竖屏**：manifest 声明了 `orientation` 不重建，手机横竖屏资源（`layout` / `layout-land`）切换后主动 `recreate()` 换布局，修复横屏切竖屏后简介、选集集数消失以及被强制转回横屏的问题；`sw600dp` 平板横竖屏共用 land 布局，不重建。
+3. **详情页视频窗口**：不再固定 400×225dp / 220dp。竖屏按宽度 16:9 计算高度并限制在可用高度 44% 内；手机横屏按可用宽度 44% 收缩，右侧站点/线路/选集获得更多空间；平板沿用原尺寸，仅在宽度不足时收缩。
+4. **手机横屏首页**：自动识别手机横屏（`screenHeightDp < 480` 且非平板），隐藏系统状态栏、压缩顶栏到 44dp，并隐藏底部导航栏；「影视 / 直播 / 设置」三个入口移到站点名称后的顶栏内联导航，竖屏自动恢复底栏与状态栏。
+
+### 5.6.4 适配内测第 2 轮（2026-10-30）
+
+1. **横竖屏旋转播放黑屏**：`recreate()` 后新页面的 `PlayerView` 没有重新绑定仍在播放的 `Player`，只有声音没有画面。重建时在 `onServiceConnected` 里对保留播放调用 `setRender()`，把新视图重新挂回播放器。
+2. **旋转后选集丢失**：重建前静态缓存当前 `Vod` 与站点 key，重建后在本地直接 `setDetail`，不再依赖二次网络请求；请求失败时也不会整片选集消失。
+3. **选集区域不能整页滚动**：`CustomRecyclerView` 不再在 `ACTION_DOWN` 时禁止父级拦截，改为按手势主方向决定：纵向拖动交给外层 `ScrollView`，横向才由列表消费；横屏选集拉到底后可正常滑回站点栏。
+4. **集数空间太小**：移除 `episode` 的 `maxHeight`（竖屏 280dp / 横屏 328dp）与运行时 `updateEpisodeViewportHeight()` 高度限制，选集整表展开、跟随详情页一起滚动；选中集数的自动定位改为滚动外层页面，且页面在顶部时不抢滚动。
+5. **顶栏导航图标**：重绘影视（场记板）、直播（屏幕）、设置（齿轮）三个矢量图标，顶栏内联导航改为 38dp 图标 + 2dp 间距的胶囊容器，底栏图标同步更新。
+6. **启动崩溃**：logcat 确认是 `IllegalStateException: Fragment VodFragment not attached to a context`——`toolbar.post(this::setSearchAction)` 等延迟任务在 Fragment 已 detach 后执行时调用 `getResources()`。给 `setSearchAction / applyCompactToolbar / updateToolbarMenu / updateTypeMoreVisible` 增加 `isAdded()` 与绑定空判断，真机冷启动、二次启动均不再复现。
+7. **真机回归（vivo V2338A，1080×2400）**：冷启动与强制停止后重启均无崩溃；18 集详情页播放中横竖屏互切，画面与进度连续（不黑屏、不转圈），选集与站点栏完整保留；竖屏详情页视频下方整页可滚，选集完整展开；横屏选集可滚到底并滑回站点栏。交付包 `WebHTV-mobile-arm64-v8a-5.6.4-adaptive3.apk`（SHA-256 `247bcf14…d95191`，release 签名），覆盖安装未清数据。
+
+### 待办（下一轮）
+
+1. 真机与平板回归：首页、搜索、详情、播放、设置全界面横竖屏走查。
+2. 手机横屏详情页下方选集条高度偏小（约 110dp），可考虑把简介移入滚动区、压缩视频高度，给选集更多可视空间。
+3. 弹幕设置多渠道弹幕来源：无 NewBox 源码，按常见框架（弹弹play 多渠道配置）自行实现。
+4. P0/P1 功能：新 prefs 登记 `Backup.APP_PREFS`；搜索页结果列数 / 站点展示模式 / 结果模式，`search_thread` 与触屏优化进设置。
 
 ### 发布记录（v5.6.4，2026-10-29）
 
@@ -589,5 +607,44 @@ adb shell wm density reset
 
 - CNB `app-release` 已更新 4 个清单到 `versionName 5.6.4 / code 564`，`apk` 指向 GitHub Release 直链，`UpdateRoutePlanner` 会追加加速线路兜底。
 - 校验方式：GitHub Release API 返回的 asset `digest` 与清单 `sha256` 一致；构建日志中 `Restore keystore` 未走 debug 分支，且执行了 `validateSigning*Release` 任务。
+
+## 十七、源码副本与离线构建目录（2026-10-30）
+
+为便于换机/离线编译，已把「构建必须的文件」复制到外置盘：
+
+```
+/media/s/7A3A1DFD3A1DB6DB/REA
+```
+
+副本内容（不含缓存与产物）：
+
+| 路径 | 说明 |
+| --- | --- |
+| `gradlew` / `gradlew.bat` / `gradle/` | Gradle Wrapper |
+| `build.gradle` / `settings.gradle` / `gradle.properties` | 工程与仓库配置 |
+| `local.properties` | 仅含 `sdk.dir=/home/s/Android/Sdk`，无口令 |
+| `app/` | 主模块源码（排除了 `app/build`、`app/.cxx`） |
+| `catvod/` `quickjs/` `chaquo/` `cloud/` | 子模块源码（排除各自 `build/`） |
+| `third_party/` | 预编译原生库与锁定清单 |
+| `README.md` | 本文档 |
+| `.github/` | Actions 工作流（可选） |
+| `secrets/webhtv-release.env` `secrets/webhtv-release.jks` | 发布签名口令与密钥副本（**敏感**，见下方说明） |
+
+未复制：`.git`（199M 历史）、`.gradle`、`.build`、`Release/`、所有 `build/` 产物目录。也就是说副本是「干净源码」，第一次编译会重新生成缓存。`secrets/` 目录里的其它项目密钥（tvbox、fongmi、moontvplus 等）未复制。
+
+在新机器上编译：
+
+```bash
+export JAVA_HOME=/home/s/Android/jdk21
+export PATH="$JAVA_HOME/bin:$PATH"
+cd /media/s/7A3A1DFD3A1DB6DB/REA
+
+./gradlew :app:assembleMobileArm64_v8aRelease --no-daemon
+```
+
+- 不配置签名时会退化为 debug 签名；正式签名按第三节把口令放进 `local.properties` 或环境变量（`WEBHTV_STORE_FILE` 等）。
+- 首次编译依赖需联网下载；`local.properties` 里的 SDK 路径换机后要改。
+- **签名副本**：`secrets/webhtv-release.env` 里的 `WEBHTV_STORE_FILE` 仍指向原机路径 `/home/s/Android/secrets/webhtv-release.jks`。换机后先把该行改成副本内的 `secrets/webhtv-release.jks` 绝对路径，再 `set -a; . secrets/webhtv-release.env; set +a` 构建。
+- **安全提醒**：`/media/s/...` 是外置盘且以 `rwxrwxrwx` 挂载，系统不会按 `600` 生效，口令文件对同机用户可读。仅作本机迁移用；不要把这块盘或 `secrets/` 交给他人，长期存放请用加密卷并定期轮换密钥。
 
 

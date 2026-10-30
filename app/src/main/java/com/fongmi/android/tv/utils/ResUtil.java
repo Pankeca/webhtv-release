@@ -23,6 +23,7 @@ import androidx.annotation.StringRes;
 import androidx.core.content.ContextCompat;
 
 import com.fongmi.android.tv.App;
+import com.fongmi.android.tv.setting.Setting;
 
 public class ResUtil {
 
@@ -79,7 +80,7 @@ public class ResUtil {
     }
 
     public static boolean isPad() {
-        return App.get().getResources().getConfiguration().smallestScreenWidthDp >= 600;
+        return Setting.isPadDevice();
     }
 
     public static int sp2px(int sp) {

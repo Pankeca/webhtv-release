@@ -109,21 +109,20 @@ public class CustomRecyclerView extends RecyclerView {
     @Override
     public boolean dispatchTouchEvent(MotionEvent event) {
         if (event.getPointerCount() != 1) return false;
-        switch (event.getAction()) {
+        switch (event.getActionMasked()) {
             case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
                 x1 = y1 = 0;
                 break;
             case MotionEvent.ACTION_DOWN:
                 x1 = event.getX();
                 y1 = event.getY();
-                getParent().requestDisallowInterceptTouchEvent(true);
                 break;
             case MotionEvent.ACTION_MOVE:
-                float x2 = event.getX();
-                float y2 = event.getY();
-                float offsetX = Math.abs(x2 - x1);
-                float offsetY = Math.abs(y2 - y1);
-                if (offsetX > offsetY && offsetX > touchSlop) getParent().requestDisallowInterceptTouchEvent(false);
+                float offsetX = Math.abs(event.getX() - x1);
+                float offsetY = Math.abs(event.getY() - y1);
+                // 横向为主时由列表自己消费，纵向为主时交还给外层 ScrollView，整页可以一起滚动
+                if (offsetX > touchSlop || offsetY > touchSlop) getParent().requestDisallowInterceptTouchEvent(offsetX > offsetY);
                 break;
         }
         return super.dispatchTouchEvent(event);

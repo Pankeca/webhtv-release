@@ -47,6 +47,7 @@ import com.fongmi.android.tv.utils.FileChooser;
 import com.fongmi.android.tv.utils.MobileWindow;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.PermissionUtil;
+import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.UrlUtil;
 import com.fongmi.android.tv.utils.Util;
 import com.fongmi.android.tv.web.WebHomeChromeStartup;
@@ -101,6 +102,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         PermissionUtil.requestFile(this, allGranted -> { });
         initFragment(savedInstanceState);
         initConfig();
+        mBinding.getRoot().post(this::applyDeviceAdaptation);
     }
 
     @Override
@@ -220,19 +222,39 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         setNavigationVisible(true);
         if (position < 2) selectNavigation(position);
         else changeFragment(position);
+        applyDeviceAdaptation();
     }
 
     public void setNavigationVisible(boolean visible) {
-        RelativeLayout.LayoutParams params = (RelativeLayout.LayoutParams) mBinding.container.getLayoutParams();
         if (visible) {
-            params.addRule(RelativeLayout.ABOVE, R.id.navigation);
-            mBinding.navigation.setVisibility(View.VISIBLE);
-        } else {
-            params.removeRule(RelativeLayout.ABOVE);
-            mBinding.navigation.setVisibility(View.GONE);
+            applyDeviceAdaptation();
+            return;
         }
+        RelativeLayout.LayoutParams params = (RelativeLayout.LayoutParams) mBinding.container.getLayoutParams();
+        params.removeRule(RelativeLayout.ABOVE);
         mBinding.container.setLayoutParams(params);
+        mBinding.navigation.setVisibility(View.GONE);
         mBinding.getRoot().requestApplyInsets();
+    }
+
+    /** 手机横屏：隐藏系统状态栏与底栏，导航按钮移到站点名称旁；平板/竖屏保持原样。 */
+    private void applyDeviceAdaptation() {
+        if (mChrome == null || mManager == null) return;
+        boolean phoneLandscape = isPhoneLandscape();
+        boolean hideNavigation = phoneLandscape && mManager.isVisible(0);
+        mChrome.setAdaptiveLayout(phoneLandscape, hideNavigation);
+        VodFragment fragment = (VodFragment) mManager.getFragment(0);
+        if (fragment != null) fragment.setInlineNavigationVisible(hideNavigation);
+    }
+
+    private boolean isPhoneLandscape() {
+        Configuration configuration = getResources().getConfiguration();
+        return configuration.orientation == Configuration.ORIENTATION_LANDSCAPE && configuration.screenHeightDp < 480 && !ResUtil.isPad();
+    }
+
+    /** 供顶栏内联导航使用，避免直接依赖底栏是否可见。 */
+    public void selectNavigationItem(int itemId) {
+        mBinding.navigation.setSelectedItemId(itemId);
     }
 
     @Subscribe(threadMode = ThreadMode.MAIN)
@@ -289,6 +311,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         boolean changed = mManager.change(position);
         if (changed) currentPosition = position;
         refreshWebHomeChromeLayout();
+        applyDeviceAdaptation();
         return changed;
     }
 
@@ -397,6 +420,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         super.onConfigurationChanged(newConfig);
         if (mChrome != null) mChrome.onConfigurationChanged();
         App.post(this::checkWindowShape, 100);
+        App.post(this::applyDeviceAdaptation, 100);
     }
 
     @Override

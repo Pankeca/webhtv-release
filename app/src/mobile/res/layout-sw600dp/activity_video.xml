@@ -742,7 +742,6 @@
                         android:paddingStart="16dp"
                         android:paddingEnd="16dp"
                         app:layoutManager="androidx.recyclerview.widget.GridLayoutManager"
-                        app:maxHeight="328dp"
                         app:spanCount="6"
                         tools:itemCount="36"
                         tools:listitem="@layout/adapter_episode_grid" />

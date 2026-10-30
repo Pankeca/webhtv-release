@@ -219,7 +219,7 @@ public class DanmakuSetting {
         return Math.max(1, Math.min(5, value));
     }
 
-    private static int getDefaultMaxOnScreen() {
+    public static int getDefaultMaxOnScreen() {
         return Util.isLeanback() ? 80 : 150;
     }
 
@@ -260,7 +260,8 @@ public class DanmakuSetting {
     }
 
     public static boolean isShowBottom() {
-        return Prefers.getBoolean("danmaku_show_bottom", true);
+        // 底部固定弹幕默认关闭：它和播放器底栏叠在一起，默认全开观感很差
+        return Prefers.getBoolean("danmaku_show_bottom", false);
     }
 
     public static void putShowBottom(boolean value) {
@@ -391,7 +392,7 @@ public class DanmakuSetting {
                 .setMaxBottomLines(0)
                 .setShowScroll(isShowScroll())
                 .setShowTop(isShowTop())
-                .setShowBottom(false)
+                .setShowBottom(isShowBottom())
                 .setShowReverse(isShowReverse())
                 .setShowPositioned(isShowPositioned())
                 .setShowSubtitle(isShowSubtitle())

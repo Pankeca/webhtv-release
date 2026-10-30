@@ -24,9 +24,11 @@ import com.google.android.material.textview.MaterialTextView;
 public final class AppearanceDialog extends DialogFragment implements ThemeDialog.Listener {
 
     private String[] uiScales;
+    private String[] deviceModes;
     private String[] languages;
     private String[] imageSizes;
     private MaterialTextView uiScaleValue;
+    private MaterialTextView deviceModeValue;
     private MaterialTextView themeValue;
     private MaterialTextView imageSizeValue;
     private MaterialTextView languageValue;
@@ -39,6 +41,7 @@ public final class AppearanceDialog extends DialogFragment implements ThemeDialo
     @Override
     public Dialog onCreateDialog(@Nullable Bundle savedInstanceState) {
         uiScales = ResUtil.getStringArray(R.array.select_ui_scale);
+        deviceModes = ResUtil.getStringArray(R.array.select_device_mode);
         languages = ResUtil.getStringArray(R.array.select_language);
         imageSizes = ResUtil.getStringArray(R.array.select_size);
         return LightDialog.create(requireContext(), getString(R.string.setting_appearance), createContent(), getString(R.string.dialog_close), null, null, null);
@@ -48,6 +51,7 @@ public final class AppearanceDialog extends DialogFragment implements ThemeDialo
         LinearLayout content = new LinearLayout(requireContext());
         content.setOrientation(LinearLayout.VERTICAL);
         uiScaleValue = addRow(content, R.string.setting_ui_scale, uiScales[Setting.getUiScaleIndex()], this::chooseUiScale);
+        deviceModeValue = addRow(content, R.string.setting_device_mode, deviceModes[Setting.getDeviceModeIndex()], this::chooseDeviceMode);
         themeValue = addRow(content, R.string.setting_theme_color, getThemeText(), view -> ThemeDialog.show(this));
         imageSizeValue = addRow(content, R.string.setting_size, imageSizes[PlayerSetting.getSize()], this::chooseImageSize);
         languageValue = addRow(content, R.string.setting_language, languages[Setting.getLanguageIndex()], this::chooseLanguage);
@@ -93,6 +97,16 @@ public final class AppearanceDialog extends DialogFragment implements ThemeDialo
             if (which == Setting.getUiScaleIndex()) return;
             uiScaleValue.setText(uiScales[which]);
             Setting.putUiScaleIndex(which);
+            dismissAllowingStateLoss();
+            requireActivity().recreate();
+        });
+    }
+
+    private void chooseDeviceMode(View view) {
+        ChoiceDialog.showSingle(this, R.string.setting_device_mode, deviceModes, Setting.getDeviceModeIndex(), which -> {
+            if (which == Setting.getDeviceModeIndex()) return;
+            deviceModeValue.setText(deviceModes[which]);
+            Setting.putDeviceModeIndex(which);
             dismissAllowingStateLoss();
             requireActivity().recreate();
         });

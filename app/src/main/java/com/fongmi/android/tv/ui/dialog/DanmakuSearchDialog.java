@@ -35,11 +35,11 @@ import androidx.fragment.app.FragmentActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.api.DanmakuApi;
 import com.fongmi.android.tv.bean.Danmaku;
 import com.fongmi.android.tv.player.PlayerManager;
+import com.fongmi.android.tv.setting.DanmakuSourceSetting;
 import com.fongmi.android.tv.ui.custom.CustomRecyclerView;
 import com.fongmi.android.tv.utils.KeyUtil;
 import com.fongmi.android.tv.utils.Notify;
@@ -50,17 +50,12 @@ import com.google.android.material.progressindicator.CircularProgressIndicator;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textview.MaterialTextView;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import okhttp3.Call;
-import okhttp3.Callback;
-import okhttp3.Response;
-
-public final class DanmakuSearchDialog extends DialogFragment implements Callback {
+public final class DanmakuSearchDialog extends DialogFragment {
 
     private final ResultAdapter adapter;
     private final Map<String, List<Danmaku>> groups;
@@ -75,7 +70,7 @@ public final class DanmakuSearchDialog extends DialogFragment implements Callbac
     private TextView empty;
     private CharSequence keyword;
     private PlayerManager player;
-    private volatile Call activeCall;
+    private volatile long searchToken;
     private boolean autoSearch;
     private boolean hideKeyword;
     private boolean restoreParent;
@@ -160,7 +155,7 @@ public final class DanmakuSearchDialog extends DialogFragment implements Callbac
     @Override
     public void onDestroyView() {
         super.onDestroyView();
-        activeCall = null;
+        searchToken++;
         DanmakuApi.cancel();
     }
 
@@ -326,7 +321,9 @@ public final class DanmakuSearchDialog extends DialogFragment implements Callbac
     private void onItemClick(Danmaku item) {
         restoreParent = false;
         if (SpiderDebug.isEnabled()) SpiderDebug.log("danmaku", "search item click selected=%s name=%s url=%s", item.isSelected(), item.getName(), item.getUrl());
-        if (player != null) player.setDanmaku(item.isSelected() ? Danmaku.empty() : item);
+        // 点选就是「我要这条」：不再把已选中的那条当成取消，否则点到自己正在用的源
+        // 会走成「清空弹幕」，看起来就是「点了没弹幕」
+        if (player != null) player.selectDanmaku(item);
         dismiss();
     }
 
@@ -368,16 +365,27 @@ public final class DanmakuSearchDialog extends DialogFragment implements Callbac
 
     private void search() {
         showProgress();
-        activeCall = null;
         Util.hideKeyboard(keywordView);
-        Call call = DanmakuApi.newCall(getKeywordText(), getEpisode().toString().trim());
-        if (call == null) {
+        if (DanmakuSourceSetting.getEnabledSources().isEmpty()) {
             hideProgress(true);
             Notify.show(R.string.danmaku_api_invalid);
             return;
         }
-        activeCall = call;
-        call.enqueue(this);
+        long token = ++searchToken;
+        DanmakuApi.searchAll(getKeywordText(), getEpisode().toString().trim(), items -> {
+            if (token != searchToken) return;
+            if (items.isEmpty()) onEmptyResult();
+            else onSuccess(items);
+        }, () -> {
+            if (token != searchToken) return;
+            onEmptyResult();
+        });
+    }
+
+    private void onEmptyResult() {
+        hideProgress(true);
+        Notify.show(ResUtil.getString(R.string.error_empty));
+        if (hideKeyword) dismissAllowingStateLoss();
     }
 
     private void onSuccess(List<Danmaku> items) {
@@ -484,12 +492,6 @@ public final class DanmakuSearchDialog extends DialogFragment implements Callbac
         return recycler.requestFocus();
     }
 
-    private void onError(Exception e) {
-        hideProgress(true);
-        Notify.show(e.getMessage());
-        if (hideKeyword) dismissAllowingStateLoss();
-    }
-
     private String normalizeSource(String source) {
         if (TextUtils.isEmpty(source)) return "";
         return source.matches("[A-Za-z0-9_\\-]+") ? source.toUpperCase() : source;
@@ -552,24 +554,6 @@ public final class DanmakuSearchDialog extends DialogFragment implements Callbac
                 new int[]{Color.WHITE, Color.WHITE, Color.parseColor("#E6FFFFFF")});
     }
 
-    @Override
-    public void onResponse(@NonNull Call call, @NonNull Response response) {
-        if (call != activeCall) return;
-        try {
-            String body = response.body() == null ? "" : response.body().string();
-            List<Danmaku> items = DanmakuApi.arrayFrom(body);
-            if (items.isEmpty()) throw new Exception(ResUtil.getString(R.string.error_empty));
-            App.post(() -> onSuccess(items));
-        } catch (Exception e) {
-            App.post(() -> onError(e));
-        }
-    }
-
-    @Override
-    public void onFailure(@NonNull Call call, @NonNull IOException e) {
-        if (call != activeCall) return;
-        App.post(() -> onError(e));
-    }
 
     private int dp(int value) {
         return ResUtil.dp2px(value);

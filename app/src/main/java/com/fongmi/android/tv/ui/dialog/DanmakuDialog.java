@@ -19,6 +19,7 @@ import com.fongmi.android.tv.bean.Danmaku;
 import com.fongmi.android.tv.databinding.DialogDanmakuBinding;
 import com.fongmi.android.tv.player.PlayerManager;
 import com.fongmi.android.tv.setting.DanmakuSetting;
+import com.fongmi.android.tv.setting.DanmakuSourceSetting;
 import com.fongmi.android.tv.ui.adapter.DanmakuAdapter;
 import com.fongmi.android.tv.ui.custom.SpaceItemDecoration;
 import com.fongmi.android.tv.utils.FileChooser;
@@ -96,7 +97,7 @@ public final class DanmakuDialog extends BaseBottomSheetDialog implements Danmak
         FragmentActivity activity = getActivity();
         if (activity == null) return;
         // 没配弹幕接口时给出提示，避免点搜索后没有任何反应
-        if (!DanmakuSetting.hasValidApiUrl()) {
+        if (DanmakuSourceSetting.getEnabledSources().isEmpty()) {
             Notify.show(R.string.danmaku_api_invalid);
             return;
         }
@@ -123,7 +124,9 @@ public final class DanmakuDialog extends BaseBottomSheetDialog implements Danmak
 
     @Override
     public void onItemClick(Danmaku item) {
-        player.setDanmaku(item.isSelected() ? Danmaku.empty() : item);
+        // 与搜索结果一致：点选即加载。关弹幕由上面的「加载弹幕」开关负责，
+        // 不再用「点到已选那条 = 清空」这种隐式行为
+        if (player != null) player.selectDanmaku(item);
         dismiss();
     }
 

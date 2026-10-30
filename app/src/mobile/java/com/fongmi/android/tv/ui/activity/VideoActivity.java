@@ -145,6 +145,7 @@ import com.fongmi.android.tv.ui.dialog.CastDialog;
 import com.fongmi.android.tv.ui.dialog.CodecCapabilityDialog;
 import com.fongmi.android.tv.ui.dialog.ControlDialog;
 import com.fongmi.android.tv.ui.dialog.DanmakuDialog;
+import com.fongmi.android.tv.ui.dialog.DanmakuSettingDialog;
 import com.fongmi.android.tv.ui.dialog.EpisodeGridDialog;
 import com.fongmi.android.tv.ui.dialog.EpisodeListDialog;
 import com.fongmi.android.tv.ui.dialog.InfoDialog;
@@ -307,6 +308,9 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     private String mArtworkRequestOwner;
     private Vod mPendingDetailVod;
     private Result mPendingPlayerResult;
+    /** 横竖屏重建前缓存详情，重建后直接本地恢复，避免二次请求导致选集丢失。 */
+    private static Vod sRotationDetail;
+    private static String sRotationDetailKey;
     private int mAudioArtworkColor = Color.rgb(55, 45, 68);
     private final Map<String, String> mAudioQueueFlags = new HashMap<>();
     private final Map<String, String> mAudioQueueTitles = new HashMap<>();
@@ -345,7 +349,6 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     private int mLyricsSearchSeq;
     private int mAudioQueueSearchSeq;
     private int mAudioPlaylistCurrentIndex = -1;
-    private int mEpisodeMaxHeight;
     private int mAudioBackgroundRandomNonce;
     private Runnable mR1;
     private Runnable mR2;
@@ -639,8 +642,22 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         setLut();
         applyDeferredFullscreenOrientation();
         checkLand();
+        if (mRestoringConfigurationPlayback) restoreRotationPlayback();
         if (consumePendingPlaybackResult()) return;
         checkId();
+    }
+
+    /**
+     * 横竖屏重建后：用缓存详情恢复选集，并把新的 PlayerView 重新绑回仍在播放的 Player，
+     * 否则视频只有声音没有画面，选集也会因为重新请求失败而整片消失。
+     */
+    private void restoreRotationPlayback() {
+        Vod detail = sRotationDetail;
+        String key = sRotationDetailKey;
+        sRotationDetail = null;
+        sRotationDetailKey = null;
+        if (detail != null && TextUtils.equals(key, getHistoryKey())) mPendingDetailVod = detail;
+        if (!player().isEmpty()) setRender();
     }
 
     @Override
@@ -875,7 +892,11 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         mBinding.control.right.lock.setOnClickListener(view -> onLock());
         mBinding.control.right.rotate.setOnClickListener(view -> onRotate());
         mBinding.control.fullscreen.setOnClickListener(view -> onFullscreen());
-        mBinding.control.danmaku.setOnClickListener(view -> onDanmakuShow());
+        mBinding.control.danmaku.setOnClickListener(view -> onDanmakuSetting());
+        mBinding.control.danmaku.setOnLongClickListener(view -> {
+            onDanmakuShow();
+            return true;
+        });
         mBinding.control.action.text.setOnClickListener(this::onTrack);
         mBinding.control.action.audio.setOnClickListener(this::onTrack);
         mBinding.control.action.video.setOnClickListener(this::onTrack);
@@ -908,11 +929,12 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         mBinding.control.action.danmaku.setOnClickListener(view -> {
             // 长按刚结束时会补发一次 click，这里直接忽略，避免同时切换开关
             if (System.currentTimeMillis() - mDanmakuLongClickTime < 1500) return;
-            onDanmakuShow();
+            onDanmakuSetting();
         });
         mBinding.control.action.danmaku.setOnLongClickListener(view -> {
+            // 长按保留原来的「快速开关」，单击改成打开弹幕设置面板
             mDanmakuLongClickTime = System.currentTimeMillis();
-            onDanmaku();
+            onDanmakuShow();
             return true;
         });
         mBinding.control.action.episodes.setOnClickListener(view -> onEpisodes());
@@ -954,6 +976,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         lp.height = mAudioStageVisible ? 0 : top;
         mBinding.statusBar.setLayoutParams(lp);
         setEpisodeBottomInset(bottom);
+        mBinding.getRoot().post(this::applyVideoFrameSize);
         return insets;
     }
 
@@ -971,7 +994,6 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         int padding = ResUtil.dp2px(12);
         mBinding.episode.setPaddingRelative(mBinding.episode.getPaddingStart(), mBinding.episode.getPaddingTop(), mBinding.episode.getPaddingEnd(), padding);
         applyAudioStageInsets();
-        mBinding.episode.post(this::updateEpisodeViewportHeight);
     }
 
     private void applyAudioStageInsets() {
@@ -989,19 +1011,6 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         params.topMargin = top;
         params.setMarginEnd(end);
         mBinding.audioBackgroundAction.setLayoutParams(params);
-    }
-
-    private void updateEpisodeViewportHeight() {
-        if (mBinding.episode.getVisibility() != View.VISIBLE || mBinding.getRoot().getHeight() <= 0) return;
-        int[] root = new int[2];
-        int[] episode = new int[2];
-        mBinding.getRoot().getLocationOnScreen(root);
-        mBinding.episode.getLocationOnScreen(episode);
-        int available = root[1] + mBinding.getRoot().getHeight() - mEpisodeBottomInset - ResUtil.dp2px(8) - episode[1];
-        if (available <= 0 || available == mEpisodeMaxHeight) return;
-        mEpisodeMaxHeight = available;
-        mBinding.episode.setMaxHeight(available);
-        mBinding.episode.requestLayout();
     }
 
     @Override
@@ -1098,6 +1107,8 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         mBinding.control.action.danmaku.setVisibility(View.VISIBLE);
         mBinding.control.action.reset.setText(ResUtil.getStringArray(R.array.select_reset)[Setting.getReset()]);
         setupActionButtons();
+        mBinding.getRoot().addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> applyVideoFrameSize());
+        mBinding.video.post(this::applyVideoFrameSize);
         mBinding.video.addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
             mPiP.update(this, view);
             updateCustomButtonLayout();
@@ -1108,6 +1119,49 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
                     + " scale=" + getScale()
                     + " player=" + (service() == null ? "none" : player().getPlayerText()));
         });
+    }
+
+    /** 详情页视频窗口按可用空间与 16:9 自适应：竖屏按宽度算高度，横屏按可用高度收缩，给右侧信息区与选集留出空间。 */
+    private void applyVideoFrameSize() {
+        if (mBinding == null || isFullscreen() || isInPictureInPictureMode()) return;
+        int rootWidth = mBinding.getRoot().getWidth();
+        int rootHeight = mBinding.getRoot().getHeight();
+        if (rootWidth <= 0 || rootHeight <= 0) return;
+        int statusBar = mBinding.statusBar.getHeight();
+        if (isPort()) {
+            int height = Math.round(rootWidth * 9f / 16f);
+            int maxHeight = Math.round((rootHeight - statusBar) * 0.44f);
+            height = Math.min(height, Math.max(dp(180), maxHeight));
+            setVideoFrameSize(ViewGroup.LayoutParams.MATCH_PARENT, height);
+        } else {
+            int margin = dp(16);
+            int availWidth = rootWidth - margin * 2;
+            int availHeight = rootHeight - statusBar - margin * 2;
+            int width;
+            if (ResUtil.isPad()) {
+                // 平板沿用原设计尺寸，仅在可用宽度不足时收缩
+                width = Math.min(dp(400), availWidth);
+            } else {
+                width = Math.min(Math.round(availWidth * 0.44f), Math.round(availHeight * 16f / 9f));
+                width = Math.max(dp(240), Math.min(width, availWidth));
+            }
+            setVideoFrameSize(width, Math.round(width * 9f / 16f));
+        }
+    }
+
+    private void setVideoFrameSize(int width, int height) {
+        if (mFrameParams == null || (mFrameParams.width == width && mFrameHeight == height)) return;
+        mFrameParams.width = width;
+        mFrameHeight = height;
+        mFrameParams.height = mAudioStageVisible && isPort() ? 0 : height;
+        if (!isFullscreen()) mBinding.video.setLayoutParams(mFrameParams);
+        if (!isPort() && mBinding.videoShadow != null) {
+            ViewGroup.LayoutParams shadow = mBinding.videoShadow.getLayoutParams();
+            if (shadow.width != width) {
+                shadow.width = width;
+                mBinding.videoShadow.setLayoutParams(shadow);
+            }
+        }
     }
 
     private void setupActionButtons() {
@@ -2033,7 +2087,6 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         mEpisodeGroupAdapter.addAll(groups);
         mBinding.episodeGroup.setVisibility(groups.size() > 1 ? View.VISIBLE : View.GONE);
         setEpisodeItems(items);
-        mBinding.episode.post(this::updateEpisodeViewportHeight);
         if (mAudioStageVisible) applyAudioPageMode(true);
         updateAudioStageControls();
     }
@@ -2077,16 +2130,36 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
 
     private void scrollEpisodeToPosition(int position) {
         RecyclerView.LayoutManager manager = mBinding.episode.getLayoutManager();
-        if (manager instanceof GridLayoutManager) {
-            int rowStart = getEpisodeRowStart((GridLayoutManager) manager, position);
-            int offset = rowStart >= ((GridLayoutManager) manager).getSpanCount() ? -ResUtil.dp2px(4) : 0;
-            ((GridLayoutManager) manager).scrollToPositionWithOffset(rowStart, offset);
-        }
-        else mBinding.episode.scrollToPosition(position);
+        int target = manager instanceof GridLayoutManager ? getEpisodeRowStart((GridLayoutManager) manager, position) : position;
+        mBinding.episode.post(() -> ensureEpisodeVisible(target, 0));
     }
 
     private void scrollEpisodeToSelected() {
         mBinding.episode.post(() -> scrollEpisodeToPosition(mEpisodeAdapter.getPosition()));
+    }
+
+    /** 选集整表展开后自身不再滚动，改为滚动外层详情页，让选中集数进入可视区。 */
+    private void ensureEpisodeVisible(int position, int attempt) {
+        if (mBinding == null || mEpisodeAdapter == null) return;
+        if (mBinding.episode.getVisibility() != View.VISIBLE) return;
+        if (position < 0 || position >= mEpisodeAdapter.getItemCount()) return;
+        // 页面还在顶部时不主动抢滚动，避免刚进详情页就跳离视频和站点栏
+        if (mBinding.scroll.getScrollY() <= 0) return;
+        RecyclerView.ViewHolder holder = mBinding.episode.findViewHolderForAdapterPosition(position);
+        if (holder == null) {
+            if (attempt < 3) mBinding.episode.post(() -> ensureEpisodeVisible(position, attempt + 1));
+            return;
+        }
+        int[] scrollPos = new int[2];
+        int[] itemPos = new int[2];
+        mBinding.scroll.getLocationInWindow(scrollPos);
+        holder.itemView.getLocationInWindow(itemPos);
+        int itemTop = itemPos[1] - scrollPos[1] + mBinding.scroll.getScrollY();
+        int itemBottom = itemTop + holder.itemView.getHeight();
+        int visibleTop = mBinding.scroll.getScrollY();
+        int visibleBottom = visibleTop + mBinding.scroll.getHeight() - mBinding.scroll.getPaddingTop() - mBinding.scroll.getPaddingBottom();
+        if (itemTop >= visibleTop && itemBottom <= visibleBottom) return;
+        mBinding.scroll.smoothScrollTo(0, Math.max(0, itemTop - mBinding.scroll.getHeight() / 3));
     }
 
     private int getEpisodeRowStart(GridLayoutManager manager, int position) {
@@ -3377,6 +3450,17 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
 
     private void onDanmaku() {
         DanmakuDialog.create().player(player()).show(this);
+        hideControl();
+    }
+
+    /**
+     * 底栏弹幕按钮的统一入口：打开弹幕设置面板（总开关 + 来源 + 显示 + 时序）。
+     *
+     * <p>以前这里是「点一下切显示/隐藏」，用户既看不到来源，也调不了外观，还会出现
+     * 「弹幕被关掉了还以为坏了」的情况；面板里带总开关，体验参照 NewBox 的弹幕控制面板。
+     */
+    private void onDanmakuSetting() {
+        DanmakuSettingDialog.create().player(player()).show(this);
         hideControl();
     }
 
@@ -7055,7 +7139,6 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
             if (flag != null) setEpisodeItems(flag.getEpisodes());
         }
         scrollEpisodeToSelected();
-        mBinding.episode.post(this::updateEpisodeViewportHeight);
     }
 
     @Override
@@ -7250,13 +7333,36 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
             ((FlexboxLayoutManager) mSiteList.getLayoutManager()).setFlexWrap(FlexWrap.NOWRAP);
         }
         if (shouldRecreateAudioStageForOrientation(newConfig)) {
+            cacheRotationDetail();
             setAudioOnly(true);
+            recreate();
+            return;
+        }
+        if (shouldRecreateForOrientation(newConfig)) {
+            cacheRotationDetail();
             recreate();
             return;
         }
         syncFullscreenForOrientation(newConfig.orientation);
         setupCustomActionButtons();
+        mBinding.getRoot().post(this::applyVideoFrameSize);
         if (isFullscreen()) Util.hideSystemUI(this);
+    }
+
+    /**
+     * 手机上的竖屏/横屏布局是两套资源；manifest 声明了 orientation 不重建，旋转后必须主动重建才能换布局。
+     * 平板（sw600dp）横竖屏共用 land 布局，不重建。
+     */
+    private boolean shouldRecreateForOrientation(Configuration config) {
+        if (config == null || isInPictureInPictureMode() || ResUtil.isPad()) return false;
+        int layoutOrientation = isPort() ? Configuration.ORIENTATION_PORTRAIT : Configuration.ORIENTATION_LANDSCAPE;
+        return config.orientation != Configuration.ORIENTATION_UNDEFINED && config.orientation != layoutOrientation;
+    }
+
+    private void cacheRotationDetail() {
+        if (mCurrentVod == null) return;
+        sRotationDetail = mCurrentVod;
+        sRotationDetailKey = getHistoryKey();
     }
 
     private void syncFullscreenForOrientation(int orientation) {

@@ -674,9 +674,10 @@
     <string name="setting_theme_solid">护眼纯色皮肤</string>
     <string name="setting_reset">重置</string>
     <string name="setting_appearance">外观与语言</string>
-    <string name="setting_appearance_summary">4 项</string>
+    <string name="setting_appearance_summary">5 项</string>
     <string name="setting_auto">自动</string>
     <string name="setting_custom">自定义</string>
+    <string name="setting_device_mode">设备模式</string>
     <string name="setting_language">语言</string>
     <string name="setting_size">图片尺寸</string>
     <string name="setting_ui_scale">界面大小</string>
@@ -1123,6 +1124,44 @@
     <string name="danmaku_api_hint">https://域名/danmaku 或 …?name={name}&amp;episode={episode}</string>
     <string name="danmaku_auto_load">自动搜索</string>
     <string name="danmaku_spider_first">爬虫优先</string>
+    <string name="danmaku_source">弹幕来源</string>
+    <string name="danmaku_source_add">添加来源</string>
+    <string name="danmaku_source_edit">编辑</string>
+    <string name="danmaku_source_delete">删除</string>
+    <string name="danmaku_source_move_up">上移</string>
+    <string name="danmaku_source_move_down">下移</string>
+    <string name="danmaku_source_merge">合并所有来源</string>
+    <string name="danmaku_source_empty">还没有弹幕来源</string>
+    <string name="danmaku_source_name_hint">名称（可留空）</string>
+    <string name="danmaku_source_invalid">请填写有效的弹幕接口地址</string>
+    <string name="danmaku_source_count">%1$d 个来源</string>
+    <string name="danmaku_source_desc">顺序即优先级，不确定哪个能用就点「测速」</string>
+    <string name="danmaku_source_test">测速</string>
+    <string name="danmaku_source_test_all">全部测速</string>
+    <string name="danmaku_source_presets">内置源</string>
+    <string name="danmaku_source_untested">未测速</string>
+    <string name="danmaku_source_testing">测速中</string>
+    <string name="danmaku_source_presets_added">已添加 %1$d 个内置源</string>
+    <string name="danmaku_source_presets_none">内置源都已添加</string>
+    <string name="danmaku_presets_title">内置源（%1$d 条）</string>
+    <string name="danmaku_presets_item">%1$s · %2$s</string>
+    <string name="danmaku_presets_item_added">%1$s · %2$s（已添加）</string>
+    <string name="danmaku_presets_added_one">已添加「%1$s」</string>
+    <string name="danmaku_presets_exists">「%1$s」已经在列表里了</string>
+    <string name="danmaku_presets_primary">添加主力源</string>
+    <string name="danmaku_load_failed">弹幕加载失败，换一个来源再试</string>
+    <string name="danmaku_load_empty">这个来源没有弹幕数据</string>
+    <string name="danmaku_group_basic">基础</string>
+    <string name="danmaku_group_source">来源</string>
+    <string name="danmaku_group_match">匹配</string>
+    <string name="danmaku_load_desc">关闭后所有弹幕来源都不生效</string>
+    <string name="danmaku_auto_desc">播放时自动匹配这部剧的弹幕</string>
+    <string name="danmaku_spider_desc">优先使用站点自带的弹幕</string>
+    <string name="danmaku_source_status">%1$d 个来源 · 已启用 %2$d</string>
+    <string name="danmaku_search_title">搜索弹幕</string>
+    <string name="danmaku_search_desc">按剧名与集数在线查找</string>
+    <string name="danmaku_display_type">显示类型</string>
+    <string name="danmaku_load_timeout">弹幕加载超时，换个来源试试</string>
 
     <!-- Search -->
     <string name="search_keyword">关键字…</string>
@@ -1320,6 +1359,12 @@
         <item>紧凑</item>
         <item>更紧凑</item>
         <item>更小</item>
+    </string-array>
+
+    <string-array name="select_device_mode">
+        <item>自动</item>
+        <item>手机</item>
+        <item>平板</item>
     </string-array>
 
     <string-array name="select_language">

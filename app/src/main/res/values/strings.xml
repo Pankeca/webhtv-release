@@ -676,9 +676,10 @@
     <string name="setting_theme_solid">Eye-care solid colors</string>
     <string name="setting_reset">Reset</string>
     <string name="setting_appearance">Appearance &amp; language</string>
-    <string name="setting_appearance_summary">4 options</string>
+    <string name="setting_appearance_summary">5 options</string>
     <string name="setting_auto">Auto</string>
     <string name="setting_custom">Custom</string>
+    <string name="setting_device_mode">Device mode</string>
     <string name="setting_language">Language</string>
     <string name="setting_size">Image size</string>
     <string name="setting_ui_scale">Interface size</string>
@@ -1125,6 +1126,44 @@
     <string name="danmaku_api_hint">https://host/danmaku or …?name={name}&amp;episode={episode}</string>
     <string name="danmaku_auto_load">Auto search</string>
     <string name="danmaku_spider_first">Spider first</string>
+    <string name="danmaku_source">Danmaku sources</string>
+    <string name="danmaku_source_add">Add source</string>
+    <string name="danmaku_source_edit">Edit</string>
+    <string name="danmaku_source_delete">Delete</string>
+    <string name="danmaku_source_move_up">Up</string>
+    <string name="danmaku_source_move_down">Down</string>
+    <string name="danmaku_source_merge">Merge all sources</string>
+    <string name="danmaku_source_empty">No danmaku source yet</string>
+    <string name="danmaku_source_name_hint">Name (optional)</string>
+    <string name="danmaku_source_invalid">Enter a valid danmaku API URL</string>
+    <string name="danmaku_source_count">%1$d sources</string>
+    <string name="danmaku_source_desc">Order is priority. Tap Test if unsure which one works</string>
+    <string name="danmaku_source_test">Test</string>
+    <string name="danmaku_source_test_all">Test all</string>
+    <string name="danmaku_source_presets">Built-in</string>
+    <string name="danmaku_source_untested">Not tested</string>
+    <string name="danmaku_source_testing">Testing</string>
+    <string name="danmaku_source_presets_added">Added %1$d built-in sources</string>
+    <string name="danmaku_source_presets_none">All built-in sources already added</string>
+    <string name="danmaku_presets_title">Built-in sources (%1$d)</string>
+    <string name="danmaku_presets_item">%1$s · %2$s</string>
+    <string name="danmaku_presets_item_added">%1$s · %2$s  (added)</string>
+    <string name="danmaku_presets_added_one">Added \"%1$s\"</string>
+    <string name="danmaku_presets_exists">\"%1$s\" is already in the list</string>
+    <string name="danmaku_presets_primary">Add main sources</string>
+    <string name="danmaku_load_failed">Failed to load danmaku, try another source</string>
+    <string name="danmaku_load_empty">This source has no danmaku data</string>
+    <string name="danmaku_group_basic">Basic</string>
+    <string name="danmaku_group_source">Sources</string>
+    <string name="danmaku_group_match">Matching</string>
+    <string name="danmaku_load_desc">When off, no source is used</string>
+    <string name="danmaku_auto_desc">Match danmaku automatically on playback</string>
+    <string name="danmaku_spider_desc">Prefer danmaku provided by the site</string>
+    <string name="danmaku_source_status">%1$d sources · %2$d on</string>
+    <string name="danmaku_search_title">Search danmaku</string>
+    <string name="danmaku_search_desc">Find danmaku by title and episode</string>
+    <string name="danmaku_display_type">Display type</string>
+    <string name="danmaku_load_timeout">Danmaku is taking too long, try another source</string>
 
     <!-- Search -->
     <string name="search_keyword">Keywords…</string>
@@ -1328,6 +1367,12 @@
         <item>Compact</item>
         <item>More compact</item>
         <item>Smaller</item>
+    </string-array>
+
+    <string-array name="select_device_mode">
+        <item>Auto</item>
+        <item>Phone</item>
+        <item>Tablet</item>
     </string-array>
 
     <string-array name="select_language">

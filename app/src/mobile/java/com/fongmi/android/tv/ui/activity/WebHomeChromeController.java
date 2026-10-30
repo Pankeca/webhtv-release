@@ -47,6 +47,8 @@ final class WebHomeChromeController {
     private String mode;
     private String previousMode;
     private int safeBottomMax;
+    private boolean adaptivePhoneLandscape;
+    private boolean adaptiveHideNavigation;
 
     WebHomeChromeController(HomeActivity activity, ActivityHomeBinding binding, Host host, Bundle savedInstanceState, JsonObject startupChrome) {
         this.activity = activity;
@@ -114,6 +116,13 @@ final class WebHomeChromeController {
         dispatchViewport();
     }
 
+    /** 手机横屏适配：隐藏状态栏，并在首页隐藏底栏由顶栏内联导航替代。 */
+    void setAdaptiveLayout(boolean phoneLandscape, boolean hideNavigation) {
+        adaptivePhoneLandscape = phoneLandscape;
+        adaptiveHideNavigation = hideNavigation;
+        refreshLayout();
+    }
+
     boolean consumeBack() {
         if (!isActive() || !isImmersive()) return false;
         if (WebHomeChromeOptions.RESTORE_NONE.equals(options.restoreAffordance)) return false;
@@ -164,7 +173,13 @@ final class WebHomeChromeController {
         controller.setAppearanceLightStatusBars(useDarkIcons(effectiveOptions.statusBarStyle));
         controller.setAppearanceLightNavigationBars(useDarkIcons(effectiveOptions.navigationBarStyle));
         if (WebHomeChrome.IMMERSIVE.equals(effectiveMode)) Util.hideSystemUI(activity);
-        else Util.showSystemUI(activity);
+        else {
+            Util.showSystemUI(activity);
+            if (adaptivePhoneLandscape) {
+                controller.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                controller.hide(WindowInsetsCompat.Type.statusBars());
+            }
+        }
     }
 
     private void applyCutoutMode() {
@@ -177,11 +192,12 @@ final class WebHomeChromeController {
     private void applyLayout() {
         boolean active = isActive();
         boolean normal = !active || WebHomeChrome.NORMAL.equals(mode);
-        binding.navigation.setVisibility(normal ? View.VISIBLE : View.GONE);
+        boolean showNavigation = normal && !adaptiveHideNavigation;
+        binding.navigation.setVisibility(showNavigation ? View.VISIBLE : View.GONE);
         WebHomeViewport current = buildViewport();
         int top = normal ? current.getSafeTop() : 0;
         int bottom = normal ? current.getSafeBottom() : 0;
-        binding.container.setPadding(0, top, 0, 0);
+        binding.container.setPadding(0, top, 0, showNavigation ? 0 : bottom);
         binding.navigation.setPadding(0, 0, 0, bottom);
         ViewGroup.LayoutParams params = binding.navigation.getLayoutParams();
         int height = navigationBaseHeight + bottom;
@@ -190,7 +206,7 @@ final class WebHomeChromeController {
             binding.navigation.setLayoutParams(params);
         }
         RelativeLayout.LayoutParams container = (RelativeLayout.LayoutParams) binding.container.getLayoutParams();
-        if (binding.navigation.getVisibility() == View.VISIBLE) container.addRule(RelativeLayout.ABOVE, binding.navigation.getId());
+        if (showNavigation) container.addRule(RelativeLayout.ABOVE, binding.navigation.getId());
         else container.removeRule(RelativeLayout.ABOVE);
         binding.container.setLayoutParams(container);
     }

@@ -179,6 +179,15 @@ public class Danmaku {
         return value.length() > 18 ? value.substring(0, 18) : value;
     }
 
+    /** 该条弹幕来自哪个弹幕服务；多来源合并时用于结果分组。 */
+    public String getApiSourceName() {
+        return apiSourceName == null ? "" : apiSourceName;
+    }
+
+    public void setApiSourceName(String apiSourceName) {
+        this.apiSourceName = apiSourceName;
+    }
+
     public boolean isSelected() {
         return selected;
     }

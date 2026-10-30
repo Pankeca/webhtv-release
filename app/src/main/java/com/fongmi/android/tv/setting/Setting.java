@@ -56,6 +56,11 @@ public class Setting {
     public static final int UI_SCALE_MORE_COMPACT = 5;
     private static final int[] UI_SCALE_OPTIONS = {UI_SCALE_FOLLOW_SYSTEM, UI_SCALE_STANDARD, UI_SCALE_MILD_COMPACT, UI_SCALE_COMPACT, UI_SCALE_MORE_COMPACT, UI_SCALE_SMALLER};
 
+    public static final int DEVICE_MODE_AUTO = 0;
+    public static final int DEVICE_MODE_PHONE = 1;
+    public static final int DEVICE_MODE_TABLET = 2;
+    private static final int[] DEVICE_MODE_OPTIONS = {DEVICE_MODE_AUTO, DEVICE_MODE_PHONE, DEVICE_MODE_TABLET};
+
     public static final int WALL_CINEMA = 5;
     public static final int WALL_CINEMA_WARM = 6;
     public static final int WALL_CINEMA_MOSS = 7;
@@ -471,7 +476,49 @@ public class Setting {
     }
 
     public static Context wrapDisplay(Context context) {
-        return wrapUiScale(wrapLanguage(context));
+        return wrapDeviceMode(wrapUiScale(wrapLanguage(context)));
+    }
+
+    /** 自动 / 手机 / 平板：手动模式通过改写 smallestScreenWidthDp 强制走对应的布局资源。 */
+    public static int getDeviceMode() {
+        int mode = Prefers.getInt("device_mode", DEVICE_MODE_AUTO);
+        return isDeviceMode(mode) ? mode : DEVICE_MODE_AUTO;
+    }
+
+    public static void putDeviceMode(int mode) {
+        Prefers.put("device_mode", isDeviceMode(mode) ? mode : DEVICE_MODE_AUTO);
+    }
+
+    public static int getDeviceModeIndex() {
+        int mode = getDeviceMode();
+        for (int i = 0; i < DEVICE_MODE_OPTIONS.length; i++) if (DEVICE_MODE_OPTIONS[i] == mode) return i;
+        return DEVICE_MODE_AUTO;
+    }
+
+    public static void putDeviceModeIndex(int index) {
+        putDeviceMode(index >= 0 && index < DEVICE_MODE_OPTIONS.length ? DEVICE_MODE_OPTIONS[index] : DEVICE_MODE_AUTO);
+    }
+
+    public static boolean isPadDevice() {
+        int mode = getDeviceMode();
+        if (mode == DEVICE_MODE_PHONE) return false;
+        if (mode == DEVICE_MODE_TABLET) return true;
+        return App.get().getResources().getConfiguration().smallestScreenWidthDp >= 600;
+    }
+
+    private static boolean isDeviceMode(int mode) {
+        for (int option : DEVICE_MODE_OPTIONS) if (option == mode) return true;
+        return false;
+    }
+
+    private static Context wrapDeviceMode(Context context) {
+        int mode = getDeviceMode();
+        if (mode == DEVICE_MODE_AUTO) return context;
+        Configuration config = new Configuration(context.getResources().getConfiguration());
+        int target = mode == DEVICE_MODE_PHONE ? Math.min(config.smallestScreenWidthDp, 599) : Math.max(config.smallestScreenWidthDp, 600);
+        if (target == config.smallestScreenWidthDp) return context;
+        config.smallestScreenWidthDp = target;
+        return context.createConfigurationContext(config);
     }
 
     public static Context wrapLanguage(Context context) {

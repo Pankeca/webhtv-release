@@ -2,8 +2,10 @@ package com.fongmi.android.tv.ui.fragment;
 
 import android.content.res.Configuration;
 import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.LayerDrawable;
 import android.text.TextUtils;
+import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.Menu;
@@ -14,6 +16,9 @@ import android.view.ViewGroup;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.appcompat.widget.AppCompatImageView;
+import androidx.appcompat.widget.LinearLayoutCompat;
+import androidx.appcompat.widget.Toolbar;
 import androidx.core.content.ContextCompat;
 import androidx.core.graphics.drawable.DrawableCompat;
 import androidx.fragment.app.Fragment;
@@ -25,6 +30,7 @@ import androidx.viewpager.widget.PagerAdapter;
 import androidx.viewpager.widget.ViewPager;
 
 import com.fongmi.android.tv.R;
+import com.fongmi.android.tv.api.config.LiveConfig;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.Class;
 import com.fongmi.android.tv.bean.Config;
@@ -84,6 +90,8 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
     private Result mResult;
     private String mChromeMode = WebHomeChrome.NORMAL;
     private int mHomeWebTopMargin;
+    private int mToolbarHeight;
+    private LinearLayoutCompat mInlineNavigation;
 
     public static VodFragment newInstance() {
         return new VodFragment();
@@ -119,6 +127,7 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
         setLogo();
         updateToolbarMenu();
         updateAccountIcon();
+        mToolbarHeight = mBinding.toolbar.getLayoutParams().height;
         applySmallScreenLayout();
     }
 
@@ -134,6 +143,55 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
             mBinding.toolbar.setLayoutParams(params);
             mBinding.type.setPadding(mBinding.type.getPaddingStart(), 0, mBinding.type.getPaddingEnd(), ResUtil.dp2px(4));
         }
+    }
+
+    /** 手机横屏隐藏底栏后，把「影视 / 直播 / 设置」放到站点名标题后面。 */
+    public void setInlineNavigationVisible(boolean visible) {
+        if (mInlineNavigation == null) {
+            if (!visible || getContext() == null || mBinding == null) return;
+            mInlineNavigation = new LinearLayoutCompat(requireContext());
+            mInlineNavigation.setOrientation(LinearLayoutCompat.HORIZONTAL);
+            mInlineNavigation.setGravity(Gravity.CENTER_VERTICAL);
+            mInlineNavigation.setPadding(ResUtil.dp2px(4), 0, ResUtil.dp2px(4), 0);
+            mInlineNavigation.setBackground(createInlineNavigationBackground());
+            addInlineNavigationItem(R.drawable.ic_nav_vod, R.id.vod);
+            addInlineNavigationItem(R.drawable.ic_nav_live, R.id.live);
+            addInlineNavigationItem(R.drawable.ic_nav_setting, R.id.setting);
+            Toolbar.LayoutParams params = new Toolbar.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ResUtil.dp2px(40));
+            params.gravity = Gravity.START | Gravity.CENTER_VERTICAL;
+            params.setMarginStart(ResUtil.dp2px(4));
+            params.setMarginEnd(ResUtil.dp2px(8));
+            mBinding.toolbar.addView(mInlineNavigation, params);
+        }
+        if (mInlineNavigation == null) return;
+        mInlineNavigation.setVisibility(visible ? View.VISIBLE : View.GONE);
+        ViewGroup.LayoutParams params = mBinding.toolbar.getLayoutParams();
+        params.height = visible ? ResUtil.dp2px(44) : mToolbarHeight;
+        mBinding.toolbar.setLayoutParams(params);
+        View live = mInlineNavigation.getChildAt(1);
+        if (live != null) live.setVisibility(LiveConfig.hasUrl() ? View.VISIBLE : View.GONE);
+    }
+
+    private Drawable createInlineNavigationBackground() {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setColor(0x26FFFFFF);
+        drawable.setCornerRadius(ResUtil.dp2px(20));
+        return drawable;
+    }
+
+    private void addInlineNavigationItem(int icon, int itemId) {
+        AppCompatImageView view = new AppCompatImageView(requireContext());
+        view.setImageResource(icon);
+        view.setColorFilter(ContextCompat.getColor(requireContext(), R.color.white));
+        TypedValue value = new TypedValue();
+        if (requireContext().getTheme().resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, value, true)) view.setBackgroundResource(value.resourceId);
+        view.setScaleType(android.widget.ImageView.ScaleType.CENTER);
+        view.setPadding(ResUtil.dp2px(9), ResUtil.dp2px(9), ResUtil.dp2px(9), ResUtil.dp2px(9));
+        view.setOnClickListener(v -> ((HomeActivity) requireActivity()).selectNavigationItem(itemId));
+        LinearLayoutCompat.LayoutParams params = new LinearLayoutCompat.LayoutParams(ResUtil.dp2px(38), ResUtil.dp2px(38));
+        params.setMarginStart(ResUtil.dp2px(1));
+        params.setMarginEnd(ResUtil.dp2px(1));
+        mInlineNavigation.addView(view, params);
     }
 
     @Override
@@ -201,6 +259,7 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
     }
 
     private void updateTypeMoreVisible() {
+        if (!isAdded() || mBinding == null) return;
         if (mBinding.type.getWidth() == 0 || mBinding.typeBar.getWidth() == 0) {
             mBinding.type.post(this::updateTypeMoreVisible);
             return;
@@ -325,6 +384,7 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
     }
 
     private void updateToolbarMenu() {
+        if (!isAdded() || mBinding == null) return;
         Menu menu = mBinding.toolbar.getMenu();
         MenuItem fullscreen = menu.findItem(R.id.web_home_fullscreen);
         if (fullscreen != null) fullscreen.setVisible(Setting.isWebHomeFullscreen() && mWeb != null && mWeb.isVisible());
@@ -334,6 +394,7 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
 
     /** 小屏竖屏空间有限：隐藏站点名标题、搜索框缩成图标，把追更/最近观看/下载中心保留在顶栏。 */
     private void applyCompactToolbar() {
+        if (!isAdded() || mBinding == null) return;
         boolean compact = getResources().getConfiguration().screenWidthDp < 600;
         mBinding.title.setVisibility(compact ? View.GONE : View.VISIBLE);
         int logoSize = ResUtil.dp2px(compact ? 28 : 36);
@@ -346,6 +407,7 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
     }
 
     private void setSearchAction() {
+        if (!isAdded() || mBinding == null) return;
         MenuItem item = mBinding.toolbar.getMenu().findItem(R.id.search);
         View search = item == null ? null : item.getActionView();
         if (search == null) return;
