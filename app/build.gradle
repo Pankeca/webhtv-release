@@ -96,6 +96,9 @@ android {
 
     testOptions {
         unitTests.includeAndroidResources = true
+        // WebHomeExtension 内部只用 TextUtils.isEmpty 之类的空判断，
+        // 放开默认返回值即可在纯 JVM 单测中直接验证，无需引入 Robolectric。
+        unitTests.returnDefaultValues = true
     }
 
     // ASS rendering is part of normal builds; package the matching prebuilt ABI.

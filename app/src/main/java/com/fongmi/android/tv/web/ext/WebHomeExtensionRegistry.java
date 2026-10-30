@@ -326,7 +326,9 @@ public class WebHomeExtensionRegistry {
             for (JsonElement item : elements(object.get("extensions"))) loadElement(result, item, siteKey, sourceUrl, siteScoped, defaultEnabled, order);
             return;
         }
-        if (object.size() == 0 && WebHomeExtension.isScriptUrl(sourceUrl)) {
+        // 走到这里说明清单没能解析出来：只要链接不是 .json 清单，就按「直接指向脚本」兜底。
+        // 不能再用 isScriptUrl 判断，否则无后缀的脚本链接会被静默丢弃。
+        if (object.size() == 0 && !WebHomeExtension.isManifestUrl(sourceUrl)) {
             object.addProperty("id", "remote_" + Integer.toHexString(sourceUrl.hashCode()));
             object.addProperty("name", sourceUrl.substring(sourceUrl.lastIndexOf('/') + 1));
             JsonArray js = new JsonArray();

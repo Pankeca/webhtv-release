@@ -484,6 +484,81 @@ tangtv **没有**现成的纵向信息流 UI（`ui/` 下只有 `novel` 小说、
 
 ---
 
+## 9. 站点扩展「配了却不生效」根因与修复
+
+### 9.1 现象
+
+4 个 WebHome 站点的 `extensions` 都配好了社区 manifest 链接，站点列表正常、网页正常打开，但脚本一次都没跑：注入一段 `GM_addStyle('body{outline...}')` 探针后没有任何描边，控制台也看不到扩展日志。
+
+### 9.2 根因一：`isScriptUrl()` 把清单误判成脚本（代码缺陷）
+
+`WebHomeExtension.isScriptUrl()` 原来是**子串判断**：
+
+```java
+return lower.contains(".js") || lower.startsWith("file://") || lower.startsWith("local://");
+```
+
+而社区扩展的清单清一色叫 `*.manifest.json` —— **`".json"` 本身就包含 `".js"`**，于是：
+
+1. `WebHomeExtensionRegistry.loadRemote()` 里 `isScriptUrl(sourceUrl)` 为真 → **清单根本不会按 JSON 拉取**；
+2. 走到「对象为空且是脚本 URL」的兜底分支 → 把清单链接塞进 `js` 数组；
+3. `WebHomeExtension.from()` → `addScript()` 又把那个 URL 的**内容（一段 JSON）**下载下来当脚本正文；
+4. 注入 `<JSON 文本>` 必然 `SyntaxError`，而且是**解析期错误**，连包裹脚本里的 `try/catch` 都捕获不到 —— 页面无变化、控制台无日志，完全静默。
+
+同一缺陷还波及 `WebHomeExtensionSourceStore.linkObject()`：在扩展面板里粘贴清单链接，也会被写成 `js:[清单链接]`，同样是静默失败。
+
+**修复**（`WebHomeExtension.java` / `WebHomeExtensionRegistry.java`）
+
+- `isScriptUrl()` 改成**后缀精确判断**：去 `?`/`#` 后以 `.js` / `.mjs` / `.jsx` 结尾，`file://`、`local://` 仍为真；
+- 新增 `isManifestUrl()`：以 `.json` 结尾；
+- `loadRemote()` 的兜底条件从 `isScriptUrl(sourceUrl)` 改成 `!isManifestUrl(sourceUrl)` —— 这样**没有后缀的脚本链接**也不会再被静默丢弃（旧写法同样会漏）。
+
+**回归单测** `app/src/test/java/com/fongmi/android/tv/web/ext/WebHomeExtensionUrlTest.java`（6 个用例）：4 个真实 manifest 链接必须为假、真脚本为真、`?v=1` / `#frag` 不影响判断、`.json/entry` 这类老实现误判项为假。
+
+### 9.3 根因二：扩展总开关是关的（配置问题）
+
+`WebHomeExtensionRegistry.prepare()` 开头有：
+
+```java
+if (!Setting.isWebHomeExtension()) { ready.remove(siteKey); ... return; }
+```
+
+`Setting.isWebHomeExtension()` 读的是 `web_home_extension`，默认 `true`，但设备上的实际值是 **`false`**。开关一旦关闭，站点上挂多少扩展都不会加载。
+
+**开关位置**：设置 → 增强设置 → WebHome 扩展（顶部开关）。打开后即可。
+
+### 9.4 验证证据（真机）
+
+打开开关后，Pomo 站点的完整链路：
+
+```
+prepared site=__custom_csp_pomo src=1 matched=1 ready=1 ids=pomo-native-router,document-end
+inject    id=pomo-native-router runAt=document-end target=document-end site=__custom_csp_pomo
+```
+
+扩展缓存目录 `cache/webhome_ext` 实到两份文件：
+
+```
+manifest_38cac24912d1029fd05a903519c55723.json   211 B
+script_88469ce2cef490caecb1f644300a0257.js    49,994 B   ← 与远端 pomo.mom.js 大小一致
+```
+
+即：清单被正确按 JSON 拉取 → 解析出 `js: ["./pomo.mom.js"]` → 相对路径解析成完整 URL → 下载脚本 → 注入 WebView。
+
+### 9.5 顺带清掉的东西
+
+排查期在 Pomo 站点上留过一个 `id=probe` 的探针条目，已从设备注册表删除（`TV/CustomCsp/registry.json`，含嵌套的原始 `site` 字段），4 个站点现在各挂 1 条 manifest 链接，无残留。
+
+### 9.6 本机构建环境的三个坑（备查）
+
+| 坑 | 现象 | 解法 |
+|---|---|---|
+| 容器只有 `C/POSIX` locale | `mergeAssets` 报 `Failed to create MD5 hash for file: Invalid file path`，真实原因是 `assets/lut_presets/` 下的**中文文件名**被 ASCII 解码打不开 | 容器加 `-v /usr/lib/locale:/usr/lib/locale:ro -e LANG=zh_CN.UTF-8` |
+| 宿主 `ulimit -v` 锁 4 GB | 宿主直接跑 Gradle 时 `Could not allocate compressed class space` | 宿主不改限制，改用容器构建 |
+| 设备原包是特定 debug 证书 | `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | 用 `/home/s/.android/debug.keystore`（`androiddebugkey` / `android`）重签后再装，同签名可保留数据 |
+
+---
+
 ## 9. 原方案留档：5 个待决问题（已由第 7 节取代）
 
 1. **触屏优化**：A. 照搬 tangtv 语义（只在 TV 版生效，你平板无效）；B. 我们重写成手机版（手势阈值 / 48dp 触控热区 / 滚动惯性）；C. 两个都要（按 flavor 分流）。

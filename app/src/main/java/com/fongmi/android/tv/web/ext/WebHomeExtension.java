@@ -227,9 +227,35 @@ public class WebHomeExtension {
         return UrlUtil.resolve(baseUrl, url);
     }
 
+    /**
+     * 判断链接是否直接指向脚本文件。
+     * <p>
+     * 必须按后缀精确判断。早期实现用 {@code contains(".js")}，而 {@code ".json"} 本身就包含
+     * {@code ".js"}，导致社区扩展的 {@code *.manifest.json} 被误判成脚本：
+     * 清单不会按 JSON 拉取，而是把 JSON 文本当脚本体注入，整段扩展静默 SyntaxError
+     * （页面无任何变化、控制台也看不到扩展日志）。
+     */
     public static boolean isScriptUrl(String url) {
-        String lower = url == null ? "" : url.toLowerCase();
-        return lower.contains(".js") || lower.startsWith("file://") || lower.startsWith("local://");
+        if (TextUtils.isEmpty(url)) return false;
+        String lower = url.trim().toLowerCase(Locale.ROOT);
+        if (lower.startsWith("file://") || lower.startsWith("local://")) return true;
+        String path = stripQueryAndFragment(lower);
+        return path.endsWith(".js") || path.endsWith(".mjs") || path.endsWith(".jsx");
+    }
+
+    /** 是否为扩展清单（{@code *.json}），用于区分「清单」与「直接指向脚本」。 */
+    public static boolean isManifestUrl(String url) {
+        if (TextUtils.isEmpty(url)) return false;
+        return stripQueryAndFragment(url.trim().toLowerCase(Locale.ROOT)).endsWith(".json");
+    }
+
+    private static String stripQueryAndFragment(String url) {
+        String path = url;
+        int cut = path.indexOf('?');
+        if (cut >= 0) path = path.substring(0, cut);
+        cut = path.indexOf('#');
+        if (cut >= 0) path = path.substring(0, cut);
+        return path;
     }
 
     private static String readCached(String url, String prefix, String suffix) {
