@@ -705,3 +705,51 @@ docker run --rm -v /home/s:/home/s -v /usr/lib/locale:/usr/lib/locale:ro \
 
 - `armeabi-v7a` 变体首次构建要装 Chaquopy 的 Python 依赖，`pypi.org` 只有 ~8 KB/s，`beautifulsoup4` 索引超时 → `:chaquo:installMobileArmeabi_v7aReleasePythonRequirements` 直接失败（arm64 因为有缓存不受影响）。重试时把 `PIP_INDEX_URL` 指向清华镜像即通过（脚本 `/home/s/build/c-retry.sh`）。
 - 网络是不对称的：`uploads.github.com` 上传约 5 MB/s（150 MB / 30 s），而 `api.github.com` / `raw.githubusercontent.com` 下载只有 20 KB/s 左右——全量 `git clone`（工作树 336 MB）在这个环境里不可行，故改用上面的 blobless + 增量推送。
+
+## 十九、5.6.6 发布：弹幕修复 + HLS 去广（正式签名，2026-10-31）
+
+### 版本与产物
+
+`versionCode 566 / versionName 5.6.6`，正式 keystore 签名（`CN=WebHTV`，SHA-256 `5c3b6ccc`）。
+
+按 2026-10-31 定的构建口径，**本版只发布手机 / 平板 arm64-v8a 一个变体**（leanback 与 armeabi-v7a 仍停留在 5.6.5，需要时再单独构建）：
+
+| 产物 | 大小 | SHA-256（前 8 位） |
+| --- | --- | --- |
+| `mobile-arm64_v8a.apk` | 150,406,441 | `34b04e06` |
+
+| 用途 | 地址 |
+| --- | --- |
+| GitHub Release v5.6.6 | `https://github.com/Pankeca/webhtv-release/releases/tag/v5.6.6` |
+| 更新清单（CNB） | `https://cnb.cool/mytools-2026/app-release/-/git/raw/main/mobile-arm64_v8a.json`（已更新到 5.6.6 / 566，commit `aec736a`） |
+
+### 本轮改动（相对 5.6.5）
+
+| # | 需求 | 实现 |
+| --- | --- | --- |
+| 1 | 弹幕搜索结果显示成「一大段代码」 | 部分源对搜索请求返回 HTML 落地页或纯文本错误，旧实现把整个响应体当成一条结果。新增 `looksLikePath()`：只有形如 URL / 绝对路径 / 域名路径的短文本才保留，HTML 与错误文本一律丢弃，该源被静默跳过 |
+| 2 | 弹幕加载太慢 | `DanmakuApi.searchAll` 新增 `onPartial` 渐进式回调：每源出结果即推送合并快照；`DanmakuSearchDialog` 增量合并渲染并按 URL 去重，追加时保留用户当前来源页签。首屏不再等最慢的源或 6 秒超时 |
+| 3 | HLS 结构化去广（阶段 2）并入正式包 | 三路径接入（本地 M3U8 代理 / ExoPlayer 直连 / MPV 时间轴跳段），内置 3 条实验规则默认关闭，`adblock` 设置默认关闭，32 个单测 |
+| 4 | 回归测试 | 新增 `DanmakuTest` 8 例（HTML 页、纯文本错误、超长文本返回空；URL / 绝对路径 / 域名路径 / JSON 字符串正常解析） |
+
+真机实测（HA1YL5GG / Android 13，《庆余年》第 01 集全屏搜索弹幕）：1.2 秒转圈 → **3.2 秒显示 5 条真实结果**（腾讯 ×2、360 ×2、animeko，标题全部正常）→ 6.2 秒稳定；点选第一条立即生效，弹幕正常飘屏。
+
+### 构建口径与踩坑
+
+- 构建只出 mobile-arm64：`/home/s/build/container-run.sh /home/s/build/build-mobile-arm64.sh release`。
+- **新踩坑：local.properties 覆盖正式签名**。`app/build.gradle` 里 `localProps['storeFile']` 优先于环境变量 `WEBHTV_STORE_FILE`，而构建副本的 `local.properties` 里写着 debug keystore 那 4 行 → 直接跑 release 打出来的仍是 debug 签名（`5bc08a3d`），"发布成功"其实是废包。脚本已修：release 模式下先 `mv local.properties local.properties.debugbak`，`trap EXIT` 自动还原。发布前仍应 `apksigner verify --print-certs` 确认是 `CN=WebHTV / 5c3b6ccc`。
+
+## 二十、开发记录与文档索引（2026-10-31）
+
+> 以后每轮开发、发布或交接，都按 `docs/开发记录规范.md` 更新记录；入口页只保留当前状态。
+
+| 文档 | 用途 |
+| --- | --- |
+| [`docs/开发进度与交接.md`](docs/开发进度与交接.md) | 入口页：30 秒上手、当前状态、待办、关键约定 |
+| [`docs/开发记录总览.md`](docs/开发记录总览.md) | 全量记录：时间线、功能模块、踩坑合辑、后续注意事项 |
+| [`docs/开发记录规范.md`](docs/开发记录规范.md) | 每轮记录模板、提交/发布/验证/交接规范 |
+| [`docs/tangtv-integration-plan.md`](docs/tangtv-integration-plan.md) | tangtv 功能移植方案 |
+| [`docs/tangtv-rebase-evaluation.md`](docs/tangtv-rebase-evaluation.md) | 换基座评估（结论：不换） |
+| `.workbuddy/memory/YYYY-MM-DD.md` | 当日原始工作笔记 |
+
+记录分层：过程记在 memory，结论汇入 README，跨轮汇总进总览，交接只看入口页。
