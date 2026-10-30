@@ -578,6 +578,7 @@
     <string name="setting_custom_csp_import_link_fetching">Fetching link content…</string>
     <string name="setting_custom_csp_import_link_failed">Fetch failed: %1$s</string>
     <string name="setting_custom_csp_import_link_unknown">Cannot tell what this link points to</string>
+    <string name="setting_custom_csp_import_link_not_found">The link returned a 404 page. Use the raw file URL instead (cnb: /-/git/raw/main/...).</string>
     <string name="setting_custom_csp_import_page_done">Saved as local home page: %1$s</string>
     <string name="setting_custom_csp_import_live_done">Live source added: %1$s</string>
     <string name="setting_custom_csp_import_ext_done">Extension added to %1$s</string>

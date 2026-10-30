@@ -67,6 +67,7 @@ public final class CspUrlImporter {
             if (isLivePath(lowerPath)) return Kind.LIVE;
             return Kind.UNKNOWN;
         }
+        if (looksLikeErrorPage(body)) return Kind.UNKNOWN;
         if (looksLikeHtml(body)) return Kind.PAGE;
         JsonElement element = parseJson(body);
         if (element != null) {
@@ -115,8 +116,27 @@ public final class CspUrlImporter {
         return lower.startsWith("<!doctype") || lower.startsWith("<html") || lower.contains("<head>") || lower.contains("<body");
     }
 
-    /** 判断正文是不是一段脚本（扩展 js）。 */
-    public static boolean looksLikeScript(String body) {
+    /**
+     * 判断正文是不是一张「404 / 页面不存在」的错误页。
+     *
+     * <p>这条不是洁癖：cnb.cool 的 raw 直链格式是 {@code /-/git/raw/<branch>/<path>}，
+     * 写成 {@code /-/raw/...} 会返回 <b>HTTP 200 + 「Page not found」HTML</b>，
+     * 不拦的话会被当成主页下载下来，变成一个垃圾站点。
+     */
+    public static boolean looksLikeErrorPage(String body) {
+        if (!looksLikeHtml(body)) return false;
+        String head = body.length() > 2048 ? body.substring(0, 2048) : body;
+        String lower = head.toLowerCase(Locale.ROOT);
+        return lower.contains("page not found")
+                || lower.contains("<title>404")
+                || lower.contains("404 not found")
+                || lower.contains("error 404")
+                || lower.contains("页面不存在")
+                || lower.contains("找不到页面")
+                || lower.contains("not found ·");
+    }
+
+    /** 判断正文是不是一段脚本（扩展 js）。 */    public static boolean looksLikeScript(String body) {
         if (isEmpty(body)) return false;
         if (body.contains("<html") || body.contains("<!DOCTYPE")) return false;
         return body.contains("function") || body.contains("=>") || body.contains("GM_") || body.startsWith("(function");

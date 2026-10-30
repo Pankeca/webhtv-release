@@ -576,6 +576,7 @@
     <string name="setting_custom_csp_import_link_fetching">正在获取链接内容…</string>
     <string name="setting_custom_csp_import_link_failed">获取失败：%1$s</string>
     <string name="setting_custom_csp_import_link_unknown">识别不了这个链接指向的内容</string>
+    <string name="setting_custom_csp_import_link_not_found">设置里链接返回了 404 页面，请填原始文件地址（cnb 是 /-/git/raw/main/…）</string>
     <string name="setting_custom_csp_import_page_done">已下载为本地主页：%1$s</string>
     <string name="setting_custom_csp_import_live_done">已添加直播源：%1$s</string>
     <string name="setting_custom_csp_import_ext_done">已给「%1$s」添加扩展</string>

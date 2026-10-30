@@ -144,4 +144,21 @@ public class CspUrlImporterTest {
         String text = CspUrlImporter.appendExtension(current, "https://a.example.com/y.js");
         assertEquals(1, text.split("https://a.example.com/y.js", -1).length - 1);
     }
+
+    @Test
+    public void errorPageIsNotMistakenForHomePage() {
+        // cnb.cool 用错 raw 格式时返回的就是这种：HTTP 200，但正文是 404 页面
+        String notFound = "<!DOCTYPE html><html lang=\"zh\"><head><meta charSet=\"utf-8\" data-next-head=\"\"/>"
+                + "<title data-next-head=\"\">Page not found · CNB</title></head><body>404</body></html>";
+        assertEquals(CspUrlImporter.Kind.UNKNOWN,
+                CspUrlImporter.classify("https://cnb.cool/fish2035/ext/-/raw/main/examples/extensions/pomo/pomo.manifest.json", notFound));
+        assertTrue(CspUrlImporter.looksLikeErrorPage(notFound));
+    }
+
+    @Test
+    public void realHomePageIsStillAPage() {
+        String page = "<!DOCTYPE html><html><head><title>Nostr 影视</title></head><body><div id=\"app\"></div></body></html>";
+        assertEquals(CspUrlImporter.Kind.PAGE, CspUrlImporter.classify("https://x/homepages/nostr.html", page));
+        assertTrue(!CspUrlImporter.looksLikeErrorPage(page));
+    }
 }

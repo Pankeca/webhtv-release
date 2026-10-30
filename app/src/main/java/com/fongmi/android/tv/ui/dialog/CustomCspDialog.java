@@ -725,7 +725,9 @@ public class CustomCspDialog extends BaseAlertDialog {
             case PAGE -> importLinkPage(url, content);
             case EXTENSION -> importLinkExtension(url);
             case LIVE -> importLinkLive(url);
-            default -> Notify.show(R.string.setting_custom_csp_import_link_unknown);
+            default -> Notify.show(CspUrlImporter.looksLikeErrorPage(content)
+                    ? R.string.setting_custom_csp_import_link_not_found
+                    : R.string.setting_custom_csp_import_link_unknown);
         }
     }
 
