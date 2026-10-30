@@ -48,6 +48,7 @@ import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.databinding.AdapterCustomCspBinding;
 import com.fongmi.android.tv.databinding.DialogCustomCspBinding;
 import com.fongmi.android.tv.impl.Callback;
+import com.fongmi.android.tv.setting.CspUrlImporter;
 import com.fongmi.android.tv.setting.CustomCspSetting;
 import com.fongmi.android.tv.ui.custom.CustomTextListener;
 import com.fongmi.android.tv.ui.custom.SafeScrollEditText;
@@ -98,6 +99,7 @@ public class CustomCspDialog extends BaseAlertDialog {
     private final Set<String> pendingDeleteIds = new HashSet<>();
     private CspEditor editor;
     private TextInputEditText recognizeInput;
+    private TextInputEditText importLinkInput;
     private CustomCspSetting.Item editingItem;
     private int editingPosition = -1;
     private Runnable callback;
@@ -613,31 +615,57 @@ public class CustomCspDialog extends BaseAlertDialog {
         editingPosition = -1;
         binding.editPanel.removeAllViews();
         recognizeInput = createInput(true);
-        recognizeInput.setMinLines(10);
-        recognizeInput.setMaxLines(16);
+        recognizeInput.setMinLines(8);
+        recognizeInput.setMaxLines(14);
         setupScrollableText(recognizeInput);
-        binding.editPanel.addView(createRecognizePanel(recognizeInput));
+        importLinkInput = createInput(false);
+        setupScrollableText(importLinkInput);
+        prefillLinkFromClipboard();
+        binding.editPanel.addView(createRecognizePanel(recognizeInput, importLinkInput));
         binding.negative.setText(R.string.playback_webhook_back);
         binding.positive.setText(R.string.dialog_positive);
         updateModeVisibility();
         binding.contentScroll.scrollTo(0, 0);
-        recognizeInput.requestFocus();
+        if (importLinkInput.getText() != null && importLinkInput.length() > 0) importLinkInput.requestFocus();
+        else recognizeInput.requestFocus();
     }
 
-    private View createRecognizePanel(TextInputEditText input) {
+    /** 剪贴板里是社区分享的链接就直接填好，用户只要点确定。 */
+    private void prefillLinkFromClipboard() {
+        try {
+            CharSequence clip = Util.getClipText();
+            String url = CspUrlImporter.firstHttpUrl(clip == null ? "" : clip.toString());
+            if (!TextUtils.isEmpty(url)) importLinkInput.setText(url);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private View createRecognizePanel(TextInputEditText input, TextInputEditText linkInput) {
         LinearLayoutCompat container = new LinearLayoutCompat(requireContext());
         container.setOrientation(LinearLayoutCompat.VERTICAL);
         container.setPadding(0, dp(4), 0, 0);
         MaterialTextView title = text(getString(R.string.setting_custom_csp_recognize_title), 18, Color.BLACK, true);
         container.addView(title, new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayoutCompat.LayoutParams linkParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        linkParams.topMargin = dp(10);
+        container.addView(createInputPanel(R.string.setting_custom_csp_import_link_hint, linkInput), linkParams);
+        MaterialTextView tip = text(getString(R.string.setting_custom_csp_import_link_tip), 12, Color.parseColor("#5F6368"), false);
+        LinearLayoutCompat.LayoutParams tipParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        tipParams.topMargin = dp(6);
+        tipParams.leftMargin = dp(2);
+        tipParams.rightMargin = dp(2);
+        container.addView(tip, tipParams);
         LinearLayoutCompat.LayoutParams params = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        params.topMargin = dp(10);
+        params.topMargin = dp(14);
         container.addView(createInputPanel(R.string.setting_custom_csp_recognize_hint, input), params);
         return container;
     }
 
     private boolean saveRecognize() {
-        if (recognizeInput == null || recognizing) return false;
+        if (recognizing) return false;
+        String link = importLinkInput == null || importLinkInput.getText() == null ? "" : importLinkInput.getText().toString().trim();
+        if (!TextUtils.isEmpty(link)) return importFromLink(link);
+        if (recognizeInput == null) return false;
         String text = recognizeInput.getText() == null ? "" : recognizeInput.getText().toString();
         if (TextUtils.isEmpty(text) || TextUtils.isEmpty(text.trim())) {
             Notify.show(R.string.setting_custom_csp_recognize_empty);
@@ -656,6 +684,143 @@ public class CustomCspDialog extends BaseAlertDialog {
         return true;
     }
 
+    /**
+     * 从链接导入社区资源：先拉正文，再按类型分流。
+     * 配置 JSON 并进列表、主页 HTML 落成本地页面、扩展挂到指定站点、直播源建成直播项。
+     */
+    private boolean importFromLink(String link) {
+        String url = CspUrlImporter.firstHttpUrl(link);
+        if (TextUtils.isEmpty(url)) url = link;
+        if (!CspUrlImporter.isHttpUrl(url)) {
+            Notify.show(R.string.setting_custom_csp_import_link_invalid);
+            return false;
+        }
+        final String source = url;
+        recognizing = true;
+        binding.positive.setEnabled(false);
+        Notify.show(R.string.setting_custom_csp_import_link_fetching);
+        Task.execute(() -> {
+            try {
+                String content = OkHttp.string(source, 15000);
+                CspUrlImporter.Kind kind = CspUrlImporter.classify(source, content);
+                App.post(() -> finishLinkImport(source, content, kind, null));
+            } catch (Exception e) {
+                App.post(() -> finishLinkImport(source, "", CspUrlImporter.Kind.UNKNOWN, e));
+            }
+        });
+        return true;
+    }
+
+    private void finishLinkImport(String url, String content, CspUrlImporter.Kind kind, Exception error) {
+        if (!isAdded() || binding == null) return;
+        recognizing = false;
+        binding.positive.setEnabled(true);
+        if (error != null) {
+            String reason = TextUtils.isEmpty(error.getMessage()) ? error.getClass().getSimpleName() : error.getMessage();
+            Notify.show(getString(R.string.setting_custom_csp_import_link_failed, reason));
+            return;
+        }
+        switch (kind) {
+            case CONFIG -> importLinkConfig(content);
+            case PAGE -> importLinkPage(url, content);
+            case EXTENSION -> importLinkExtension(url);
+            case LIVE -> importLinkLive(url);
+            default -> Notify.show(R.string.setting_custom_csp_import_link_unknown);
+        }
+    }
+
+    private void importLinkConfig(String content) {
+        try {
+            List<CustomCspSetting.Item> items = recognizedItems(content);
+            if (items.isEmpty()) {
+                Notify.show(R.string.setting_custom_csp_import_link_unknown);
+                return;
+            }
+            finishRecognize(items, null);
+        } catch (Exception e) {
+            finishRecognize(Collections.emptyList(), e);
+        }
+    }
+
+    /** 主页 HTML 下载到 TV/CustomCsp/&lt;id&gt;/index.html，站点直接用本地地址，避免远程页面被拦。 */
+    private void importLinkPage(String url, String content) {
+        try {
+            CustomCspSetting.Item item = CustomCspSetting.createDefaultItem();
+            String name = CspUrlImporter.displayName(url);
+            item.setName(TextUtils.isEmpty(name) ? nextName(KIND_WEB_HOME) : name);
+            CustomCspSetting.writePage(item.getId(), content);
+            item.setHomePage(CustomCspSetting.localUrl(item.getId(), "index.html"));
+            addImportedItems(Collections.singletonList(item));
+            Notify.show(getString(R.string.setting_custom_csp_import_page_done, item.getName()));
+        } catch (Exception e) {
+            Notify.show(String.valueOf(e.getMessage()));
+        }
+    }
+
+    private void importLinkLive(String url) {
+        try {
+            CustomCspSetting.Item item = CustomCspSetting.createDefaultLiveItem();
+            String name = CspUrlImporter.displayName(url);
+            item.setName(TextUtils.isEmpty(name) ? nextName(KIND_LIVE) : name);
+            item.setUrl(url);
+            addImportedItems(Collections.singletonList(item));
+            Notify.show(getString(R.string.setting_custom_csp_import_live_done, item.getName()));
+        } catch (Exception e) {
+            Notify.show(String.valueOf(e.getMessage()));
+        }
+    }
+
+    /** 扩展要挂在某个站点上，先挑站点；只有一个站点就直接挂。扩展只对 WebHome 站点生效。 */
+    private void importLinkExtension(String url) {
+        List<CustomCspSetting.Item> targets = new ArrayList<>();
+        for (CustomCspSetting.Item item : adapter.getItems()) {
+            if (item == null || !item.isEnabled() || !item.isWebHome()) continue;
+            targets.add(item);
+        }
+        if (targets.isEmpty()) {
+            Notify.show(R.string.setting_custom_csp_import_need_site);
+            return;
+        }
+        if (targets.size() == 1) {
+            attachExtension(targets.get(0), url);
+            return;
+        }
+        String[] names = new String[targets.size()];
+        for (int i = 0; i < targets.size(); i++) names[i] = targets.get(i).getName();
+        ChoiceDialog.showSingle(this, R.string.setting_custom_csp_import_pick_site, names, 0, which -> {
+            if (which < 0 || which >= targets.size()) return;
+            attachExtension(targets.get(which), url);
+        });
+    }
+
+    private void attachExtension(CustomCspSetting.Item item, String url) {
+        try {
+            String text = CspUrlImporter.appendExtension(item.getExtensionsText(), url);
+            item.setExtensionsExpanded(true);
+            item.setExtensionsText(text);
+            markJsonDirty();
+            if (editMode && editor != null && item == editingItem) editor.updateExtensions();
+            adapter.notifyDataSetChanged();
+            Notify.show(getString(R.string.setting_custom_csp_import_ext_done, item.getName()));
+            showList();
+        } catch (Exception e) {
+            Notify.show(String.valueOf(e.getMessage()));
+        }
+    }
+
+    private void addImportedItems(List<CustomCspSetting.Item> items) {
+        if (textMode && !syncFormFromJson(true)) return;
+        else if (!textMode) syncAllVisibleRows();
+        List<CustomCspSetting.Item> next = new ArrayList<>(adapter.getItems());
+        int firstAdded = next.size();
+        next.addAll(items);
+        adapter.setItems(next);
+        markJsonDirty();
+        if (textMode) syncJsonFromForm(false);
+        scrollToItem(adapter.displayPosition(reverseOrder ? next.size() - 1 : firstAdded));
+        showList();
+    }
+
     private void finishRecognize(List<CustomCspSetting.Item> items, Exception error) {
         if (!isAdded() || binding == null) return;
         recognizing = false;
@@ -664,16 +829,8 @@ public class CustomCspDialog extends BaseAlertDialog {
             Notify.show(R.string.setting_custom_csp_recognize_invalid);
             return;
         }
-        if (textMode && !syncFormFromJson(true)) return;
-        else if (!textMode) syncAllVisibleRows();
-        List<CustomCspSetting.Item> next = new ArrayList<>(adapter.getItems());
-        int firstAdded = next.size();
-        next.addAll(items);
-        adapter.setItems(next);
-        if (textMode) syncJsonFromForm(false);
-        scrollToItem(adapter.displayPosition(reverseOrder ? next.size() - 1 : firstAdded));
+        addImportedItems(items);
         Notify.show(getString(R.string.setting_custom_csp_recognize_done, items.size()));
-        showList();
     }
 
     private void markJsonDirty() {

@@ -570,6 +570,17 @@
     <string name="setting_custom_csp_recognize_empty">请先粘贴站点 JSON</string>
     <string name="setting_custom_csp_recognize_invalid">未识别到有效站点 JSON</string>
     <string name="setting_custom_csp_recognize_done">已添加 %1$d 个条目</string>
+    <string name="setting_custom_csp_import_link_hint">资源链接（扩展 manifest / 配置 JSON / 主页 HTML / 直播源）</string>
+    <string name="setting_custom_csp_import_link_tip">填了链接就按链接导入；留空则识别下面的 JSON。整段分享文字直接粘进来也行，会自动挑出链接。</string>
+    <string name="setting_custom_csp_import_link_invalid">不是有效的 http(s) 链接</string>
+    <string name="setting_custom_csp_import_link_fetching">正在获取链接内容…</string>
+    <string name="setting_custom_csp_import_link_failed">获取失败：%1$s</string>
+    <string name="setting_custom_csp_import_link_unknown">识别不了这个链接指向的内容</string>
+    <string name="setting_custom_csp_import_page_done">已下载为本地主页：%1$s</string>
+    <string name="setting_custom_csp_import_live_done">已添加直播源：%1$s</string>
+    <string name="setting_custom_csp_import_ext_done">已给「%1$s」添加扩展</string>
+    <string name="setting_custom_csp_import_pick_site">扩展开到哪个站点</string>
+    <string name="setting_custom_csp_import_need_site">请先添加一个 WebHome 站点，再导入扩展</string>
     <string name="setting_custom_csp_sort">排序</string>
     <string name="setting_custom_csp_sort_done">完成</string>
     <string name="setting_custom_csp_sort_drag">拖拽排序</string>

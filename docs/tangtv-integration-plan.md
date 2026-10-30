@@ -415,7 +415,76 @@ tangtv **没有**现成的纵向信息流 UI（`ui/` 下只有 `novel` 小说、
 
 ---
 
-## 7. 需要你拍板的 5 个问题
+## 7. 定稿范围（已拍板）
+
+原方案列的 5 个待决问题已由你定稿，按下面执行：
+
+| 项 | 决定 | 影响 |
+|---|---|---|
+| 触屏优化 | **不做** | `TouchOptimizationHelper` 不移植 |
+| 搜索线程 | **不做** | `Task.java` 的 20 线程池保持原样 |
+| TMDB | **不做** | `TmdbDetailActivity` / `TmdbService` 全部不动 |
+| 去广告 | **做 HLS 净化 + 单测**，管理 UI 后补，音频指纹放弃 | 核心 16 文件 / 2,196 行 + 12 个单测 |
+| 社区资源 | **优先做**：站点注入 / WebHome 扩展，并给站点注入加「一键导入」 | 本轮第一个落地项 |
+| 短剧源配置 | 做（属于「其他按推荐」） | `ShortDramaConfig` + 弹窗 + 倍速保持 |
+
+### 施工顺序（按定稿重排）
+
+1. **阶段 0**：`git init` + tag `baseline-5.6.4` —— ✅ 已完成（3,017 个文件入库）
+2. **阶段 1**：站点注入「一键导入」—— 进行中，见第 8 节
+3. **阶段 2**：HLS 去广（三路径 + 单测）
+4. **阶段 3**：短剧源配置 + 短剧倍速保持
+5. **不做**：触屏优化、搜索线程、TMDB、音频指纹去广
+
+---
+
+## 8. 站点注入「一键导入」实施记录
+
+### 8.1 为什么需要它
+
+社区分享的资源不是「一条订阅 URL」，而是散落的物料：一份 `xxx.manifest.json`、一段 `xxx.js`、一个自制主页 `xxx.html`、或者干脆是一段混着说明文字的帖子。原来只有两条路：
+
+- 「识别」只吃**粘贴的 JSON 正文** —— 帖子给的是链接，用户得自己打开链接、全选、复制、再粘回来；
+- 「扩展 URL」只挂在**单个站点**的编辑面板里 —— 得先知道该挂哪个站点，还要手动打开那个站点的编辑页。
+
+链接 → 物料 → 落地形态，中间的人工步骤全是摩擦。
+
+### 8.2 实现
+
+**新增 `setting/CspUrlImporter.java`（纯逻辑，可单测）**
+
+一条链接拉回来先分类：
+
+| 类型 | 判据 | 落地方式 |
+|---|---|---|
+| `CONFIG` | JSON 里有 `sites` / `lives` / `webHomeExtensions` / `rules` / `parses`… 或站点对象/数组 | 走既有「识别」管线并入列表 |
+| `EXTENSION` | JSON 里有 `extensions` / `js` / `code` / `runAt`，或正文是脚本，或后缀 `.js/.css` | 挂到选定站点的 `extensions` |
+| `PAGE` | `<!DOCTYPE` / `<html` / `<head` / `<body` | 下载进 `TV/CustomCsp/<id>/index.html`，新建 WebHome 站点 |
+| `LIVE` | 后缀 `.m3u/.txt` 或「频道名,http…」连续两行 | 新建直播项 |
+| `UNKNOWN` | 其余 | 提示识别不了 |
+
+关键取舍：**扩展存的是链接本身，不是拉下来的内容**。因为 `WebHomeExtensionRegistry.loadRemote()` 会以该链接为 base 去解析 manifest 里的 `"js": ["./xxx.js"]`；社区 manifest 清一色写相对路径，存内容就会解析失败。同时 registry 对「纯脚本链接」也有兜底（非 JSON 且是脚本 URL 时自动包成 `{js:[url]}`），所以 `.js` 直链也能直接存。
+
+**改 `ui/dialog/CustomCspDialog.java`**
+
+- 「识别」面板顶部加一个「资源链接」输入框，**自动用剪贴板里的第一个 http 链接预填** —— 从社区复制链接后进来直接点确定，两下完成；
+- 整段分享文字粘进来也行，`firstHttpUrl()` 会把混在文字里的链接挑出来；
+- 链接非空走链接导入，留空仍走原来的 JSON 识别，向后兼容；
+- 扩展类需要目标站点：只有一个 WebHome 站点就直接挂，多个就弹站点选择；**只对 WebHome 站点生效**（`Item.site()` 只在 webHome 时写 `extensions`，挂到通用 CSP 上是静的）。
+
+### 8.3 验证
+
+`app/src/test/java/com/fongmi/android/tv/setting/CspUrlImporterTest.java`，16 个用例覆盖：
+
+- 四类物料 + 垃圾内容的分类；
+- Markdown 围栏 / BOM 归一化（社区帖子常把 JSON 包在 ```json 里）；
+- `appendExtension` 的空数组创建、保留既有条目、解包 manifest 外壳、幂等、按 `js` 条目去重；
+- `displayName` 去社区噪音（`pomo.mom.js` → `pomo`、`dm.xueximeng.manifest.json` → `dm.xueximeng`）；
+- 从分享文字里抠链接。
+
+---
+
+## 9. 原方案留档：5 个待决问题（已由第 7 节取代）
 
 1. **触屏优化**：A. 照搬 tangtv 语义（只在 TV 版生效，你平板无效）；B. 我们重写成手机版（手势阈值 / 48dp 触控热区 / 滚动惯性）；C. 两个都要（按 flavor 分流）。
 2. **TMDB**：接受"借 Service + 自写精简详情页"（不搬 13k 行的 `TmdbDetailActivity`）吗？还是觉得 TMDB 优先级不高、先跳过？

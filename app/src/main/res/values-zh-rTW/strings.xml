@@ -568,6 +568,17 @@
     <string name="setting_custom_csp_recognize_empty">請先貼上站點 JSON</string>
     <string name="setting_custom_csp_recognize_invalid">未識別到有效站點 JSON</string>
     <string name="setting_custom_csp_recognize_done">已加入 %1$d 個條目</string>
+    <string name="setting_custom_csp_import_link_hint">資源連結（擴展 manifest / 設定 JSON / 首頁 HTML / 直播源）</string>
+    <string name="setting_custom_csp_import_link_tip">填了連結就按連結匯入；留空則識別下面的 JSON。整段分享文字直接貼進來也行，會自動挑出連結。</string>
+    <string name="setting_custom_csp_import_link_invalid">不是有效的 http(s) 連結</string>
+    <string name="setting_custom_csp_import_link_fetching">正在取得連結內容…</string>
+    <string name="setting_custom_csp_import_link_failed">取得失敗：%1$s</string>
+    <string name="setting_custom_csp_import_link_unknown">識別不了這個連結指向的內容</string>
+    <string name="setting_custom_csp_import_page_done">已下載為本機首頁：%1$s</string>
+    <string name="setting_custom_csp_import_live_done">已加入直播源：%1$s</string>
+    <string name="setting_custom_csp_import_ext_done">已給「%1$s」加入擴展</string>
+    <string name="setting_custom_csp_import_pick_site">擴展開到哪個站點</string>
+    <string name="setting_custom_csp_import_need_site">請先加入一個 WebHome 站點，再匯入擴展</string>
     <string name="setting_custom_csp_count">%1$d/%2$d 可用</string>
     <string name="setting_custom_csp_api">api</string>
     <string name="setting_custom_csp_code">代碼</string>

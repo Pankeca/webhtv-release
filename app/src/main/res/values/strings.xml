@@ -572,6 +572,17 @@
     <string name="setting_custom_csp_recognize_empty">Paste site JSON first</string>
     <string name="setting_custom_csp_recognize_invalid">No valid site JSON detected</string>
     <string name="setting_custom_csp_recognize_done">Added %1$d items</string>
+    <string name="setting_custom_csp_import_link_hint">Resource link (extension manifest / config JSON / home page / live list)</string>
+    <string name="setting_custom_csp_import_link_tip">Fill a link to import from it; leave it empty to detect the JSON below. Pasting a whole shared post is fine — the first URL is picked out.</string>
+    <string name="setting_custom_csp_import_link_invalid">Not a valid http(s) link</string>
+    <string name="setting_custom_csp_import_link_fetching">Fetching link content…</string>
+    <string name="setting_custom_csp_import_link_failed">Fetch failed: %1$s</string>
+    <string name="setting_custom_csp_import_link_unknown">Cannot tell what this link points to</string>
+    <string name="setting_custom_csp_import_page_done">Saved as local home page: %1$s</string>
+    <string name="setting_custom_csp_import_live_done">Live source added: %1$s</string>
+    <string name="setting_custom_csp_import_ext_done">Extension added to %1$s</string>
+    <string name="setting_custom_csp_import_pick_site">Attach extension to</string>
+    <string name="setting_custom_csp_import_need_site">Add a WebHome site before importing extensions</string>
     <string name="setting_custom_csp_sort">Sort</string>
     <string name="setting_custom_csp_sort_done">Done</string>
     <string name="setting_custom_csp_sort_drag">Drag to sort</string>
