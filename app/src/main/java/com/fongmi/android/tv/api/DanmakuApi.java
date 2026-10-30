@@ -127,6 +127,15 @@ public class DanmakuApi {
      * 多来源时给没有自带渠道名的条目补上来源名，便于结果按来源分组。
      */
     public static void searchAll(String name, String episode, Consumer<List<Danmaku>> onResult, Runnable onEmpty) {
+        searchAll(name, episode, onResult, onEmpty, null);
+    }
+
+    /**
+     * 带渐进式交付的多源搜索：每个来源一出结果就先通过 {@code onPartial} 把当前合并快照
+     * 推给界面（首屏不用等最慢的源），全部来源结束后再走一次 {@code onResult} 收尾。
+     * {@code onPartial} 可能被回调多次，且始终在主线程。
+     */
+    public static void searchAll(String name, String episode, Consumer<List<Danmaku>> onResult, Runnable onEmpty, Consumer<List<Danmaku>> onPartial) {
         List<DanmakuSource> sources = DanmakuSourceSetting.getEnabledSources();
         if (sources.isEmpty()) {
             if (onEmpty != null) App.post(onEmpty);
@@ -152,7 +161,8 @@ public class DanmakuApi {
         App.post(deliver, FIRST_RESULT_TIMEOUT_MS);
         for (DanmakuSource source : sources) {
             fetch(source, name, episode, items -> {
-                collect(merged, items, label ? source : null);
+                boolean added = collect(merged, items, label ? source : null);
+                if (added && onPartial != null) App.post(() -> onPartial.accept(dedup(new ArrayList<>(merged))));
                 if (pending.decrementAndGet() == 0) deliver.run();
             });
         }
@@ -297,12 +307,19 @@ public class DanmakuApi {
         return uri.buildUpon().appendPath("danmaku").build().toString();
     }
 
-    private static void collect(List<Danmaku> merged, List<Danmaku> items, DanmakuSource labelSource) {
-        if (items == null || items.isEmpty()) return;
+    /** 合并一条来源的结果进总表；返回是否真的新增了内容（供渐进式交付判断）。 */
+    private static boolean collect(List<Danmaku> merged, List<Danmaku> items, DanmakuSource labelSource) {
+        if (items == null || items.isEmpty()) return false;
+        boolean added = false;
         for (Danmaku item : items) {
             if (labelSource != null && TextUtils.isEmpty(item.getApiSourceName())) item.setApiSourceName(labelSource.getDisplayName());
-            merged.add(item);
+            // 渐进式回调里同一来源可能被重复推送，按 URL 去重
+            if (!merged.contains(item)) {
+                merged.add(item);
+                added = true;
+            }
         }
+        return added;
     }
 
     private static List<Danmaku> dedup(List<Danmaku> items) {

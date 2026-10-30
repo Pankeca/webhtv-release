@@ -33,13 +33,15 @@ public class Danmaku {
     private boolean selected;
 
     public static List<Danmaku> arrayFrom(String str) {
-        if (TextUtils.isEmpty(str)) return Collections.emptyList();
+        if (str == null || str.trim().isEmpty()) return Collections.emptyList();
         Type listType = TypeToken.getParameterized(List.class, Danmaku.class).getType();
         str = str.trim();
         try {
             return arrayFrom(JsonParser.parseString(str), listType);
         } catch (Exception e) {
-            return filter(List.of(Danmaku.from(str)));
+            // 非 JSON 响应（HTML 错误页、纯文本提示等）不能整包当成一条结果，
+            // 否则搜索列表里会出现「一大段代码」。只有长得像地址的才保留。
+            return fromPlainText(str);
         }
     }
 
@@ -62,7 +64,37 @@ public class Danmaku {
         text = TextUtils.isEmpty(text) ? "" : text.trim();
         if (text.isEmpty()) return Collections.emptyList();
         if (text.startsWith("[") || text.startsWith("{")) return arrayFrom(JsonParser.parseString(text), listType);
+        return fromPlainText(text);
+    }
+
+    /**
+     * 兜底解析：来源服务偶尔会对搜索请求返回 HTML 落地页或纯文本提示（如 "error code: 1102"）。
+     * 只有形如 URL / 绝对路径 / 域名路径的短文本才当作单条弹幕地址，其余一律丢弃，
+     * 避免把网页源码整段塞进搜索结果（表现为「结果是代码」）。
+     */
+    private static List<Danmaku> fromPlainText(String text) {
+        if (!looksLikePath(text)) return Collections.emptyList();
         return filter(List.of(Danmaku.from(text)));
+    }
+
+    private static boolean looksLikePath(String text) {
+        if (TextUtils.isEmpty(text)) return false;
+        String value = text.trim();
+        if (value.isEmpty() || value.length() > 500) return false;
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            // 空白（含换行）、HTML 标记、JSON 花括号都不可能出现在合法的单条地址里
+            if (Character.isWhitespace(c) || c == '<' || c == '>' || c == '{' || c == '}') return false;
+        }
+        // 必须至少带一点路径/域名特征：协议、绝对路径、点分域名+路径
+        if (value.startsWith("/")) return true;
+        String lower = value.toLowerCase();
+        if (lower.startsWith("http:") || lower.startsWith("https:") || lower.startsWith("file:")) return true;
+        int slash = value.indexOf('/');
+        String host = slash == -1 ? value : value.substring(0, slash);
+        int colon = host.indexOf(':');
+        if (colon != -1) host = host.substring(0, colon);
+        return host.indexOf('.') > 0;
     }
 
     private static List<Danmaku> filter(List<Danmaku> items) {

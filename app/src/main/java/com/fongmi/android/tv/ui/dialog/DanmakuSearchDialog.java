@@ -60,6 +60,7 @@ public final class DanmakuSearchDialog extends DialogFragment {
     private final ResultAdapter adapter;
     private final Map<String, List<Danmaku>> groups;
     private final List<MaterialTextView> sourceViews;
+    private final List<Danmaku> searchResults;
     private TextInputEditText keywordView;
     private MaterialTextView searchView;
     private HorizontalScrollView sourceScroller;
@@ -84,6 +85,7 @@ public final class DanmakuSearchDialog extends DialogFragment {
         this.adapter = new ResultAdapter(this::onItemClick);
         this.groups = new LinkedHashMap<>();
         this.sourceViews = new ArrayList<>();
+        this.searchResults = new ArrayList<>();
     }
 
     public DanmakuSearchDialog player(PlayerManager player) {
@@ -349,6 +351,7 @@ public final class DanmakuSearchDialog extends DialogFragment {
         selectedSource = null;
         groups.clear();
         adapter.clear();
+        searchResults.clear();
         renderSourceTabs();
         empty.setVisibility(GONE);
         recycler.setVisibility(GONE);
@@ -379,7 +382,34 @@ public final class DanmakuSearchDialog extends DialogFragment {
         }, () -> {
             if (token != searchToken) return;
             onEmptyResult();
+        }, partial -> {
+            if (token != searchToken) return;
+            onPartialResult(partial);
         });
+    }
+
+    /**
+     * 渐进式交付：每个弹幕源一出结果就追加显示，首屏不再等最慢的源。
+     * 按 URL 去重（Danmaku.equals 基于 URL），已渲染过的来源不会被重复刷屏。
+     */
+    private void onPartialResult(List<Danmaku> items) {
+        if (items == null || items.isEmpty()) return;
+        boolean added = false;
+        boolean firstBatch = searchResults.isEmpty();
+        for (Danmaku item : items) {
+            if (item != null && !searchResults.contains(item)) {
+                searchResults.add(item);
+                added = true;
+            }
+        }
+        if (!added) return;
+        boolean wasProgress = progress.getVisibility() == VISIBLE;
+        syncCurrentState(searchResults);
+        buildGroups(new ArrayList<>(searchResults));
+        renderSourceTabs();
+        showSourceItems();
+        hideProgress(groups.isEmpty());
+        if (wasProgress || firstBatch) focusResultGroup();
     }
 
     private void onEmptyResult() {
@@ -415,7 +445,10 @@ public final class DanmakuSearchDialog extends DialogFragment {
             if (!groups.containsKey(source)) groups.put(source, new ArrayList<>());
             groups.get(source).add(item);
         }
+        // 渐进式追加时保留用户正在浏览的来源页签，别被新到的源拽回第一页
+        String keep = selectedSource;
         selectedSource = chooseInitialSource();
+        if (!TextUtils.isEmpty(keep) && groups.containsKey(keep)) selectedSource = keep;
     }
 
     private String chooseInitialSource() {
