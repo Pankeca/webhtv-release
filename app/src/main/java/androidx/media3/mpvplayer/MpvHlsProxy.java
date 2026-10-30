@@ -4,8 +4,9 @@ import android.os.SystemClock;
 import android.text.TextUtils;
 
 import androidx.annotation.Nullable;
-import androidx.media3.exoplayer.hls.playlist.HlsAdsParser;
 
+import com.fongmi.android.tv.App;
+import com.fongmi.android.tv.api.config.HlsRuleConfig;
 import com.fongmi.android.tv.player.PlaybackAutoContext;
 import com.fongmi.android.tv.player.PlaybackRouteRegistry;
 import com.fongmi.android.tv.player.PlaybackResourceClassifier;
@@ -16,6 +17,9 @@ import com.fongmi.android.tv.player.mpv.MpvPreloadPolicy;
 import com.fongmi.android.tv.setting.PlayerSetting;
 import com.fongmi.android.tv.setting.PlaybackPerformanceCatalog;
 import com.fongmi.android.tv.setting.PlaybackPerformanceSetting;
+import com.fongmi.android.tv.utils.HlsAdblockNotice;
+import com.fongmi.android.tv.utils.HlsAdblockPipeline;
+import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.setting.PreloadSetting;
 import com.fongmi.android.tv.setting.Setting;
 import com.github.catvod.crawler.SpiderDebug;
@@ -809,36 +813,55 @@ public final class MpvHlsProxy extends NanoHTTPD {
     private String applyAdblock(String text, int session, String url,
             @Nullable HlsPlaylistRewriter.Variant variant, boolean videoPlaylist) {
         if (!Setting.isAdblock() || !isVodPlaylist(text)) return text;
+        if (HlsAdblockPipeline.isCoreM3u8Proxy(url)) return text;
         if (kernel == PlayerSetting.MPV && !videoPlaylist) return text;
         try {
-            String filtered = HlsAdsParser.process(text);
+            // 阶段 2：结构化规则优先（HlsManifestCleaner），未命中时回落到内置 HlsAdsParser 兜底。
+            HlsAdblockPipeline.Outcome outcome = HlsAdblockPipeline.apply(url, text,
+                    HlsRuleConfig.getRules(), HlsRuleConfig.isLegacyFallbackEnabled());
             if (kernel == PlayerSetting.MPV) {
-                HlsAdTimeline timeline = HlsAdTimeline.from(text, filtered);
+                HlsAdTimeline timeline = HlsAdTimeline.from(text, outcome.manifest());
                 SessionStats stats = sessionStats.get(session);
                 if (stats != null) {
                     if (variant == null) stats.directAdTimeline = timeline;
                     else stats.adTimelines.merge(variant, timeline,
                             (previous, next) -> previous.sameCuts(next) ? previous : HlsAdTimeline.NONE);
                 }
-                if (!TextUtils.equals(filtered, text)) {
+                if (!TextUtils.equals(outcome.manifest(), text)) {
                     SpiderDebug.log(TAG,
                             "adblock planned session=%d ranges=%d cuts=%s mode=source-timeline-seek reason=%s url=%s",
                             session, timeline.ranges().size(), timeline.ranges(), timeline.reason(), shortUrl(url));
                 }
                 // Keep timestamps, implicit AES IVs, byte ranges and rendition
                 // synchronization intact; MpvPlayer skips the detected time ranges.
+                // MPV 与 Exo 使用同一套用户可见提示；命中统计仅在真正跳过时记录（阶段 4）。
+                if (!TextUtils.equals(outcome.manifest(), text)) {
+                    recordAndNotifyAdblock(url, outcome);
+                }
                 return text;
             }
-            if (!TextUtils.equals(filtered, text)) {
+            if (!TextUtils.equals(outcome.manifest(), text)) {
                 SpiderDebug.log(TAG,
-                        "adblock filtered session=%d bytes=%d->%d url=%s",
-                        session, text.length(), filtered.length(), shortUrl(url));
+                        "adblock filtered session=%d bytes=%d->%d structured=%s legacy=%s url=%s",
+                        session, text.length(), outcome.manifest().length(), outcome.structured(), outcome.legacy(), shortUrl(url));
             }
-            return filtered;
+            recordAndNotifyAdblock(url, outcome);
+            return outcome.manifest();
         } catch (Throwable e) {
             SpiderDebug.log(TAG, "adblock ignored session=%d errorType=%s", session, e.getClass().getSimpleName());
             return text;
         }
+    }
+
+    /** 命中去广时给出一次性提示（30 秒窗口去抖）。 */
+    private void recordAndNotifyAdblock(String url, HlsAdblockPipeline.Outcome outcome) {
+        if (!outcome.structured() && !outcome.legacy()) return;
+        if (!HlsAdblockNotice.shouldNotify(url, System.currentTimeMillis())) return;
+        int removed = outcome.removedSegments() > 0 ? outcome.removedSegments() : (outcome.legacy() ? 1 : 0);
+        String message = outcome.structured() && outcome.removedDurationSec() > 0
+                ? String.format(Locale.US, "已跳过 %d 个广告片段（%.1f 秒）", removed, outcome.removedDurationSec())
+                : "已跳过 " + removed + " 个广告片段";
+        App.post(() -> Notify.show(message));
     }
 
     private String rewritePlaylist(String playlistUrl, String text, int session, @Nullable HlsPlaylistRewriter.Variant inheritedVariant) {

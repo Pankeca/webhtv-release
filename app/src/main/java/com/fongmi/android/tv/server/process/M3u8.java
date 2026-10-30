@@ -2,8 +2,15 @@ package com.fongmi.android.tv.server.process;
 
 import android.text.TextUtils;
 
+import com.fongmi.android.tv.App;
+import com.fongmi.android.tv.api.config.HlsRuleConfig;
 import com.fongmi.android.tv.server.Nano;
 import com.fongmi.android.tv.server.impl.Process;
+import com.fongmi.android.tv.setting.Setting;
+import com.fongmi.android.tv.utils.HlsAdblockNotice;
+import com.fongmi.android.tv.utils.HlsAdblockPipeline;
+import com.fongmi.android.tv.utils.HlsManifestCleaner;
+import com.fongmi.android.tv.utils.Notify;
 import com.github.catvod.crawler.SpiderDebug;
 import com.github.catvod.net.OkHttp;
 
@@ -13,6 +20,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -82,9 +90,21 @@ public class M3u8 implements Process {
             if (!upstream.isSuccessful()) return error(status(upstream.code()), "Playlist HTTP " + upstream.code());
             String text = body.string();
             if (!looksLikePlaylist(text)) return Nano.error(Response.Status.BAD_REQUEST, "Invalid playlist");
-            String rewritten = rewrite(upstream.request().url(), text);
+            // HLS 结构化去广（默认关闭）：先清洗，再走本地代理改写。统计接入见阶段 4。
+            List<HlsManifestCleaner.Rule> rules = List.of();
+            boolean legacyFallback = false;
+            if (Setting.isAdblock()) {
+                rules = HlsRuleConfig.getRules();
+                legacyFallback = HlsRuleConfig.isLegacyFallbackEnabled();
+            }
+            HlsAdblockPipeline.Outcome clean = Setting.isAdblock()
+                    ? HlsAdblockPipeline.apply(upstream.request().url().toString(), text, rules, legacyFallback)
+                    : new HlsAdblockPipeline.Outcome(text, false, false, 0, 0);
+            recordAndNotify(upstream.request().url(), clean);
+            String rewritten = rewrite(upstream.request().url(), clean.manifest());
             byte[] bytes = rewritten.getBytes(StandardCharsets.UTF_8);
-            SpiderDebug.log(TAG, "playlist bytes=%s rewritten=%s url=%s", text.length(), bytes.length, shortUrl(upstream.request().url().toString()));
+            SpiderDebug.log(TAG, "playlist bytes=%s rewritten=%s removed=%s structured=%s legacy=%s url=%s",
+                    text.length(), bytes.length, clean.removedSegments(), clean.structured(), clean.legacy(), shortUrl(upstream.request().url().toString()));
             return noCache(NanoHTTPD.newFixedLengthResponse(Response.Status.OK, MIME_M3U8, new ByteArrayInputStream(bytes), bytes.length));
         }
     }
@@ -100,6 +120,17 @@ public class M3u8 implements Process {
         copyHeader(upstream, response, "Content-Range");
         copyHeader(upstream, response, "Cache-Control");
         return response;
+    }
+
+    /** 命中去广时给出一次性提示（30 秒窗口去抖）。统计记录留到阶段 4 的管理 UI。 */
+    private void recordAndNotify(HttpUrl url, HlsAdblockPipeline.Outcome clean) {
+        if (!clean.structured() && !clean.legacy()) return;
+        if (!HlsAdblockNotice.shouldNotify(url.toString(), System.currentTimeMillis())) return;
+        int removed = clean.removedSegments() > 0 ? clean.removedSegments() : (clean.legacy() ? 1 : 0);
+        String message = clean.structured() && clean.removedDurationSec() > 0
+                ? String.format(Locale.US, "已跳过 %d 个广告片段（%.1f 秒）", removed, clean.removedDurationSec())
+                : "已跳过 " + removed + " 个广告片段";
+        App.post(() -> Notify.show(message));
     }
 
     private String rewrite(HttpUrl base, String text) {

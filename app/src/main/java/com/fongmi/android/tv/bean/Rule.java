@@ -34,6 +34,15 @@ public class Rule {
         return new Rule(name);
     }
 
+    /** 来源：alantang1977/tangtv（GPL-3.0）——HlsRuleConfigTest / RuleIdUtil 需要。 */
+    public static Rule create(String name, List<String> hosts, List<String> regex, List<String> exclude) {
+        Rule rule = new Rule(name);
+        rule.hosts = hosts;
+        rule.regex = regex;
+        rule.exclude = exclude;
+        return rule;
+    }
+
     public static Rule empty() {
         return new Rule("");
     }

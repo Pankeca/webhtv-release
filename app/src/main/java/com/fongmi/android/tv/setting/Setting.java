@@ -862,8 +862,12 @@ public class Setting {
         Prefers.put("update_oci_mirror_url", url == null ? "" : url.trim());
     }
 
+    /**
+     * HLS 智能去广总开关（阶段 2 定稿：默认关闭，避免误伤正常片段；设置页「智能去广」可改）。
+     * 三条路径（M3u8 本地代理 / Exo 直连 / MPV 代理）都以这里为准；规则见 HlsRuleConfig。
+     */
     public static boolean isAdblock() {
-        return Prefers.getBoolean("adblock", true);
+        return Prefers.getBoolean("adblock", false);
     }
 
     public static void putAdblock(boolean adblock) {

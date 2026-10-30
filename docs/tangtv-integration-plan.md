@@ -559,6 +559,65 @@ script_88469ce2cef490caecb1f644300a0257.js    49,994 B   ← 与远端 pomo.mom.
 
 ---
 
+## 10. 阶段 2：HLS 去广实施记录（2026-10-30）
+
+### 10.1 范围与来源
+
+按第 7 节定稿执行「HLS 净化 + 单测，管理 UI 后补，音频指纹放弃」。来源仓库
+`alantang1977/tangtv`（GPL-3.0，本地副本 `/home/s/tangref/tangtv2`），所有文件逐行核对后移植，
+文件头均标注来源；本项目此前已同步过该仓库的 `androidx/media3/mpvplayer` 一层
+（`HlsAdTimeline` / `HlsPlaylistRewriter` / `MpvHlsProxy` 等，与源仓库逐字节一致），
+本次补齐规则层与 Exo / 本地代理两条路径。
+
+### 10.2 新增文件（11 个）
+
+| 文件 | 行数 | 说明 |
+| --- | --- | --- |
+| `bean/HlsAdRule.java` | 104 | 结构化规则（JSON 反序列化 + 校验 + 编译为 Cleaner.Rule） |
+| `bean/HlsRulePackage.java` | 33 | 规则包（schemaVersion=2） |
+| `bean/HlsRuleState.java` | 33 | 状态键（origin:hash(sourceId):ruleId）与启用解析 |
+| `api/config/BuiltinHlsRuleLoader.java` | 32 | 读取 `assets/rules/hls_rules.json` |
+| `api/config/HlsRuleStateStore.java` | 42 | 用户对内置规则的启用/禁用覆盖（Prefers） |
+| `api/config/HlsRuleConfig.java` | 128 | 编译内置 + Vod/Live `hlsRules` + 旧版 Rule 的排除规则；含 legacy 兜底开关 |
+| `utils/HlsManifestCleaner.java` | 343 | 纯文本清单清洗（信号制匹配、35%/90 秒安全上限、直播序号修正） |
+| `utils/HlsAdblockPipeline.java` | 109 | 结构化清洗 + `HlsAdsParser` 兜底串联；`isCoreM3u8Proxy` 防二次清洗 |
+| `utils/HlsAdblockNotice.java` | 23 | 30 秒去抖通知窗口 |
+| `player/exo/ExoHlsAdblockDataSource.java` | 178 | Exo 直连清单响应清洗（按 URL 后缀 + Content-Type 识别） |
+| `assets/rules/hls_rules.json` | 33 | 内置实验规则 3 条，全部 `enabledByDefault=false` |
+
+配套：`utils/RuleIdUtil.java`（41 行，旧版规则稳定 ID）；`bean/Rule.create(name,hosts,regex,exclude)` 工厂。
+
+### 10.3 三条路径的接入
+
+| 路径 | 改动 |
+| --- | --- |
+| 本地代理 `server/process/M3u8.java` | 清洗后再走既有的代理改写；命中时 Toast 提示 |
+| Exo 直连 `player/exo/MediaSourceFactory.java` | `cacheDataSource` 外包一层 `ExoHlsAdblockDataSource.Factory`；**legacy 兜底关掉**（fongmi media3 内置的 `HlsPlaylistParser→HlsAdsParser` 已做旧版兜底，避免双重清洗） |
+| MPV `androidx/media3/mpvplayer/MpvHlsProxy.java` | `applyAdblock` 从直接调 `HlsAdsParser.process` 升级为 pipeline；MPV 分支仍只产出 `HlsAdTimeline`（时间轴跳段），IJK 分支直接返回清洗后的清单 |
+
+开关：`Setting.isAdblock()`（**默认改为 false**，定稿要求「默认关闭」）；设置页两 flavor 的
+「智能去广」开关（`SettingPlayerFragment` / `SettingPlayerActivity`）沿用既有绑定。
+「本次播放不去广」逃生口：源仓库也只有设计稿没有实现，归入阶段 4 管理 UI 一起做。
+
+### 10.4 刻意不搬的部分
+
+- `AdBlockStatsStore`（311 行）+ `bean/AdBlockStats`（314 行）+ `UserAdRule` / `RuleHitRecord` /
+  `DisabledDefaultRuleStore` 等：命中统计与用户规则属于阶段 4。`M3u8` / `ExoHlsAdblockDataSource` /
+  `MpvHlsProxy` 里的 `recordBlocks(...)` 调用已剥除，只保留去抖 Toast。
+- `HlsRuleConfigTest` 中依赖上述类的 2 个用例删除，替换为 `isCoreM3u8Proxy` 行为用例；
+  `Rule.create(...)` 工厂补进本项目 `bean/Rule`。
+
+### 10.5 单测
+
+8 个文件 / 32 个用例（`HlsManifestCleanerTest` 14、`HlsAdblockPipelineTest` 6、
+`ExoHlsAdblockDataSourceTest` 3、`HlsRulePackageTest` 3、`HlsAdblockNoticeTest` 2、
+`HlsRuleConfigTest` 2、`HlsAdRuleTest` 1、`RuleIdUtilTest` 1）。
+
+### 10.6 许可提醒
+
+来源是 GPL-3.0 仓库，移植文件头已标注出处。本项目当前是个人自用 + 私有发布渠道
+（GitHub `Pankeca/webhtv-release`）；如果日后要对外分发，需要按 GPL-3.0 处理整包授权。
+
 ## 9. 原方案留档：5 个待决问题（已由第 7 节取代）
 
 1. **触屏优化**：A. 照搬 tangtv 语义（只在 TV 版生效，你平板无效）；B. 我们重写成手机版（手势阈值 / 48dp 触控热区 / 滚动惯性）；C. 两个都要（按 flavor 分流）。

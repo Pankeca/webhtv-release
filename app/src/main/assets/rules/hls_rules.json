@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 2,
+  "packageId": "webhtv-builtin-hls",
+  "version": 1,
+  "rules": [
+    {
+      "id": "exp-ad-directory",
+      "name": "实验：/ad/ 广告目录片段",
+      "version": 1,
+      "enabledByDefault": false,
+      "playlistHostRegex": [".+"],
+      "segmentUrlRegex": ["(^|/)ads?/[A-Za-z0-9_-]+\\.(ts|m4s|mp4)"],
+      "minimumSignals": 1
+    },
+    {
+      "id": "exp-ad-prefix-short",
+      "name": "实验：ad 前缀片段 + 3~60 秒",
+      "version": 1,
+      "enabledByDefault": false,
+      "playlistHostRegex": [".+"],
+      "segmentUrlRegex": ["(^|/)(ad|ads)[0-9]*[._-][^/]+\\.(ts|m4s|mp4)"],
+      "minDuration": 3,
+      "maxDuration": 60,
+      "minimumSignals": 2
+    },
+    {
+      "id": "exp-discontinuity-crosshost-short",
+      "name": "实验：跨域 + 不连续 + 超短块",
+      "version": 1,
+      "enabledByDefault": false,
+      "playlistHostRegex": [".+"],
+      "minDuration": 0.1,
+      "maxDuration": 5,
+      "requireDiscontinuity": true,
+      "requireCrossDomain": true,
+      "minimumSignals": 2
+    }
+  ]
+}
