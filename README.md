@@ -648,3 +648,60 @@ cd /media/s/7A3A1DFD3A1DB6DB/REA
 - **安全提醒**：`/media/s/...` 是外置盘且以 `rwxrwxrwx` 挂载，系统不会按 `600` 生效，口令文件对同机用户可读。仅作本机迁移用；不要把这块盘或 `secrets/` 交给他人，长期存放请用加密卷并定期轮换密钥。
 
 
+## 十八、5.6.5 发布：站点注入与扩展修复（2026-10-30）
+
+### 版本与产物
+
+`versionCode 565 / versionName 5.6.5`，正式 keystore 签名（`CN=WebHTV`，SHA-256 `5c3b6ccc`），四组合全部发布：
+
+| 产物 | 大小 | SHA-256（前 8 位） |
+| --- | --- | --- |
+| `mobile-arm64_v8a.apk` | 150,389,472 | `f595d742` |
+| `mobile-armeabi_v7a.apk` | 128,221,016 | `bdcd23fd` |
+| `leanback-arm64_v8a.apk` | 150,166,004 | `c37eafec` |
+| `leanback-armeabi_v7a.apk` | 127,997,548 | `a37e9ba3` |
+
+| 用途 | 地址 |
+| --- | --- |
+| GitHub Release v5.6.5 | `https://github.com/Pankeca/webhtv-release/releases/tag/v5.6.5` |
+| 更新清单（CNB，客户端读取） | `https://cnb.cool/mytools-2026/app-release/-/git/raw/main/<端名>-<ABI>.json` |
+
+CNB `app-release` 的 4 个清单已更新到 `5.6.5 / 565`（commit `b0cab8d`），`apk` 指向 GitHub Release 直链，`sha256` 与 Release asset 的 `digest` 一致。
+
+### 本轮改动
+
+| # | 需求 | 实现 |
+| --- | --- | --- |
+| 1 | 社区资源一键导入 | `CspUrlImporter` 探测 CNB / GitHub 仓库结构，识别站点配置与 WebHome 扩展清单，生成站点条目写入注册表；`CustomCspDialog` 新增粘贴入口 |
+| 2 | 导入把 404 当主页 | 按状态码 + 内容特征双重校验，失败原因回显弹窗 |
+| 3 | 扩展清单被误判成脚本 | `isScriptUrl()` 改后缀精确匹配并剥离 query/fragment，新增 `isManifestUrl()`；清单解析失败时仅对非 `.json` 链接兜底；补 6 个回归单测 |
+| 4 | 社区站点接入 | Pomo / 观影 / Ymvid / 雪习萌动漫 四个站点的 `extensions` 指向各自 manifest，真机验证注入成功 |
+
+### GitHub 仓库历史与本地分叉的处理
+
+GitHub `main` 原先停在「移植前快照 + v5.6.4 发包记录」（`deb3754`），与本地仓库**没有共同祖先**，且本地多出 4 个提交（基线同步 / 一键导入 / 404 修复 / 扩展修复）。本次没有用 `push --force`，而是把这 4 个提交重放到远端 `main` 之上，远端历史完整保留：
+
+```
+deb3754  (远端原 head)
+└─ 150295c chore: 同步 5.6.4 源码基线（含弹幕模块移植与手机端适配）
+   └─ e095b32 feat(站点注入): 支持从社区资源链接一键导入
+      └─ 57035a5 fix(站点注入): 拦住把 404 页面当成主页下载
+         └─ f4ee8a6 fix(webhome-ext): 修复扩展清单被误判成脚本导致注入静默失败
+            └─ 7f3bda5 chore(release): 版本号 565 / 5.6.5
+```
+
+做法：`--filter=blob:none --depth=1` 拉远端提交与树（只几百 KB），再用 `git read-tree` + `write-tree` + `commit-tree` 在远端树之上逐级写入本地树，最后 `git push` —— 只上传增量 blob（84 个文件 / 14 MB），不必下载 336 MB 的工作树。校验：重放后的 tree `e2a522e7` 与本地 `HEAD^{tree}` 完全一致。
+
+### 构建口径与踩坑
+
+- 四个变体均 `-PfastRelease=true`（关闭 R8 与资源压缩，与真机验证使用的构建路径一致），包体比 5.6.4 大约 10 MB，功能无差异。
+- 容器构建（宿主 `ulimit -v` 锁 4 GB，不能跑 Gradle）：
+
+```bash
+docker run --rm -v /home/s:/home/s -v /usr/lib/locale:/usr/lib/locale:ro \
+  -e LANG=zh_CN.UTF-8 -e LC_ALL=zh_CN.UTF-8 -w /home/s/REA-src \
+  hostroot:1 bash /home/s/build/c-all.sh
+```
+
+- `armeabi-v7a` 变体首次构建要装 Chaquopy 的 Python 依赖，`pypi.org` 只有 ~8 KB/s，`beautifulsoup4` 索引超时 → `:chaquo:installMobileArmeabi_v7aReleasePythonRequirements` 直接失败（arm64 因为有缓存不受影响）。重试时把 `PIP_INDEX_URL` 指向清华镜像即通过（脚本 `/home/s/build/c-retry.sh`）。
+- 网络是不对称的：`uploads.github.com` 上传约 5 MB/s（150 MB / 30 s），而 `api.github.com` / `raw.githubusercontent.com` 下载只有 20 KB/s 左右——全量 `git clone`（工作树 336 MB）在这个环境里不可行，故改用上面的 blobless + 增量推送。
