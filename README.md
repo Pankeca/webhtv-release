@@ -782,8 +782,10 @@ docker run --rm -v /home/s:/home/s -v /usr/lib/locale:/usr/lib/locale:ro \
 
 - **仓库描述清空**：`Pankeca/webhtv-release` 的 description 置空（原为「WebHTV 自用影视客户端发布仓库（APK + 更新清单）」），homepage 保持空。
 - **只保留最新两个 Release**：v5.6.7 发布后，删除 `v5.6.5` / `v5.6.4` / `v5.6.2` 三个 Release 及同名 tag（`v5.6.1` 的孤儿 tag 一并清掉）。现在 `releases` 与 `tags` 各只剩 `v5.6.7`、`v5.6.6`。
-- 以后每发一版都执行同样清理，已写入 `docs/开发进度与交接.md` §3.3.1 第 9 步。删除前先确认旧包在 `/home/s/build/rel-<版本>/` 有本地归档。
-- ⚠️ **删旧 Release 会连带删资产**：`app-release` 里 `leanback-arm64_v8a.json` / `leanback-armeabi_v7a.json` / `mobile-armeabi_v7a.json` 三个清单仍指向已删除的 `v5.6.5`，电视端与 armeabi-v7a 端检查更新会 404（这三个变体按当前构建口径不产出 5.6.7）。要修就重新构建这两个变体补进 `v5.6.7`，或把这三个清单从 CNB 撤掉。
+- **撤掉非 mobile 的更新清单**（2026-10-31 定）：删 `v5.6.5` 后，`leanback-arm64_v8a.json` / `leanback-armeabi_v7a.json` / `mobile-armeabi_v7a.json` 三个清单指向的资产已不存在。按「暂时不构建电视端」的决定，这三个清单已从 CNB 删除（commit `ec19491`），CNB 现在**只保留 `mobile-arm64_v8a.json` 一条更新线**。
+  电视端 / armeabi-v7a 端检查更新时会拿到不到清单，`Updater` 把「清单为空」按「已是最新或检查失败」处理（`Updater.java` 注释：`result 为空表示已是最新或检查失败`），表现是提示已是最新，**不会出现下载到一半 404**。
+  备份留在 `/home/s/build/tmp/cnb-manifest-backup/`，将来要恢复电视端更新时把文件放回 `app-release` 并改 `apk` 指向新 Release 即可。
+- 以后每发一版都执行同样清理，已写入 `docs/开发进度与交接.md` §3.3.1 第 9 步。删除前先确认旧包在 `/home/s/build/rel-<版本>/` 有本地归档（`v5.6.5` 的 4 个 APK 就还在那里）。
 
 ## 二十一、开发记录与文档索引（2026-10-31）
 
