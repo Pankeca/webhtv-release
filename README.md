@@ -1,6 +1,6 @@
 # WebHomeTV 编译说明
 
-本目录只保留 APK 编译所需的工程文件，构建缓存不入库；仓库已建立 Git 基线（见第四节「接手开发须知」），下载中心模块的实现要点、真机验证结论和待办见文末第四～六节。
+本目录只保留 APK 编译所需的工程文件，构建缓存不入库；仓库已建立 Git 基线（见第四节「接手开发须知」），下载中心模块的实现要点与真机验证结论见文末第四～五节，已知问题见第六节。
 
 ## 一、编译环境（本机已装好）
 
@@ -138,7 +138,7 @@ git diff 4e2474f -- app/src/mobile/java/com/fongmi/android/tv/ui/activity/Downlo
 - 界面构建方式不同：下载中心是 XML（`app/src/mobile/res/layout/activity_download_center.xml`）+ 代码动态加分组卡片；`DownloadDialog` 与本地播放提示条（`VideoActivity.setupLocalBar()`）完全是代码里拼 View，没有对应 XML，改样式要找 Java 而不是 layout。
 - 集数按钮的列数目前**分散在三处硬编码**，做「统一每行个数 / 按钮宽度」时要一起改：`DownloadDialog.COLUMNS = 3`（详情页下载弹窗）、`DownloadCenterActivity.CHIP_COLUMNS = 4`（下载中心集数胶囊）、`EpisodeGridLayoutPolicy.getMaxSpan()`（详情页选集，横屏或平板 6 列、竖屏 4 列，有 `EpisodeGridLayoutPolicyTest` 覆盖）。
 - 涉及下载逻辑的改动，最低验证集：`M3u8Test` 单测 + leanback 编译 + mobile 真机跑一次「下载→暂停→续传→完成→本地播放→删除」。
-- 第六节的待办是需求级描述，其中第 3 条（《嫁金钗》本地选集回退）尚未定位根因，只给了排查方向。
+- 第六节的已知问题里，第 3 条（《嫁金钗》本地选集回退）尚未定位根因，只给了排查方向。
 
 ## 五、真机验证结论（2026-10-26，Lenovo TB331FC / Android 13，站源：暴风资源 `bfzym3u8`）
 
@@ -153,7 +153,7 @@ git diff 4e2474f -- app/src/mobile/java/com/fongmi/android/tv/ui/activity/Downlo
 - 分组「全选 + 删除」：确认后本地文件真实删除，分组消失，计数与存储同步（12 → 10、8.83GB → 7.07GB）。
 - `M3u8Test` 4/4 通过；leanback 变体编译通过。
 
-## 六、已知问题与待办
+## 六、已知问题（留档，不再排期）
 
 1. 下载中心可读性：`下载中 / 已下载` tab 字号偏小，底部「全部开始 / 全部暂停 / 删除」三键在半透明背景 + 壁纸上对比度不足，需要加深色底或描边。
 2. 本地播放页「观看网络多线路完整版」需完整对齐可可影视：当前 `switchToNetwork()` 已能跳站点详情，交互与返回栈待细化。
@@ -584,7 +584,7 @@ adb shell wm density reset
 6. **启动崩溃**：logcat 确认是 `IllegalStateException: Fragment VodFragment not attached to a context`——`toolbar.post(this::setSearchAction)` 等延迟任务在 Fragment 已 detach 后执行时调用 `getResources()`。给 `setSearchAction / applyCompactToolbar / updateToolbarMenu / updateTypeMoreVisible` 增加 `isAdded()` 与绑定空判断，真机冷启动、二次启动均不再复现。
 7. **真机回归（vivo V2338A，1080×2400）**：冷启动与强制停止后重启均无崩溃；18 集详情页播放中横竖屏互切，画面与进度连续（不黑屏、不转圈），选集与站点栏完整保留；竖屏详情页视频下方整页可滚，选集完整展开；横屏选集可滚到底并滑回站点栏。交付包 `WebHTV-mobile-arm64-v8a-5.6.4-adaptive3.apk`（SHA-256 `247bcf14…d95191`，release 签名），覆盖安装未清数据。
 
-### 待办（下一轮）
+### 当时列的待办（已全部落地）
 
 1. 真机与平板回归：首页、搜索、详情、播放、设置全界面横竖屏走查。
 2. 手机横屏详情页下方选集条高度偏小（约 110dp），可考虑把简介移入滚动区、压缩视频高度，给选集更多可视空间。
@@ -907,7 +907,7 @@ docker run --rm -v /home/s:/home/s -v /usr/lib/locale:/usr/lib/locale:ro \
 
 | 文档 | 用途 |
 | --- | --- |
-| [`docs/开发进度与交接.md`](docs/开发进度与交接.md) | 入口页：30 秒上手、当前状态、待办、关键约定 |
+| [`docs/开发进度与交接.md`](docs/开发进度与交接.md) | 入口页：30 秒上手、当前状态、关键约定 |
 | [`docs/开发记录总览.md`](docs/开发记录总览.md) | 全量记录：时间线、功能模块、踩坑合辑、后续注意事项 |
 | [`docs/开发记录规范.md`](docs/开发记录规范.md) | 每轮记录模板、提交/发布/验证/交接规范 |
 | [`docs/tangtv-integration-plan.md`](docs/tangtv-integration-plan.md) | tangtv 功能移植方案 |
