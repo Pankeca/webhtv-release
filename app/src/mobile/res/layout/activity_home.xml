@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
@@ -10,15 +9,17 @@
         android:layout_height="match_parent"
         android:layout_above="@+id/navigation" />
 
-    <com.google.android.material.bottomnavigation.BottomNavigationView
+    <!-- 底栏改成三颗文字胶囊（首页/直播/设置），样式与首页顶栏胶囊同源，由 NavPillBar 在代码里填充。
+         高度写死 64dp：LinearLayout 的 onMeasure 不认 minHeight，wrap_content 会被内容压成一条缝 -->
+    <com.fongmi.android.tv.ui.custom.NavPillBar
         android:id="@+id/navigation"
         android:layout_width="match_parent"
-        android:layout_height="56dp"
+        android:layout_height="64dp"
         android:layout_alignParentBottom="true"
         android:background="@color/transparent"
-        app:elevation="0dp"
-        app:itemIconTint="@color/selector_nav"
-        app:labelVisibilityMode="unlabeled"
-        app:menu="@menu/menu_nav" />
+        android:paddingStart="8dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="8dp"
+        android:paddingBottom="8dp" />
 
 </RelativeLayout>

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 底栏导航胶囊：未选中是玻璃质感，选中是实心金色（和顶栏「我的」登录态同色系） -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item android:state_selected="true">
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="270"
+                android:endColor="#E6B427"
+                android:startColor="#FFD45C"
+                android:type="linear" />
+            <stroke
+                android:width="1dp"
+                android:color="#FFE8A6" />
+            <corners android:radius="20dp" />
+        </shape>
+    </item>
+
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="270"
+                android:endColor="#12FFFFFF"
+                android:startColor="#36FFFFFF"
+                android:type="linear" />
+            <stroke
+                android:width="1dp"
+                android:color="#59FFFFFF" />
+            <corners android:radius="20dp" />
+        </shape>
+    </item>
+
+</selector>

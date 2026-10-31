@@ -10,6 +10,9 @@ import android.view.MenuItem;
 import android.view.View;
 import android.widget.RelativeLayout;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import androidx.annotation.NonNull;
 import androidx.core.content.pm.ShortcutInfoCompat;
 import androidx.core.content.pm.ShortcutManagerCompat;
@@ -39,6 +42,7 @@ import com.fongmi.android.tv.setting.FactoryDefaults;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.ui.custom.FragmentStateManager;
+import com.fongmi.android.tv.ui.custom.NavPillBar;
 import com.fongmi.android.tv.ui.fragment.SettingEnhanceFragment;
 import com.fongmi.android.tv.ui.fragment.SettingDanmakuFragment;
 import com.fongmi.android.tv.ui.fragment.SettingFragment;
@@ -55,13 +59,12 @@ import com.fongmi.android.tv.utils.Util;
 import com.fongmi.android.tv.web.WebHomeChromeStartup;
 import com.fongmi.android.tv.web.WebHomeViewport;
 import com.github.catvod.net.OkHttp;
-import com.google.android.material.navigation.NavigationBarView;
 import com.google.gson.JsonObject;
 
 import org.greenrobot.eventbus.Subscribe;
 import org.greenrobot.eventbus.ThreadMode;
 
-public class HomeActivity extends BaseActivity implements NavigationBarView.OnItemSelectedListener, WebHomeChromeController.Host {
+public class HomeActivity extends BaseActivity implements WebHomeChromeController.Host {
 
     public static final String EXTRA_NAV_POSITION = "nav_position";
     private static final String STATE_RETURN_VOD_FROM_ENHANCE = "returnVodFromEnhance";
@@ -100,7 +103,9 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         mStartupConfig = Config.vod();
         mChrome = new WebHomeChromeController(this, mBinding, this, savedInstanceState, WebHomeChromeStartup.restore(mStartupConfig));
         mBinding.getRoot().addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> checkWindowShape(right - left, bottom - top));
-        mBinding.navigation.setOnItemSelectedListener(this);
+        // 先把底栏胶囊和点选监听装好：initFragment 里的首次 change(0) 要靠它把首页 fragment 挂上来，
+        // 以前 BottomNavigationView 由框架保证监听可用，换自定义胶囊后必须自己先建好
+        setNavigation();
         initFragment(savedInstanceState);
         initConfig();
         mBinding.getRoot().post(this::applyDeviceAdaptation);
@@ -126,7 +131,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
 
     @Override
     protected void initEvent() {
-        mBinding.navigation.findViewById(R.id.live).setOnLongClickListener(this::addShortcut);
+        // 底栏胶囊在 setNavigation() 里组装（配置就绪后才知道直播源有没有），这里不再单独挂监听
     }
 
     private void checkAction(Intent intent) {
@@ -210,10 +215,25 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     }
 
     private void setNavigation() {
-        mBinding.navigation.getMenu().findItem(R.id.vod).setVisible(true);
-        mBinding.navigation.getMenu().findItem(R.id.setting).setVisible(true);
-        mBinding.navigation.getMenu().findItem(R.id.live).setVisible(LiveConfig.hasUrl());
+        List<NavPillBar.Entry> entries = new ArrayList<>();
+        entries.add(new NavPillBar.Entry(R.id.vod, R.string.nav_vod));
+        if (LiveConfig.hasUrl()) entries.add(new NavPillBar.Entry(R.id.live, R.string.nav_live));
+        entries.add(new NavPillBar.Entry(R.id.setting, R.string.nav_setting));
+        mBinding.navigation.setEntries(entries);
+        mBinding.navigation.setListener(this::onNavSelected);
+        // 长按「直播」加桌面快捷方式，行为与原来的图标底栏一致
+        View live = mBinding.navigation.getEntryView(R.id.live);
+        if (live != null) live.setOnLongClickListener(this::addShortcut);
         syncNavigationSelection();
+    }
+
+    /** 底栏胶囊点选：与原来的 onNavigationItemSelected 语义一致。 */
+    private void onNavSelected(int itemId) {
+        returnVodFromEnhance = false;
+        setNavigationVisible(true);
+        if (itemId == R.id.setting) changeFragment(1);
+        else if (itemId == R.id.vod) changeFragment(0);
+        else if (itemId == R.id.live) openLive();
     }
 
     private boolean openLive() {
@@ -265,7 +285,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
 
     /** 供顶栏内联导航使用，避免直接依赖底栏是否可见。 */
     public void selectNavigationItem(int itemId) {
-        mBinding.navigation.setSelectedItemId(itemId);
+        mBinding.navigation.setSelectedId(itemId, true);
     }
 
     @Subscribe(threadMode = ThreadMode.MAIN)
@@ -294,28 +314,17 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         if (event.type() == ServerEvent.Type.SEARCH) SearchActivity.start(this, event.text());
     }
 
-    @Override
-    public boolean onNavigationItemSelected(@NonNull MenuItem item) {
-        returnVodFromEnhance = false;
-        setNavigationVisible(true);
-        if (item.getItemId() == R.id.setting) return changeFragment(1);
-        if (item.getItemId() == R.id.vod) return changeFragment(0);
-        if (item.getItemId() == R.id.live) return openLive();
-        return false;
-    }
-
     private void selectNavigation(int position) {
         int itemId = position == 0 ? R.id.vod : R.id.setting;
-        if (mBinding.navigation.getSelectedItemId() == itemId) changeFragment(position);
-        else mBinding.navigation.setSelectedItemId(itemId);
+        if (mBinding.navigation.getSelectedId() == itemId) changeFragment(position);
+        else mBinding.navigation.setSelectedId(itemId, true);
+        // 兜底：监听还没接上时（比如配置还没就绪就切页），直接挂 fragment，避免首页一片空白
+        if (mManager != null && mManager.getFragment(position) == null) changeFragment(position);
     }
 
     private void syncNavigationSelection() {
-        int itemId = currentPosition == 0 ? R.id.vod : R.id.setting;
-        if (mBinding.navigation.getSelectedItemId() == itemId) return;
-        mBinding.navigation.setOnItemSelectedListener(null);
-        mBinding.navigation.setSelectedItemId(itemId);
-        mBinding.navigation.setOnItemSelectedListener(this);
+        // 只同步选中态，不再触发一次跳转（原来要临时摘掉监听，现在用 notify=false）
+        mBinding.navigation.setSelectedId(currentPosition == 0 ? R.id.vod : R.id.setting, false);
     }
 
     private boolean changeFragment(int position) {
@@ -388,7 +397,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     public void openVod() {
         resetVodChrome();
         setNavigationVisible(true);
-        mBinding.navigation.setSelectedItemId(R.id.vod);
+        mBinding.navigation.setSelectedId(R.id.vod, false);
         VodFragment fragment = (VodFragment) mManager.getFragment(0);
         if (fragment != null) fragment.openVodHome();
     }
@@ -457,7 +466,7 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
     protected void onBackInvoked() {
         if (mChrome != null && mChrome.consumeBack()) {
             return;
-        } else if (!mBinding.navigation.getMenu().findItem(R.id.vod).isVisible()) {
+        } else if (mBinding.navigation.getEntryView(R.id.vod) == null) {
             setNavigation();
         } else if (returnVodFromEnhance && mManager.isVisible(3)) {
             returnVodFromEnhance = false;

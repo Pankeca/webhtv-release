@@ -869,7 +869,39 @@ docker run --rm -v /home/s:/home/s -v /usr/lib/locale:/usr/lib/locale:ro \
 - 下载失败的 toast 必须包在 `App.post()` 里：失败发生在下载线程，直接 `Toast.makeText` 会崩（无线程 Looper）。
 - 追更标签「缺失」的真正根因是**剧名里拼了别名/外文名**，任何精确匹配都会落空；只补 DAO 查询不够，要做「主名归一 + 多档召回」。
 
-## 二十三、开发记录与文档索引（2026-10-31）
+## 二十三、5.6.10：底栏文字胶囊 + 下载失败提示改轻量 + 注入站点首页优先（真机验证通过，2026-10-31）
+
+> 状态：`versionCode 570 / versionName 5.6.10`，真机（HA1YL5GG）验证通过，正式签名包已发布。
+> 本轮三条：底栏从图标改成与顶栏同源的文字胶囊；下载失败提示从汇总弹窗改成轻量 toast + 页内失败条；把「注入站点首页优先」讲清楚（代码收敛 + 弹窗说明行）。
+
+### 产物
+
+| 产物 | 大小 | SHA-256（前 8 位） | 说明 |
+| --- | --- | --- | --- |
+| `mobile-arm64_v8a.apk` | 150,444,273 | `75a37efe` | **正式签名包**（`CN=WebHTV` / `5c3b6ccc` 验签通过），已发布到 GitHub Release v5.6.10 |
+
+| 用途 | 路径 |
+| --- | --- |
+| **检验包（构建产物原始位置）** | `/home/s/REA-src/app/build/outputs/apk/mobileArm64_v8a/release/mobile-arm64_v8a.apk` |
+| **真项目目录（唯一可改）** | `/media/s/7A3A1DFD3A1DB6DB/REA` |
+| **构建副本（实际编译处）** | `/home/s/REA-src` |
+| **发布包归档** | `/home/s/build/rel-5.6.10/mobile-arm64_v8a.apk` |
+
+### 本轮改动（真机验证结论）
+
+| # | 需求 | 实现要点 | 验证 |
+| --- | --- | --- | --- |
+| 1 | 底栏导航从图标改成**三颗文字胶囊**（点播 / 直播 / 设置），样式与首页顶栏胶囊同源 | 新增 `mobile/ui/custom/NavPillBar`（横向 ViewGroup，代码里按 `Entry(itemId, titleRes)` 填胶囊，选中态由 `selector_nav_pill` / `selector_nav_pill_text` 切换）+ `view_nav_pill.xml`；`activity_home.xml` 里 `NavigationBarView` 换成 `NavPillBar`；`HomeActivity.setNavigation()` 组装条目（直播源存在才显示「直播」，长按直播仍加桌面快捷方式），`onNavSelected(itemId)` 保持原语义；`selectNavigationItem` / `openVod` / `syncNavigationSelection` 全部改走 `setSelectedId(itemId, notify)` | 设置页底栏三胶囊正常显示、选中高亮金色、点「设置」正确切页（截图 n30/n31） |
+| 2 | 下载失败提示**改轻量**：去掉 5.6.9 的汇总弹窗 | `DownloadTask.run` 失败重试用尽仍走主线程 toast（`剧名 · 集名 重试后仍下载失败`）；下载中心页内失败任务直接显示红色失败条（剧名+集名），条上 × 可删除；进页补报保留但改成逐条 toast（`reportedFailures` 防重复），不再弹对话框 | 断网实测：失败 toast「嫁金钗 · 第05集 重试后仍下载失败」被截图直接捕获；失败红条与 × 删除确认；恢复网络后重试路径正常 |
+| 3 | **注入站点首页优先**讲清楚：首页线路是注入站点时，无论来源设置选什么，首页都显示站点自带的网页首页 | `VodFragment.loadHome()`：`useWeb = mWeb.load(home)` 不再看来源设置——站点有自带网页首页就永远优先（站点自带配置是它花心思做的）；只有站点没有自带首页时才按设置的来源走（豆瓣热播 / 最近观看 / 站点类型列表）；`RecommendDialog` 底部加灰色说明行「当前首页线路是注入站点，首页会始终显示该站点自带的网页首页配置」，避免用户切了来源看不到变化以为坏了 | 设置 → 首页内容来源弹窗底部说明行正常显示；三选一切换即时生效并自动关弹窗 |
+
+### 踩坑
+
+- **换掉 `BottomNavigationView` 后，监听和底栏必须先于 `initFragment()` 装好**：原实现里框架保证 `setOnItemSelectedListener` 可用，自定义胶囊后如果还按旧顺序（先 `initFragment` 再装监听），首次 `change(0)` 不会挂载 fragment → 首页一片空白。已在 `onCreate` 里把 `setNavigation()` 提到 `initFragment(savedInstanceState)` 之前，另在 `selectNavigation` 里留了兜底（fragment 为空就直接挂）。
+- 选中态同步用 `setSelectedId(itemId, false)`（只改 UI 不回调监听），替代旧的「临时摘监听 → setSelected → 再挂回去」三步舞。
+- **这台 ROM 的 toast 能不能被 screencap 捕到要看时机**：toast 窗口由 SystemUI 管理，部分帧里截不到；验证 toast 建议用「连拍多帧 + 帧差分」或 `dumpsys window windows | grep Toast`，不要凭单张截图断言「没弹」。
+
+## 二十四、开发记录与文档索引（2026-10-31）
 
 > 以后每轮开发、发布或交接，都按 `docs/开发记录规范.md` 更新记录；入口页只保留当前状态。
 

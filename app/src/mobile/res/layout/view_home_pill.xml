@@ -4,24 +4,25 @@
   原来的五个图标（刷新/追更/历史/下载/我的）一律换成这一个小胶囊，文字由菜单 title 填进来，
   这样多语言只改 strings.xml，不用给每个按钮单独做一套图。
 
-  间距：胶囊之间靠 shape 自己的描边分界，外边距收到 3dp，整体更像一组分段按钮；
-  高度 32dp 与搜索框视觉接近，圆角取 17dp 保证是完整胶囊。
+  间距：胶囊之间留 6dp（原来 3dp 挤在一起，看着像连体），高度 34dp、圆角 18dp 保证是完整胶囊，
+  底用竖向渐变做玻璃质感，按压有 ripple。
 -->
 <com.google.android.material.textview.MaterialTextView xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/pill"
     android:layout_width="wrap_content"
-    android:layout_height="32dp"
-    android:layout_marginStart="3dp"
-    android:layout_marginEnd="3dp"
+    android:layout_height="34dp"
+    android:layout_marginStart="6dp"
+    android:layout_marginEnd="6dp"
     android:background="@drawable/shape_home_pill"
     android:clickable="true"
     android:focusable="true"
-    android:foreground="@drawable/ripple_round_14"
+    android:foreground="@drawable/ripple_round_20"
     android:gravity="center"
     android:includeFontPadding="false"
+    android:letterSpacing="0.02"
     android:maxLines="1"
-    android:minWidth="44dp"
-    android:paddingStart="12dp"
-    android:paddingEnd="12dp"
+    android:minWidth="46dp"
+    android:paddingStart="14dp"
+    android:paddingEnd="14dp"
     android:textColor="@color/white"
     android:textSize="12sp" />

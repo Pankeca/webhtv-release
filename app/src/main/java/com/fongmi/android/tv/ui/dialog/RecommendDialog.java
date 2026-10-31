@@ -51,10 +51,35 @@ public class RecommendDialog extends BaseAlertDialog {
         addRow(content, RecommendSetting.SITE, R.string.recommend_site, R.string.recommend_site_desc, source);
         addRow(content, RecommendSetting.DOUBAN, R.string.recommend_douban, R.string.recommend_douban_desc, source);
         addRow(content, RecommendSetting.HISTORY, R.string.recommend_history, R.string.recommend_history_desc, source);
+        // 首页线路是注入站点时，网页首页永远优先，这里得说清楚，否则用户切了来源看不到变化会以为坏了
+        if (injectedHome()) content.addView(hint(R.string.recommend_injected_hint));
         return new MaterialAlertDialogBuilder(requireActivity(), R.style.ThemeOverlay_WebHTV_LightDialog)
                 .setTitle(R.string.recommend_title)
                 .setView(content)
                 .setNegativeButton(R.string.dialog_negative, null);
+    }
+
+    /** 当前首页线路是不是自带网页首页的注入站点。 */
+    private boolean injectedHome() {
+        try {
+            return com.fongmi.android.tv.api.config.VodConfig.get().getHome().hasHomePage();
+        } catch (Throwable e) {
+            return false;
+        }
+    }
+
+    /** 弹窗底部的一行小字说明。 */
+    private MaterialTextView hint(int resId) {
+        MaterialTextView view = new MaterialTextView(requireContext());
+        view.setText(resId);
+        view.setTextSize(12);
+        view.setTextColor(Color.parseColor("#9AA0A6"));
+        view.setGravity(Gravity.START);
+        LinearLayoutCompat.LayoutParams params = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.topMargin = ResUtil.dp2px(8);
+        params.bottomMargin = ResUtil.dp2px(4);
+        view.setLayoutParams(params);
+        return view;
     }
 
     private void addRow(LinearLayoutCompat parent, String value, int titleRes, int descRes, String selected) {

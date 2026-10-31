@@ -238,46 +238,23 @@ public class DownloadCenterActivity extends BaseActivity implements DownloadTask
             // 只有任务集合或状态变化时才重建视图，进度刷新原地改文字，避免闪烁和滚动跳动
             if (renderSignature.equals(signature())) refreshLabels();
             else render();
+            // 失败不再弹对话框：每条失败在下载线程里已经用小标签提示过（剧名+集名+原因，自动消失），
+            // 这里只做一次「漏网」补报——通常是重试用尽时用户已经离开页面，回来才看到
             reportFailures(tasks);
         });
     }
 
     /**
-     * 下载失败弹窗：自动重试用尽后仍然失败的，一次性告诉用户是哪部剧哪一集。
+     * 失败补报：只对「还没提示过」的失败任务发一条小标签，几秒后自己消失。
      *
-     * <p>用 id 记「已经报过」，同一批失败不会每刷新一次就再弹一遍；用户重新下载时会从集合里移除。
+     * <p>用 id 记「已经报过」，同一批失败不会每次刷新都再提示一遍；用户点重试后会从集合里移除，
+     * 再次失败时能重新提示。
      */
     private void reportFailures(List<DownloadTask> tasks) {
-        List<DownloadTask> failed = new ArrayList<>();
         for (DownloadTask task : tasks) {
             if (task.getState() != DownloadTask.State.FAILED) continue;
             if (!reportedFailures.add(task.getId())) continue;
-            failed.add(task);
-        }
-        if (failed.isEmpty() || isFinishing() || isDestroyed()) return;
-        StringBuilder builder = new StringBuilder();
-        int limit = Math.min(failed.size(), 6);
-        for (int i = 0; i < limit; i++) {
-            DownloadTask task = failed.get(i);
-            if (i > 0) builder.append('\n');
-            builder.append(getString(R.string.download_failed_line, task.getVodName(), task.getEpisodeName()));
-            if (!TextUtils.isEmpty(task.getError())) builder.append("（").append(task.getError()).append("）");
-        }
-        if (failed.size() > limit) builder.append('\n').append(getString(R.string.download_failed_more, failed.size() - limit));
-        MaterialAlertDialogBuilder builderDialog = new MaterialAlertDialogBuilder(this, R.style.ThemeOverlay_WebHTV_LightDialog)
-                .setTitle(R.string.download_failed_title)
-                .setMessage(builder.toString())
-                .setPositiveButton(R.string.download_failed_retry, (dialog, which) -> {
-                    for (DownloadTask task : failed) {
-                        reportedFailures.remove(task.getId());
-                        DownloadManager.get().retry(task);
-                    }
-                    render();
-                })
-                .setNegativeButton(R.string.dialog_negative, null);
-        try {
-            builderDialog.show();
-        } catch (Throwable ignored) {
+            Notify.show(getString(R.string.download_failed_toast, task.getVodName(), task.getEpisodeName()));
         }
     }
 

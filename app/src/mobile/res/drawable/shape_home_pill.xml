@@ -1,9 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 首页顶栏「文字图标」的胶囊底：淡白填充 + 一圈更亮描边，相邻胶囊之间靠描边分开，比纯色块更清楚 -->
-<shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <solid android:color="#1FFFFFFF" />
+<!--
+  顶栏文字胶囊底：玻璃质感（上亮下暗的竖向渐变 + 一圈更亮的描边），
+  比原来的纯色半透明更像一颗「按钮」，文字压在上面也更清楚。
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+
+    <gradient
+        android:angle="270"
+        android:endColor="#14FFFFFF"
+        android:startColor="#3DFFFFFF"
+        android:type="linear" />
+
     <stroke
         android:width="1dp"
-        android:color="#33FFFFFF" />
-    <corners android:radius="17dp" />
+        android:color="#66FFFFFF" />
+
+    <corners android:radius="18dp" />
+
 </shape>

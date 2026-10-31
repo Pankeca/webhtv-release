@@ -512,19 +512,20 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
         Site home = getHome();
         WebHomeChromeStartup.remember(getConfig(), home);
         setTitle();
-        // 首页来源是豆瓣/最近观看时网页首页要让位，否则设了也看不到效果；
-        // 站点推荐则继续优先用网页首页——注入站点自带的配置（轮播/推荐位/分类入口）比原生的类型列表信息量大，
-        // 站点自带配置的优先级高于我们拼出来的列表。
-        boolean useWeb = mWeb != null && !RecommendSetting.isExternal(RecommendSetting.getSource()) && mWeb.load(home);
+        // 注入站点（有自带网页首页的站点）永远优先：首页线路是注入站点时，
+        // 不管设置里选的是站点推荐 / 豆瓣热播 / 最近观看，都显示站点自己的网页首页配置——
+        // 站点自带的内容（轮播、推荐位、分类入口）是它花心思做的，比我们拼出来的列表信息量大，
+        // 而且用户选了注入线路就是要看它。只有站点没有自带首页时，才按设置的来源走。
+        boolean useWeb = mWeb != null && mWeb.load(home);
         if (useWeb) {
             clearPagerTypes();
             hideProgress();
             hideNativeContent();
         } else {
-            // 来源切到豆瓣/最近观看，或站点没有自带首页时，必须把上一轮加载的网页首页收起来，
-            // 否则返回首页看到的还是旧网页，切了来源却像没生效
+            // 站点没有自带首页：收起上一轮可能残留的网页首页，并按来源决定首页内容
             if (mWeb != null) mWeb.hide();
             showNativeContent();
+            // 站点没有自带首页：首页 tab 会按来源渲染（豆瓣热播 / 最近观看 / 站点类型列表）
             homeContent();
         }
     }
