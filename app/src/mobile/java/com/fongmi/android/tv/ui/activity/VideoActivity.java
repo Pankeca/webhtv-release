@@ -311,6 +311,16 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     /** 横竖屏重建前缓存详情，重建后直接本地恢复，避免二次请求导致选集丢失。 */
     private static Vod sRotationDetail;
     private static String sRotationDetailKey;
+    /**
+     * 确实发生过转屏重建。
+     *
+     * <p>原来只靠 {@code savedInstanceState != null} 判断，而重建路径一旦没带上 bundle，
+     * 恢复分支整个被跳过，{@code checkId()} 就会走 {@code getDetail()} 发二次请求，
+     * 站点/线路/选集会重新铺一遍——用户看到的就是「转个屏又刷新了」。这里改用显式标记。
+     */
+    private static boolean sRotationPending;
+    /** 转屏重建进行中：让 onStop() 跳过暂停与 setStop，转屏不是退到后台。 */
+    private boolean mRecreatingForOrientation;
     private int mAudioArtworkColor = Color.rgb(55, 45, 68);
     private final Map<String, String> mAudioQueueFlags = new HashMap<>();
     private final Map<String, String> mAudioQueueTitles = new HashMap<>();
@@ -656,7 +666,13 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         String key = sRotationDetailKey;
         sRotationDetail = null;
         sRotationDetailKey = null;
-        if (detail != null && TextUtils.equals(key, getHistoryKey())) mPendingDetailVod = detail;
+        sRotationPending = false;
+        // 转屏必然还是同一部影片：key 只用于日志核对，不再作为恢复的前置条件。
+        // 一旦因为 key 对不上就不恢复，就会退化成二次详情请求，把已加载的站点/线路/选集整片刷掉。
+        if (detail != null) {
+            mPendingDetailVod = detail;
+            SpiderDebug.log("video-flow", "rotation restore detail cachedKey=%s nowKey=%s", key, getHistoryKey());
+        }
         if (!player().isEmpty()) setRender();
     }
 
@@ -700,7 +716,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     @Override
     protected void initView(Bundle savedInstanceState) {
         super.initView(savedInstanceState);
-        mRestoringConfigurationPlayback = savedInstanceState != null;
+        mRestoringConfigurationPlayback = savedInstanceState != null || sRotationPending;
         ViewCompat.setOnApplyWindowInsetsListener(mBinding.getRoot(), (v, insets) -> setStatusBar(insets));
         mKeyDown = CustomKeyDown.create(this, mBinding.exo);
         mFrameParams = mBinding.video.getLayoutParams();
@@ -1142,7 +1158,10 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
                 // 平板沿用原设计尺寸，仅在可用宽度不足时收缩
                 width = Math.min(dp(400), availWidth);
             } else {
-                width = Math.min(Math.round(availWidth * 0.44f), Math.round(availHeight * 16f / 9f));
+                // 手机横屏是左右分栏：视频占可用宽约一半，右侧信息 + 线路/选集整列可上下滚。
+                // 取 0.46 而非 0.50：右列要放得下 4 列选集，按 0.50 算右列只有约 293dp，
+                // 集数按钮仅 71dp，「第10集」四个字（15sp≈60dp）会被 ellipsize 成「…集」。
+                width = Math.min(Math.round(availWidth * 0.46f), Math.round(availHeight * 16f / 9f));
                 width = Math.max(dp(240), Math.min(width, availWidth));
             }
             setVideoFrameSize(width, Math.round(width * 9f / 16f));
@@ -2182,7 +2201,9 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         int maxLen = 0;
         for (Episode item : items) maxLen = Math.max(maxLen, item.getDisplayName().length());
         if (maxLen >= 12) return PlayerSetting.getEpisodeColumn();
-        int ideal = maxLen >= 10 ? 130 : maxLen >= 7 ? 104 : 80;
+        // 手机横屏左右分栏后右列只剩半屏宽（约 309dp），按 80dp 只能算出 3 列；
+        // 收紧到 72dp 才能到 4 列。竖屏与平板维持原值，不受影响。
+        int ideal = maxLen >= 10 ? 130 : maxLen >= 7 ? 104 : (isLand() && !ResUtil.isPad() ? 72 : 80);
         int width = EpisodeGridLayoutPolicy.getAvailableWidth(
                 mBinding.episode.getWidth(),
                 ResUtil.getScreenWidth(this),
@@ -7333,12 +7354,14 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
             ((FlexboxLayoutManager) mSiteList.getLayoutManager()).setFlexWrap(FlexWrap.NOWRAP);
         }
         if (shouldRecreateAudioStageForOrientation(newConfig)) {
+            mRecreatingForOrientation = true;
             cacheRotationDetail();
             setAudioOnly(true);
             recreate();
             return;
         }
         if (shouldRecreateForOrientation(newConfig)) {
+            mRecreatingForOrientation = true;
             cacheRotationDetail();
             recreate();
             return;
@@ -7363,6 +7386,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         if (mCurrentVod == null) return;
         sRotationDetail = mCurrentVod;
         sRotationDetailKey = getHistoryKey();
+        sRotationPending = true;
     }
 
     private void syncFullscreenForOrientation(int orientation) {
@@ -7418,7 +7442,13 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         if (mOsd != null) mOsd.stop();
         if (mKaraoke != null) mKaraoke.clear();
         if (PlayerSetting.isBackgroundOff()) mClock.stop();
-        if (!isAudioOnly()) setStop(true);
+        // 转屏重建不该标记为「退到过后台」
+        if (!isAudioOnly() && !mRecreatingForOrientation) setStop(true);
+    }
+
+    @Override
+    protected boolean isRecreatingForOrientation() {
+        return mRecreatingForOrientation;
     }
 
     @Override

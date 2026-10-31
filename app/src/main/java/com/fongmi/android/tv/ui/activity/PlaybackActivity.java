@@ -131,6 +131,20 @@ public abstract class PlaybackActivity extends BaseActivity implements MediaCont
         this.audioOnly = audioOnly;
     }
 
+    /**
+     * 是否正在为横竖屏切换做重建。
+     *
+     * <p>手机横竖屏用的是两套布局资源，manifest 又声明了 orientation 不重建，只能主动
+     * {@code recreate()}。而 recreate() 会完整走一遍 {@code onStop()}，
+     * {@code onStop()} 里的「后台停止播放」会 {@code pause()} 掉播放器——转屏并不是真的退到后台，
+     * 必须跳过，否则一旋转就暂停。
+     *
+     * <p>由子类在调用 {@code recreate()} 前置位；重建出来的是新实例，字段默认 false，无需手动清。
+     */
+    protected boolean isRecreatingForOrientation() {
+        return false;
+    }
+
     protected boolean isStop() {
         return stop;
     }
@@ -909,7 +923,8 @@ public abstract class PlaybackActivity extends BaseActivity implements MediaCont
         restoreExoOutputMode();
         if (SpiderDebug.isEnabled()) SpiderDebug.log("playback-lifecycle", "activity stop backgroundOff=%s %s", PlayerSetting.isBackgroundOff(), lifecycleState());
         super.onStop();
-        if (isOwner() && !isAudioOnly() && PlayerSetting.isBackgroundOff() && mController != null) mController.pause();
+        // 转屏重建不算「退到后台」，不能触发暂停，否则一旋转就停住
+        if (isOwner() && !isAudioOnly() && !isRecreatingForOrientation() && PlayerSetting.isBackgroundOff() && mController != null) mController.pause();
     }
 
     @Override

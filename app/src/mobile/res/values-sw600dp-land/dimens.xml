@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 平板横屏沿用原字号：sw600dp 横屏右列本来就宽，不需要缩字。
+         这里必须显式覆盖，否则会回落到 values-land 的 13sp。 -->
+    <dimen name="episode_grid_text_size">15sp</dimen>
+</resources>

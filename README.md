@@ -739,7 +739,46 @@ docker run --rm -v /home/s:/home/s -v /usr/lib/locale:/usr/lib/locale:ro \
 - 构建只出 mobile-arm64：`/home/s/build/container-run.sh /home/s/build/build-mobile-arm64.sh release`。
 - **新踩坑：local.properties 覆盖正式签名**。`app/build.gradle` 里 `localProps['storeFile']` 优先于环境变量 `WEBHTV_STORE_FILE`，而构建副本的 `local.properties` 里写着 debug keystore 那 4 行 → 直接跑 release 打出来的仍是 debug 签名（`5bc08a3d`），"发布成功"其实是废包。脚本已修：release 模式下先 `mv local.properties local.properties.debugbak`，`trap EXIT` 自动还原。发布前仍应 `apksigner verify --print-certs` 确认是 `CN=WebHTV / 5c3b6ccc`。
 
-## 二十、开发记录与文档索引（2026-10-31）
+## 二十、5.6.7 发布：横屏分栏 + 出厂默认固化（正式签名，2026-10-31）
+
+### 版本与产物
+
+`versionCode 567 / versionName 5.6.7`，正式 keystore 签名（`CN=WebHTV`，SHA-256 `5c3b6ccc`）。
+仍只发布手机 / 平板 arm64-v8a 一个变体（leanback 与 armeabi-v7a 停留在 5.6.5）。
+
+| 产物 | 大小 | SHA-256（前 8 位） |
+| --- | --- | --- |
+| `mobile-arm64_v8a.apk` | 150,411,450 | `3f733c81` |
+
+| 用途 | 地址 / 路径 |
+| --- | --- |
+| GitHub Release v5.6.7 | `https://github.com/Pankeca/webhtv-release/releases/tag/v5.6.7` |
+| 更新清单（CNB） | `https://cnb.cool/mytools-2026/app-release/-/git/raw/main/mobile-arm64_v8a.json`（5.6.7 / 567，commit `a10463d`） |
+| **发布包归档（本机）** | `/home/s/build/rel-5.6.7/mobile-arm64_v8a.apk` |
+| **构建产物原始位置** | `/home/s/REA-src/app/build/outputs/apk/mobileArm64_v8a/release/mobile-arm64_v8a.apk` |
+| **真项目目录（唯一可改）** | `/media/s/7A3A1DFD3A1DB6DB/REA` |
+| **构建副本（实际编译处）** | `/home/s/REA-src` |
+
+### 本轮改动（相对 5.6.6）
+
+| # | 需求 | 实现 |
+| --- | --- | --- |
+| 1 | 手机横屏详情页要「视频 + 详情/选集」左右各一半 | `layout-land/activity_video.xml` 把 `titleRow/site/other/director/actor/content_layout/actionRow` 搬进 `swipeLayout > scroll` 最前面，与线路/选集同列整列滚动；`swipeLayout` 定位到 video 右侧。视频占比 `0.44` → `0.46`（试过 0.50，右列只剩约 293dp，4 列放不下） |
+| 2 | 右半屏变窄后选集列数 | `EpisodeGridLayoutPolicy.getMaxSpan` 改 `pad ? 6 : 4`；关键是 `getEpisodeSpan()` 的 `ideal` 手机横屏 80 → `72dp` —— **列数真正由 `span = 宽度/dp2px(ideal)` 算出**，只改 maxSpan 会掉回 3 列 |
+| 3 | 集数文字被截成「…集」 | 新建 `values/dimens.xml`(15sp) / `values-land/dimens.xml`(**13sp**) / `values-sw600dp-land/dimens.xml`(15sp)，`adapter_episode_grid.xml` 改用 `@dimen/episode_grid_text_size` |
+| 4 | 转屏时播放被暂停 | `PlaybackActivity` 新增 `isRecreatingForOrientation()` 钩子，`onStop()` 里的 `mController.pause()` 加 `&& !isRecreatingForOrientation()`；`VideoActivity` 在两个 `recreate()` 分支前置位。根因：`recreate()` 会完整走 `onStop()`，命中「退到后台就暂停」，但转屏不是退后台 |
+| 5 | 转屏后选集/站点/线路重新加载 | 新增静态 `sRotationPending`（只靠 `savedInstanceState != null` 不可靠），`restoreRotationPlayback()` 去掉 `historyKey` 相等的前置条件，否则退化成 `checkId() → getDetail()` 整片重铺 |
+| 6 | 弹幕源与站点注入要作为自带默认，且更新后保留 | 新增 `setting/FactoryDefaults` + `assets/factory/{danmaku_sources,custom_csp}.json`（8 个弹幕源、4 个 WebHome 站点），`App.onCreate()` 里幂等播种。判据**不用一次性标记位**：弹幕看 `hasCustomSources()`，站点看新增的 `CustomCspSetting.hasRegistry()`（`registry.json` 是否存在） |
+
+### 构建口径与踩坑
+
+- 构建：`/home/s/build/container-run.sh /home/s/build/build-mobile-arm64.sh release`（约 3 分 15 秒）。
+- 发布前必须验签：`apksigner verify --print-certs`，应为 `CN=WebHTV / 5c3b6ccc`（需先 `export JAVA_HOME=/home/s/Android/jdk21`，否则报 `exec: java: 未找到`）。
+- **新踩坑：出厂播种别用一次性标记位**。第一版把「已播种」记在 SharedPreferences，结果装包先启动一次（那时配置还在）就把标记置真，之后配置文件丢了也永远不再播种 —— 标记位把「这次不需要播种」错误固化成了「永远不需要播种」。改成直接判断配置文件是否存在，天然幂等且能自动补回。详见 `docs/开发进度与交接.md` §3.4.3。
+- 排查经验：本包 release 签名、非 debuggable，`run-as` 读不到 `/data/data`；`SpiderDebug.log` 受 `DebugLogStore.enabled` 门控、默认关，logcat 里根本不会出现 —— 「日志里没看到」不等于「代码没执行」。判据只认产物文件是否真的出现。
+- 真机验证用 `/home/s/build/adb-usb.sh`（容器内 adb）；`/home/s/build/tap-text.sh` 可按文本精确点击，避免截图缩放（1080×675）与真实像素（1920×1200）换算偏差。
+
+## 二十一、开发记录与文档索引（2026-10-31）
 
 > 以后每轮开发、发布或交接，都按 `docs/开发记录规范.md` 更新记录；入口页只保留当前状态。
 

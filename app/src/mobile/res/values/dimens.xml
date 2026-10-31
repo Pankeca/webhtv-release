@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 详情页集数按钮字号。手机横屏改成左右分栏后右列变窄、选集变 4 列，
+         15sp 放不下「第10集」这类四位文本，会在 values-land 里降到 13sp。
+         竖屏与平板横屏维持 15sp。 -->
+    <dimen name="episode_grid_text_size">15sp</dimen>
+</resources>

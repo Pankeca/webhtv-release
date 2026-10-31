@@ -6,7 +6,9 @@ final class EpisodeGridLayoutPolicy {
     }
 
     static int getMaxSpan(boolean landscapeLayout, boolean pad) {
-        return landscapeLayout || pad ? 6 : 4;
+        // 平板横屏沿用 6 列（右列本来就宽）。手机横屏改成左右分栏后右列只剩半屏宽，
+        // 6 列会把集数按钮挤成一团，降到 4 列。手机竖屏一直是 4 列，不受影响。
+        return pad ? 6 : 4;
     }
 
     static int getAvailableWidth(int measuredWidth, int screenWidth, int screenHeight, int fallbackInset, boolean landscapeLayout, boolean landscapeConfiguration) {

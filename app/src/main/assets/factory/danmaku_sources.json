@@ -1,0 +1,58 @@
+[
+  {
+    "enabled": true,
+    "id": "7f598f67-b7a3-4e8f-b7a3-776af45c2826",
+    "insecure": true,
+    "name": "IP源",
+    "url": "https://172.252.125.145/87654321"
+  },
+  {
+    "enabled": true,
+    "id": "a1716ed9-04e9-427e-a350-0a54bb5db137",
+    "insecure": false,
+    "name": "7777735",
+    "url": "https://danmu.7777735.xyz/87654321"
+  },
+  {
+    "enabled": true,
+    "id": "689410f4-022e-4171-a07b-4b1caef8c2cb",
+    "insecure": false,
+    "name": "sym",
+    "url": "https://danmu1.sym9233.dpdns.org/87654321"
+  },
+  {
+    "enabled": true,
+    "id": "builtin",
+    "insecure": false,
+    "name": "",
+    "url": "https://sync.940214.xyz/api/danmaku"
+  },
+  {
+    "enabled": true,
+    "id": "31bca6cc-ba38-4247-a5ec-b6be87481c05",
+    "insecure": false,
+    "name": "iyo",
+    "url": "https://danmu.iyo.us.ci/theft-dastardly-prognosis-hula-agenda2-dropkick"
+  },
+  {
+    "enabled": true,
+    "id": "599581a2-b8a6-4414-a33c-e9f95f69fda9",
+    "insecure": false,
+    "name": "pizazz",
+    "url": "https://pizazz.us.ci/1314"
+  },
+  {
+    "enabled": true,
+    "id": "94a74fbf-5db1-4b81-bf0d-ae5fc25e8da0",
+    "insecure": false,
+    "name": "luosen",
+    "url": "https://dm.ljiaovm.com/luosen"
+  },
+  {
+    "enabled": true,
+    "id": "d916f150-c0f3-4ddb-8bf6-6ca347283adc",
+    "insecure": false,
+    "name": "ecs",
+    "url": "http://ecs.dysobo.cn:9321/87654321"
+  }
+]

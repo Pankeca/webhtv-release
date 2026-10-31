@@ -463,6 +463,20 @@ public class CustomCspSetting {
         return load().getItems().size();
     }
 
+    /**
+     * registry.json 是否已经存在。
+     *
+     * <p>用来区分「从没配过」和「用户手动删空了」——两者 {@link #countItems()} 都是 0，
+     * 但后者 {@link #save} 会写出一个空列表文件。只有文件根本不存在，才允许出厂默认介入。
+     */
+    public static boolean hasRegistry() {
+        try {
+            return registryFile().exists();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     public static Count count() {
         return count(load());
     }

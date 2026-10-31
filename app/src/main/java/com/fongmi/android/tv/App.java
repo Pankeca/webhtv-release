@@ -21,6 +21,7 @@ import com.fongmi.android.tv.player.PlaybackSystemConditionMonitor;
 import com.fongmi.android.tv.player.mpv.PlaybackRecoveryMonitor;
 import com.fongmi.android.tv.remote.RemoteAgent;
 import com.fongmi.android.tv.setting.AccountSync;
+import com.fongmi.android.tv.setting.FactoryDefaults;
 import com.fongmi.android.tv.setting.ProxySetting;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.utils.DanmakuSearchListFocusFixer;
@@ -111,6 +112,8 @@ public class App extends Application implements Application.ActivityLifecycleCal
         Notify.createChannel();
         ProxySetting.apply();
         DanmakuSearchListFocusFixer.start();
+        // 全新安装/清数据后把出厂弹幕源与站点注入播种回来；幂等，用户已有配置时不动
+        FactoryDefaults.applyIfNeeded();
         registerActivityLifecycleCallbacks(this);
         post(this::startBackgroundServices, 1200);
     }

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 手机横屏：右列只占半屏，选集排 4 列，每个按钮约 74dp。
+         15sp 的「第10集」/「特别篇1」会被 ellipsize 成「…0集」/「…篇1」，
+         降到 13sp 刚好放得下。平板横屏在 values-sw600dp-land 里覆盖回 15sp。 -->
+    <dimen name="episode_grid_text_size">13sp</dimen>
+</resources>
