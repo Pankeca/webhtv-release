@@ -153,12 +153,13 @@ public class Keep implements Diffable<Keep> {
 
     public void save() {
         AppDatabase.get().getKeepDao().insertOrUpdate(this);
-        com.fongmi.android.tv.playback.KeepCloudBackup.schedule(30_000);
+        // 收藏/追更改动后由统一调度器防抖同步，不再单独排一次「只传收藏」的任务
+        com.fongmi.android.tv.setting.SyncScheduler.onDataChanged("keep");
     }
 
     public Keep delete() {
         AppDatabase.get().getKeepDao().delete(getCid(), getKey());
-        com.fongmi.android.tv.playback.KeepCloudBackup.schedule(30_000);
+        com.fongmi.android.tv.setting.SyncScheduler.onDataChanged("keep-delete");
         return this;
     }
 

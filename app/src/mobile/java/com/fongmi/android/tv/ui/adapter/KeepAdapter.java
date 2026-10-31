@@ -11,7 +11,6 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.bean.History;
 import com.fongmi.android.tv.bean.Keep;
-import com.fongmi.android.tv.db.AppDatabase;
 import com.fongmi.android.tv.track.HistoryEpisodeCache;
 import com.fongmi.android.tv.track.UpdateTrack;
 import com.fongmi.android.tv.track.UpdateTracker;
@@ -171,11 +170,7 @@ public class KeepAdapter extends BaseDiffAdapter<Keep, KeepAdapter.ViewHolder> {
 
     /** 追更条目对应的最近观看记录，用于显示已看集数与观看进度。 */
     private History findHistory(Keep item) {
-        try {
-            return AppDatabase.get().getHistoryDao().find(item.getCid(), item.getKey());
-        } catch (Throwable e) {
-            return null;
-        }
+        return History.forKeep(item);
     }
 
     private void setClickListener(View root, Keep item) {

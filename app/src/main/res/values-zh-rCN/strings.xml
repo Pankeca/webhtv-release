@@ -1238,7 +1238,13 @@
     <string name="update_title">版本更新</string>
     <string name="update_hint">选择版本查看更新内容并安装。</string>
     <string name="update_check">正在检测更新…</string>
-    <string name="update_latest">已是最新版本</string>
+    <string name="update_latest">当前已是最新版本</string>
+    <string name="update_pending_title">发现可用的更新包</string>
+    <string name="update_pending_message">%1$s 已下载完成，是否立即安装？</string>
+    <string name="update_pending_message_plain">更新包已下载完成，是否立即安装？</string>
+    <string name="update_pending_install">立即安装</string>
+    <string name="update_pending_later">稍后</string>
+    <string name="update_install_permission">请先在系统设置里允许本应用安装应用，再点一次更新</string>
     <string name="update_downloading_start">正在下载更新…</string>
     <string name="update_downloading_percent">正在下载更新 %1$d%%</string>
     <string name="update_downloading_progress">正在下载 %1$d%% · %2$s</string>
@@ -1704,6 +1710,7 @@
     <string name="account_admin_unlocked">管理员选项已解锁</string>
     <string name="account_admin_note">仅管理员可见：修改云端服务地址、发布公共订阅源，普通用户界面不显示本区域。</string>
     <string name="account_state_logged_out">未登录</string>
+    <string name="account_badge_login">已登录</string>
     <string name="account_section_stats">数据概览</string>
     <string name="account_stats_keep">我的追更</string>
     <string name="account_stats_history">播放历史</string>

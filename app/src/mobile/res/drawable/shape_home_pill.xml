@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 首页顶栏「文字图标」的胶囊底：和搜索框同一套配色，只是圆角更大、没有描边 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="#26FFFFFF" />
+    <corners android:radius="16dp" />
+</shape>

@@ -31,6 +31,11 @@ public final class AboutDialog {
         Dialog dialog = LightDialog.create(activity, null, binding.getRoot());
         binding.confirm.setOnClickListener(v -> dialog.dismiss());
         binding.checkUpdate.setOnClickListener(v -> {
+            // 正在下载时不要重新检查、更不要重下：直接把进度条接回来
+            if (Updater.create().isDownloading()) {
+                showProgress(activity, dialog, binding);
+                return;
+            }
             binding.checkUpdate.setEnabled(false);
             binding.checkUpdate.setText(R.string.update_check);
             binding.updateHint.setVisibility(android.view.View.GONE);
@@ -38,12 +43,13 @@ public final class AboutDialog {
                 if (!dialog.isShowing()) return;
                 binding.checkUpdate.setEnabled(true);
                 binding.checkUpdate.setText(R.string.about_check_update);
+                // 已是最新 / 检查失败时 doInBackground 已经弹过提示，这里不再重复
                 if (update == null || !update.hasUpdate()) return;
-                // 优先展示清单里的 versionName，缺失时回退到资产名（可能是 xxx.apk，仅兜底）
-                String version = android.text.TextUtils.isEmpty(update.versionName) ? AppVersion.stripPrefix(update.name) : update.versionName;
+                // 优先展示清单里的 versionName，缺失时回退到资产名（仅兜底）
+                String version = update.getVersionLabel();
                 binding.updateHint.setText(activity.getString(R.string.about_update_available, version));
                 binding.updateHint.setVisibility(android.view.View.VISIBLE);
-                binding.updateHint.setOnClickListener(v2 -> startUpdate(activity, dialog, binding));
+                binding.updateHint.setOnClickListener(v2 -> showProgress(activity, dialog, binding));
             });
         });
         dialog.setCanceledOnTouchOutside(false);
@@ -52,15 +58,20 @@ public final class AboutDialog {
         binding.confirm.requestFocus();
     }
 
-    /** 点击更新提示后直接下载稳定版，并用进度条展示下载进度。 */
-    private static void startUpdate(FragmentActivity activity, Dialog dialog, DialogAboutBinding binding) {
+    /**
+     * 切到「下载中」并接上进度。
+     *
+     * <p>已有下载在跑时走 {@link Updater#attachProgress}：只回放最近一次进度快照，
+     * 不重新拉清单、不重开文件、不会把已经下了一半的包清掉重下。
+     */
+    private static void showProgress(FragmentActivity activity, Dialog dialog, DialogAboutBinding binding) {
         binding.updateHint.setEnabled(false);
         binding.updateHint.setVisibility(android.view.View.GONE);
         binding.updateProgressWrap.setVisibility(android.view.View.VISIBLE);
         binding.updateProgress.setVisibility(android.view.View.VISIBLE);
         binding.updateProgress.setProgress(0);
         binding.updateStatus.setText(R.string.update_downloading_start);
-        Updater.create().downloadStable(activity, new Updater.DownloadListener() {
+        Updater.DownloadListener listener = new Updater.DownloadListener() {
             @Override
             public void onProgress(int progress, long bytes, long total, long speed, long elapsed) {
                 if (!dialog.isShowing()) return;
@@ -86,7 +97,9 @@ public final class AboutDialog {
                 binding.updateHint.setEnabled(true);
                 binding.updateHint.setVisibility(android.view.View.VISIBLE);
             }
-        });
+        };
+        if (Updater.create().attachProgress(listener)) return;
+        Updater.create().downloadStable(activity, listener);
     }
 
     private static void configureContentHeight(FragmentActivity activity, DialogAboutBinding binding) {

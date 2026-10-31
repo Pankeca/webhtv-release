@@ -36,6 +36,9 @@ import com.google.gson.Gson;
 
 public class App extends Application implements Application.ActivityLifecycleCallbacks {
 
+    /** 前台 Activity 计数，用来判断「回到前台 / 退到后台」，供自动同步择机。 */
+    private int startedActivities;
+
     private static volatile App instance;
 
     private final Handler handler;
@@ -115,6 +118,8 @@ public class App extends Application implements Application.ActivityLifecycleCal
         // 全新安装/清数据后把出厂弹幕源与站点注入播种回来；幂等，用户已有配置时不动
         FactoryDefaults.applyIfNeeded();
         registerActivityLifecycleCallbacks(this);
+        // 「改完过一会儿自动同步」：设置项一改就打个点，真正上传由 SyncScheduler 防抖决定
+        com.fongmi.android.tv.setting.SyncScheduler.bindPreferenceListener();
         post(this::startBackgroundServices, 1200);
     }
 
@@ -176,9 +181,14 @@ public class App extends Application implements Application.ActivityLifecycleCal
 
     @Override
     public void onActivityStarted(@NonNull Activity activity) {
+        // 前台计数：从 0 变正说明回到前台，顺手判一次「该不该补同步」
+        if (startedActivities++ == 0) com.fongmi.android.tv.setting.SyncScheduler.onStartup();
     }
 
     @Override
     public void onActivityStopped(@NonNull Activity activity) {
+        // 全部 Activity 都停了才算退到后台；给一点缓冲，等播放进度、弹幕偏好都落库
+        if (startedActivities > 0) startedActivities--;
+        if (startedActivities == 0) com.fongmi.android.tv.setting.SyncScheduler.onBackground();
     }
 }

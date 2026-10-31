@@ -13,7 +13,10 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 import androidx.viewbinding.ViewBinding;
 
 import com.fongmi.android.tv.Product;
+import com.fongmi.android.tv.api.DoubanApi;
 import com.fongmi.android.tv.api.config.VodConfig;
+import com.fongmi.android.tv.bean.History;
+import com.fongmi.android.tv.setting.RecommendSetting;
 import com.fongmi.android.tv.bean.Result;
 import com.fongmi.android.tv.bean.Site;
 import com.fongmi.android.tv.bean.Style;
@@ -80,6 +83,11 @@ public class TypeFragment extends BaseFragment implements CustomScroller.Callbac
         return "home".equals(getTypeId());
     }
 
+    /** 首页换成了外部数据源（豆瓣/历史）时，卡片没有站点 key，点了只能按剧名搜。 */
+    private boolean isHomeExternal() {
+        return isHome() && RecommendSetting.isExternal(RecommendSetting.getSource());
+    }
+
     private Site getSite() {
         return VodConfig.get().getSite(getKey());
     }
@@ -134,8 +142,52 @@ public class TypeFragment extends BaseFragment implements CustomScroller.Callbac
         mScroller.reset();
         mAdapter.clear(() -> {
             if (!mBinding.swipeLayout.isRefreshing()) mBinding.progressLayout.showProgress();
-            if (isHome()) setAdapter(getParent().getResult());
-            else getVideo(getTypeId(), "1");
+            String source = isHome() ? RecommendSetting.getSource() : RecommendSetting.OFF;
+            if (RecommendSetting.DOUBAN.equals(source)) {
+                loadDouban();
+            } else if (RecommendSetting.HISTORY.equals(source)) {
+                setAdapter(historyResult());
+            } else if (isHome()) {
+                // 站点默认 / 站点推荐：首页内容都来自站点自己返回的 Result
+                setAdapter(getParent().getResult());
+            } else {
+                getVideo(getTypeId(), "1");
+            }
+        });
+    }
+
+    /** 最近观看 → 推荐卡片：点进去按剧名搜索，不做「直接续播」，避免和「最近观看」页抢语义。 */
+    private Result historyResult() {
+        Result result = new Result();
+        java.util.List<Vod> items = new java.util.ArrayList<>();
+        java.util.List<History> histories;
+        try {
+            histories = History.get();
+        } catch (Throwable e) {
+            histories = java.util.Collections.emptyList();
+        }
+        for (History history : histories) {
+            // 单条出错不能把整页清空，逐条兜住
+            try {
+                Vod vod = new Vod();
+                vod.setName(history.getVodName());
+                vod.setPic(history.getVodPic());
+                String remarks = history.getVodRemarks();
+                vod.setRemarks(android.text.TextUtils.isEmpty(remarks) ? history.getSiteName() : remarks);
+                items.add(vod);
+            } catch (Throwable ignored) {
+            }
+        }
+        result.setList(items);
+        return result;
+    }
+
+    private void loadDouban() {
+        DoubanApi.fetch(1, items -> {
+            if (!isAdded() || mBinding == null) return;
+            Result result = new Result();
+            result.setList(items);
+            setAdapter(result);
         });
     }
 
@@ -177,12 +229,14 @@ public class TypeFragment extends BaseFragment implements CustomScroller.Callbac
 
     @Override
     public void onRefresh() {
-        if (isHome()) getHome();
-        else getVideo();
+        if (!isHome()) getVideo();
+        else if (RecommendSetting.isExternal(RecommendSetting.getSource())) getVideo();
+        else getHome();
     }
 
     @Override
     public boolean onLoadMore(String page) {
+        // 首页不管换成哪个来源都是一次性数据，没有翻页
         if (isHome()) return false;
         getVideo(getTypeId(), page);
         return true;
@@ -190,6 +244,11 @@ public class TypeFragment extends BaseFragment implements CustomScroller.Callbac
 
     @Override
     public void onItemClick(Vod item) {
+        if (isHomeExternal()) {
+            // 首页换成豆瓣/历史后没有站点 key，只能拿剧名去搜，让用户自己挑站点
+            SearchActivity.start(requireActivity(), item.getName());
+            return;
+        }
         if (item.isAction()) {
             mViewModel.action(getKey(), item.getAction());
         } else if (item.isFolder()) {

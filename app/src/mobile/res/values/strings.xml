@@ -130,4 +130,24 @@
 
     <string name="play_source">Source</string>
 
+
+    <!-- 首页顶栏「文字图标 + 胶囊」用的短标签 -->
+    <string name="pill_refresh">Refresh</string>
+    <string name="pill_keep">Tracking</string>
+    <string name="pill_history">History</string>
+    <string name="pill_download">Download</string>
+    <string name="pill_mine">Mine</string>
+    <string name="pill_home">Home</string>
+
+    <!-- 首页推荐（伪 tab） -->
+    <string name="recommend_title">Home page source</string>
+    <string name="recommend_source_off_desc">Home page shows what the current site provides</string>
+    <string name="recommend_source_off">Site default</string>
+    <string name="recommend_summary_off">Site default</string>
+    <string name="recommend_douban">Douban hot</string>
+    <string name="recommend_douban_desc">Show currently popular movies and shows from Douban on the home page</string>
+    <string name="recommend_site">Site picks</string>
+    <string name="recommend_site_desc">Show this site\'s own home recommendations on the home page</string>
+    <string name="recommend_history">Recent watched</string>
+    <string name="recommend_history_desc">Show your recent watch history as the home page</string>
 </resources>

@@ -35,6 +35,7 @@ import com.fongmi.android.tv.receiver.ShortcutReceiver;
 import com.fongmi.android.tv.server.Server;
 import com.fongmi.android.tv.service.PlaybackService;
 import com.fongmi.android.tv.setting.CloudConfigSync;
+import com.fongmi.android.tv.setting.FactoryDefaults;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.ui.custom.FragmentStateManager;
@@ -43,6 +44,7 @@ import com.fongmi.android.tv.ui.fragment.SettingDanmakuFragment;
 import com.fongmi.android.tv.ui.fragment.SettingFragment;
 import com.fongmi.android.tv.ui.fragment.SettingPlayerFragment;
 import com.fongmi.android.tv.ui.fragment.VodFragment;
+import com.fongmi.android.tv.update.PendingUpdatePrompt;
 import com.fongmi.android.tv.utils.FileChooser;
 import com.fongmi.android.tv.utils.MobileWindow;
 import com.fongmi.android.tv.utils.Notify;
@@ -99,10 +101,19 @@ public class HomeActivity extends BaseActivity implements NavigationBarView.OnIt
         mChrome = new WebHomeChromeController(this, mBinding, this, savedInstanceState, WebHomeChromeStartup.restore(mStartupConfig));
         mBinding.getRoot().addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> checkWindowShape(right - left, bottom - top));
         mBinding.navigation.setOnItemSelectedListener(this);
-        PermissionUtil.requestFile(this, allGranted -> { });
         initFragment(savedInstanceState);
         initConfig();
         mBinding.getRoot().post(this::applyDeviceAdaptation);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // 启动时不再无脑要「所有文件访问」：用户真去用了站点注入之类要写外部存储的功能时，
+        // 那边会自己发起申请；授权返回落在首页 onResume，这里顺手把当时没种上的出厂配置补上。
+        FactoryDefaults.retryIfPending();
+        // 更新包下完但安装被取消的情况，下次回到首页时再提示一次可安装
+        PendingUpdatePrompt.showOnce(this);
     }
 
     @Override

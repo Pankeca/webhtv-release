@@ -72,6 +72,8 @@ public final class DanmakuSourceSetting {
             clean.add(source);
         }
         Prefers.put(KEY_SOURCES, App.gson().toJson(clean));
+        // 来源列表变了，之前缓存的弹幕可能是被删掉的源给的，顺手清掉
+        com.fongmi.android.tv.api.DanmakuApi.clearCache();
     }
 
     public static void add(DanmakuSource source) {

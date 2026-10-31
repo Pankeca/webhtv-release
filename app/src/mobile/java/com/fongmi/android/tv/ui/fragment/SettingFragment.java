@@ -25,6 +25,7 @@ import com.fongmi.android.tv.impl.ConfigListener;
 import com.fongmi.android.tv.impl.LiveListener;
 import com.fongmi.android.tv.impl.SiteListener;
 import com.fongmi.android.tv.setting.AccountStore;
+import com.fongmi.android.tv.setting.RecommendSetting;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.ui.activity.HomeActivity;
 import com.fongmi.android.tv.ui.base.BaseFragment;
@@ -35,6 +36,7 @@ import com.fongmi.android.tv.ui.dialog.ChoiceDialog;
 import com.fongmi.android.tv.ui.dialog.ConfigDialog;
 import com.fongmi.android.tv.ui.dialog.HistoryDialog;
 import com.fongmi.android.tv.ui.dialog.LiveDialog;
+import com.fongmi.android.tv.ui.dialog.RecommendDialog;
 import com.fongmi.android.tv.ui.dialog.RestoreDialog;
 import com.fongmi.android.tv.ui.dialog.BackupProgressDialog;
 import com.fongmi.android.tv.ui.dialog.SiteDialog;
@@ -91,6 +93,7 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
         setWallText();
         mBinding.versionText.setText(AppVersion.fullName());
         setOtherText();
+        setRecommendText();
         setCacheText();
         setAccountText();
     }
@@ -99,6 +102,25 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
     private void setAccountText() {
         if (mBinding == null || getContext() == null) return;
         mBinding.accountText.setText(AccountStore.isLogin() ? AccountStore.name() : getString(R.string.account_state_logged_out));
+    }
+
+    /** 首页推荐入口的摘要：当前首页内容来源。 */
+    private void setRecommendText() {
+        if (mBinding == null) return;
+        String source = RecommendSetting.getSource();
+        int res = R.string.recommend_source_off;
+        if (RecommendSetting.DOUBAN.equals(source)) res = R.string.recommend_douban;
+        else if (RecommendSetting.SITE.equals(source)) res = R.string.recommend_site;
+        else if (RecommendSetting.HISTORY.equals(source)) res = R.string.recommend_history;
+        mBinding.recommendText.setText(getString(res));
+    }
+
+    /** 打开首页推荐开关面板；关掉面板后通知首页重新拉类型列表，伪 tab 才会立刻出现/消失。 */
+    private void onRecommend(View view) {
+        RecommendDialog.show(requireActivity(), () -> {
+            setRecommendText();
+            com.fongmi.android.tv.event.RefreshEvent.home();
+        });
     }
 
     private void setOtherText() {
@@ -136,6 +158,7 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
         mBinding.liveHome.setOnClickListener(this::onLiveHome);
         mBinding.wall.setOnLongClickListener(this::onWallEdit);
         mBinding.incognito.setOnClickListener(this::setIncognito);
+        mBinding.recommend.setOnClickListener(this::onRecommend);
         mBinding.vodHistory.setOnClickListener(this::onVodHistory);
         mBinding.liveHistory.setOnClickListener(this::onLiveHistory);
         mBinding.wallDefault.setOnClickListener(this::setWallDefault);

@@ -1220,7 +1220,13 @@
     <string name="update_title">版本更新</string>
     <string name="update_hint">選擇版本查看更新內容並安裝。</string>
     <string name="update_check">正在檢查更新…</string>
-    <string name="update_latest">已是最新版本</string>
+    <string name="update_latest">目前已是最新版本</string>
+    <string name="update_pending_title">發現可用的更新檔</string>
+    <string name="update_pending_message">%1$s 已下載完成，是否立即安裝？</string>
+    <string name="update_pending_message_plain">更新檔已下載完成，是否立即安裝？</string>
+    <string name="update_pending_install">立即安裝</string>
+    <string name="update_pending_later">稍後</string>
+    <string name="update_install_permission">請先在系統設定裡允許本應用程式安裝應用程式，再點一次更新</string>
     <string name="update_downloading_start">正在下載更新…</string>
     <string name="update_downloading_percent">正在下載更新 %1$d%%</string>
     <string name="update_downloading_progress">正在下載 %1$d%% · %2$s</string>
@@ -1681,6 +1687,7 @@
     <string name="account_admin_unlocked">管理員選項已解鎖</string>
     <string name="account_admin_note">僅管理員可見：修改雲端服務位址、發布公共訂閱源，一般使用者介面不顯示本區域。</string>
     <string name="account_state_logged_out">未登入</string>
+    <string name="account_badge_login">已登入</string>
     <string name="account_section_stats">資料概覽</string>
     <string name="account_stats_keep">我的追更</string>
     <string name="account_stats_history">播放歷史</string>

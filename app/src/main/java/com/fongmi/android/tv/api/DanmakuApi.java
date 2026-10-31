@@ -2,6 +2,7 @@ package com.fongmi.android.tv.api;
 
 import android.net.Uri;
 import android.text.TextUtils;
+import android.util.LruCache;
 
 import androidx.annotation.NonNull;
 
@@ -47,6 +48,14 @@ public class DanmakuApi {
     private static final String UA = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
     /** 多源合并搜索的首包等待上限：超过这个时间就把已拿到的结果先交付，避免被最慢的源拖住。 */
     private static final long FIRST_RESULT_TIMEOUT_MS = 6000L;
+    /**
+     * 已拿到的弹幕结果缓存（name@@@episode → Danmaku）。
+     *
+     * <p>同一集暂停再播、切线路、切集再切回来都会重复触发自动匹配，每次都把几个来源重新问一遍，
+     * 结果就是要等十几秒才滚第一句。缓存命中直接交付，弹幕能跟着画面立刻出来。
+     * 只留最近十几集，避免把整部剧的弹幕都攥在内存里。
+     */
+    private static final LruCache<String, Danmaku> CACHE = new LruCache<>(16);
 
     /** 一次取数结果回调；无论成功失败都会回调一次，空列表表示这个来源没结果。 */
     public interface FetchCallback {
@@ -96,30 +105,54 @@ public class DanmakuApi {
     }
 
     /**
-     * 自动匹配：按来源顺序串行探测，取第一个有结果的来源。
-     * 开启「合并所有来源」时退化成 {@link #searchAll} 取首条。
+     * 自动匹配：所有启用来源并行探测，最快给出结果的来源胜出。
+     *
+     * <p>为什么不再串行——以前是一个来源问完再问下一个，实测有用户装了 8 个来源，
+     * 前几个不通的时候要串到几十秒，弹幕自然迟迟不滚。并行之后首包时间取决于最快的那个来源，
+     * 通常一两秒就出来了；拿到结果后立刻取消其余请求，不浪费流量。
+     *
+     * <p>先查缓存：同一集切线路／切集切回来时直接命中，不用再等网络。
      */
     public static void search(String name, String episode, Consumer<Danmaku> found) {
         List<DanmakuSource> sources = DanmakuSourceSetting.getEnabledSources();
         if (sources.isEmpty() || found == null) return;
+        String key = cacheKey(name, episode);
+        Danmaku cached = CACHE.get(key);
+        if (cached != null) {
+            SpiderDebug.log(TAG, "cache hit %s", key);
+            App.post(() -> found.accept(cached));
+            return;
+        }
         if (DanmakuSourceSetting.isMergeAll()) {
             searchAll(name, episode, items -> {
-                if (!items.isEmpty()) found.accept(items.get(0));
+                if (items.isEmpty()) return;
+                CACHE.put(key, items.get(0));
+                found.accept(items.get(0));
             }, null);
             return;
         }
         cancel();
-        searchNext(sources, 0, name, episode, found);
+        AtomicBoolean delivered = new AtomicBoolean();
+        for (DanmakuSource source : sources) {
+            fetch(source, name, episode, items -> {
+                if (items == null || items.isEmpty()) return;
+                if (!delivered.compareAndSet(false, true)) return;
+                Danmaku first = items.get(0);
+                CACHE.put(key, first);
+                // 已经有人胜出，剩下的来源不必再等
+                cancel();
+                App.post(() -> found.accept(first));
+            });
+        }
     }
 
-    private static void searchNext(List<DanmakuSource> sources, int index, String name, String episode, Consumer<Danmaku> found) {
-        if (index >= sources.size()) return;
-        DanmakuSource source = sources.get(index);
-        int next = index + 1;
-        fetch(source, name, episode, items -> {
-            if (items.isEmpty()) searchNext(sources, next, name, episode, found);
-            else App.post(() -> found.accept(items.get(0)));
-        });
+    private static String cacheKey(String name, String episode) {
+        return (name == null ? "" : name.trim()) + "@@@" + (episode == null ? "" : episode.trim());
+    }
+
+    /** 换源、改来源列表后清缓存，避免拿着旧来源的弹幕不放。 */
+    public static void clearCache() {
+        CACHE.evictAll();
     }
 
     /**

@@ -787,7 +787,50 @@ docker run --rm -v /home/s:/home/s -v /usr/lib/locale:/usr/lib/locale:ro \
   备份留在 `/home/s/build/tmp/cnb-manifest-backup/`，将来要恢复电视端更新时把文件放回 `app-release` 并改 `apk` 指向新 Release 即可。
 - 以后每发一版都执行同样清理，已写入 `docs/开发进度与交接.md` §3.3.1 第 9 步。删除前先确认旧包在 `/home/s/build/rel-<版本>/` 有本地归档（`v5.6.5` 的 4 个 APK 就还在那里）。
 
-## 二十一、开发记录与文档索引（2026-10-31）
+## 二十一、5.6.8：九条需求一次性落地（真机验证通过，2026-10-31）
+
+> 状态：`versionCode 568 / versionName 5.6.8`，真机（HA1YL5GG）逐项验证已通过，正式签名包已发布。
+> 第 24 轮按用户反馈把「个人中心」与「首页推荐」两项**返工重做**（双列 → 单列一屏；伪 tab → 首页内容来源四选一），明细见各条。
+> 需求评估与拍板过程见 [`docs/需求评估-5.6.8.md`](docs/需求评估-5.6.8.md)。
+
+### 产物
+
+| 产物 | 大小 | SHA-256（前 8 位） | 说明 |
+| --- | --- | --- | --- |
+| `mobile-arm64_v8a.apk` | 150,440,911 | `a9e4bc0e` | **正式签名包**（`CN=WebHTV`），已发布到 GitHub Release v5.6.8 |
+
+| 用途 | 路径 |
+| --- | --- |
+| **检验包（构建产物原始位置）** | `/home/s/REA-src/app/build/outputs/apk/mobileArm64_v8a/release/mobile-arm64_v8a.apk` |
+| **真项目目录（唯一可改）** | `/media/s/7A3A1DFD3A1DB6DB/REA` |
+| **构建副本（实际编译处）** | `/home/s/REA-src` |
+| **发布包归档** | `/home/s/build/rel-5.6.8/mobile-arm64_v8a.apk` |
+
+### 本轮改动（用户拍板方案 → 实现）
+
+| # | 需求 | 实现要点 |
+| --- | --- | --- |
+| 1 | 检查更新逻辑（已是最新就别再说发现新版本；下载中再点不要重下；下载完提示安装；取消安装下次启动再提醒） | `Update.hasUpdate()` 以前拿**资产文件名**和版本 tag 比，永远判成「有更新」→ 改比 `versionName`（新增 `AppVersion.compare` 数字逐段比较）；`Updater` 的 `downloading` 布尔改 `AtomicBoolean`，新增 `attachProgress()` 把进度接回已有下载；新增 `update/PendingUpdate` 记住「已下载待安装」+ `PendingUpdatePrompt` 启动时补提示 + `ApkInstall` 安装前预检「未知来源」授权 |
+| 2 | 首次启动不要弹权限，用到再问（方案 A 懒请求） | mobile/leanback `HomeActivity` 删掉启动即 `PermissionUtil.requestFile`；各功能入口（站点注入、备份恢复、文件浏览）本来就自带申请；`FactoryDefaults.retryIfPending()` 挂在首页 `onResume`，授权回来立刻补种出厂配置 |
+| 3 | 个人中心横竖屏自适应、一级菜单一页显示全 | `AccountDialog` 抽出 `applyWindowMetrics()`（竖屏 94%、手机横屏 86%、平板横屏 78%，滚动区按屏高算）。**第 24 轮返工**：双列方案实测下半屏一整块空白、观感差，改为单列紧凑版式——头像 50dp +「已登录」药丸 + 四格大数字统计（可点跳追更/历史）+ 两枚单行入口 + 三枚操作胶囊，平板横屏一页可见；转屏/改分辨率重算改用 `DisplayManager.DisplayListener` + 下一帧 `post` |
+| 4 | 弹幕：搜索前移 + 并行探源 + 结果缓存，播放后 5 秒内滚动 | `DanmakuApi.search()` 从「按来源串行探测」改成**全来源并行、最快者胜出，胜出即取消其余请求**；`LruCache` 存最近 16 集结果，命中直接交付；mobile/leanback `VideoActivity` 把搜索调用移到 `startPlayer()` **之前**，与线路解析并行；来源列表变更自动 `clearCache()` |
+| 5 | 首页推荐 → **首页内容来源**（豆瓣热播 / 站点推荐 / 最近观看，四选一） | **第 24 轮返工**：用户指出首页只有一个，伪 tab 等于把首页做成第二个分类页。改为 `setting/RecommendSetting` 单键 `recommend_home_source`（站点默认 / 豆瓣热播 / 站点推荐 / 最近观看），`RecommendDialog` 改单选面板，`TypeFragment` 首页按来源渲染（`loadDouban` / `historyResult` / 站点 Result），`VodFragment.loadHome()` 在选了来源时**让网页首页让位**，`TypeAdapter` 去掉 `addRecommends`；`api/DoubanApi` 取 `subject_collection_items` + `cover.url` + `rating.value`，封面 URL 补 `@Referer=https://m.douban.com/` 破 418 防盗链 |
+| 6 | 追更要像「最近观看」一样有「已看到第几集 / 更新至第几集」 | 标签代码本来就在，问题是**查不到对应的历史记录**：追更列表跨配置展示，`find(cid,key)` 一换源就落空。新增 `History.forKeep()` 三级兜底（cid+key → 仅 key → 仅剧名）、`HistoryDao.findLatest` / `findLatestByVodName`；`KeepActivity` 的 `markAllSeen()` 从绑定前挪到绑定后，红标先显示再消除 |
+| 7 | 下载/注入的剧集要合并进同一部剧的历史，只留最新一集 | `History.canMergeByName()` 放开 `push` 前缀（以前显式排除，导致同剧多条）；`History.get()` 增加 `dedupe()`：按剧名只保留最新一条并**真正删掉**旧条，顺带清理历史遗留重复 |
+| 8 | 数据有改动后一段时间自动同步；启动/退出自动备份恢复 | 新增 `setting/SyncScheduler`：变更打点后防抖 8 秒同步、启动时 60 秒内不重复同步、退到后台 30 秒收敛；`App` 加前台 Activity 计数 + 设置项监听；`History` / `Keep` / `UpdateTrack` 三处写入点全部打点 |
+| 9 | 首页图标改「文字图标 + 胶囊文本框」【刷新/追更/历史/下载/我的】；手机横屏顶栏改【首页/直播/设置】 | 新增 `layout/view_home_pill.xml` + `drawable/shape_home_pill.xml`；`menu_vod.xml` 五个入口全改 `app:actionLayout`（用 `actionLayout` 后 MenuItem 点击不再触发，`VodFragment.setupPills()` 给 actionView 单独挂监听并把 title 填进胶囊）；内联导航 `addInlineNavigationItem` 从图标改文字胶囊 |
+
+### 踩坑
+
+- `app:actionLayout` 会吃掉 `onMenuItemClick`：必须给 actionView 自己 setOnClickListener，否则五个按钮全部点不动。
+- 弹幕「按来源串行」是延迟主因：8 个来源里前几个不通时，要串到几十秒才轮到能用的那个。
+- 追更标签消失不是渲染问题，是**数据查不到**：`Keep.getVod()` 不带 cid 过滤，`History.find(cid,key)` 却按 cid 精确匹配。
+- `AccountDialog` 里给根布局加 `OnLayoutChangeListener` 时只看**宽度**变化，跟着高度变会来回抖（内容重排会改高度）。
+- 豆瓣图床 `img*.doubanio.com` 不带 Referer 直接 **418**，封面全变占位字母。App 的 `ImgUtil` 支持 `图片URL@Referer=xxx` 后缀约定，补上即可，不用改图片加载器。
+- 弹窗宽度是代码写死的，屏幕变小后**根布局宽度一点没变**（窗口比屏幕还宽），`OnLayoutChangeListener` 收不到通知，只能被裁掉。`ComponentCallbacks.onConfigurationChanged` 在 Activity 上注册根本不派发、挂 Application 也不稳；最终用 `DisplayManager.registerDisplayListener` + `post` 到下一帧重算才可靠。
+- 豆瓣 rexxar 接口字段和旧版完全不一样：列表是 `subject_collection_items`（不是 `items`），封面 `cover.url`（不是 `pic.normal`），评分 `rating.value` 是数字要用 `getAsString()` 兜。
+
+## 二十二、开发记录与文档索引（2026-10-31）
 
 > 以后每轮开发、发布或交接，都按 `docs/开发记录规范.md` 更新记录；入口页只保留当前状态。
 

@@ -130,4 +130,24 @@
 
     <string name="play_source">播放源</string>
 
+
+    <!-- 首页顶栏「文字图标 + 胶囊」用的短标签 -->
+    <string name="pill_refresh">刷新</string>
+    <string name="pill_keep">追更</string>
+    <string name="pill_history">历史</string>
+    <string name="pill_download">下载</string>
+    <string name="pill_mine">我的</string>
+    <string name="pill_home">首页</string>
+
+    <!-- 首页推荐（伪 tab） -->
+    <string name="recommend_title">首页内容来源</string>
+    <string name="recommend_source_off_desc">首页显示当前站点自带的内容</string>
+    <string name="recommend_source_off">站点默认</string>
+    <string name="recommend_summary_off">站点默认</string>
+    <string name="recommend_douban">豆瓣热播</string>
+    <string name="recommend_douban_desc">首页显示豆瓣正在热播的电影和剧集</string>
+    <string name="recommend_site">站点推荐</string>
+    <string name="recommend_site_desc">首页显示当前站点自己的推荐内容</string>
+    <string name="recommend_history">最近观看</string>
+    <string name="recommend_history_desc">首页显示你的最近观看记录</string>
 </resources>

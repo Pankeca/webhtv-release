@@ -50,6 +50,7 @@ import com.fongmi.android.tv.player.Source;
 import com.fongmi.android.tv.server.Server;
 import com.fongmi.android.tv.service.DLNARendererService;
 import com.fongmi.android.tv.service.PlaybackService;
+import com.fongmi.android.tv.setting.FactoryDefaults;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.ui.adapter.BaseDiffCallback;
 import com.fongmi.android.tv.ui.adapter.TypeAdapter;
@@ -64,6 +65,7 @@ import com.fongmi.android.tv.ui.presenter.HeaderPresenter;
 import com.fongmi.android.tv.ui.presenter.HistoryPresenter;
 import com.fongmi.android.tv.ui.presenter.ProgressPresenter;
 import com.fongmi.android.tv.ui.presenter.VodPresenter;
+import com.fongmi.android.tv.update.PendingUpdatePrompt;
 import com.fongmi.android.tv.utils.Clock;
 import com.fongmi.android.tv.utils.FileChooser;
 import com.fongmi.android.tv.utils.ImgUtil;
@@ -157,7 +159,6 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     private void initAfterFirstFrame() {
         SpiderDebug.log("startup", "home first frame cost=%sms", System.currentTimeMillis() - App.time());
         App.post(this::initConfig, 80);
-        App.post(() -> PermissionUtil.requestFile(this, allGranted -> { }), 1800);
         App.post(() -> DLNARendererService.start(this), 2500);
     }
 
@@ -754,6 +755,9 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         super.onResume();
         mClock.start();
         if (mWeb != null) mWeb.onResume();
+        // 启动时不再无脑申请「所有文件访问」，改为用到时再要；这里只负责授权回来的补种
+        FactoryDefaults.retryIfPending();
+        PendingUpdatePrompt.showOnce(this);
     }
 
     @Override

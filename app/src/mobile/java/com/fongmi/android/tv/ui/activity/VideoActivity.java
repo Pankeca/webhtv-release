@@ -1983,8 +1983,10 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         updateAudioStageText();
         mBinding.control.parse.setVisibility(isUseParse() ? View.VISIBLE : View.GONE);
         List<Danmaku> siteDanmakus = result.getDanmaku();
-        startPlayer(getHistoryKey(), result, isUseParse(), getSite().getTimeout(), buildMetadata());
+        // 弹幕搜索前移：先发出去再起播放器，让「解析线路」和「找弹幕」并行跑，
+        // 以前是等播放器起来之后才发，等于白等一串网络往返，弹幕经常十几秒才滚。
         if (DanmakuApi.canAutoSearch(siteDanmakus)) DanmakuApi.search(mHistory.getVodName(), getEpisode().getName(), player()::setDanmaku);
+        startPlayer(getHistoryKey(), result, isUseParse(), getSite().getTimeout(), buildMetadata());
     }
 
     private boolean consumePendingPlaybackResult() {

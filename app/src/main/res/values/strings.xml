@@ -1242,6 +1242,12 @@
     <string name="update_hint">Choose a version to view release notes and update.</string>
     <string name="update_check">Checking for updates…</string>
     <string name="update_latest">Already on the latest version</string>
+    <string name="update_pending_title">Downloaded update ready</string>
+    <string name="update_pending_message">Version %1$s has been downloaded. Install now?</string>
+    <string name="update_pending_message_plain">An update package has been downloaded. Install now?</string>
+    <string name="update_pending_install">Install now</string>
+    <string name="update_pending_later">Later</string>
+    <string name="update_install_permission">Allow installing from this app in the system settings, then tap update again</string>
     <string name="update_downloading_start">Downloading update…</string>
     <string name="update_downloading_percent">Downloading update %1$d%%</string>
     <string name="update_downloading_progress">Downloading %1$d%% · %2$s</string>
@@ -1712,6 +1718,7 @@
     <string name="account_admin_unlocked">Admin options unlocked</string>
     <string name="account_admin_note">Admin only: change the cloud server URL and publish shared subscriptions. Users never see this section.</string>
     <string name="account_state_logged_out">Not logged in</string>
+    <string name="account_badge_login">Signed in</string>
     <string name="account_section_stats">Data overview</string>
     <string name="account_stats_keep">My updates</string>
     <string name="account_stats_history">Playback history</string>

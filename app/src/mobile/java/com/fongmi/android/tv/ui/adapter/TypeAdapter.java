@@ -10,6 +10,7 @@ import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.bean.Class;
 import com.fongmi.android.tv.bean.Result;
 import com.fongmi.android.tv.databinding.AdapterTypeBinding;
+import com.fongmi.android.tv.setting.RecommendSetting;
 import com.fongmi.android.tv.utils.ResUtil;
 
 import java.util.ArrayList;
@@ -44,7 +45,8 @@ public class TypeAdapter extends RecyclerView.Adapter<TypeAdapter.ViewHolder> {
 
     public void addAll(Result result) {
         mItems.addAll(result.getTypes());
-        if (!result.getList().isEmpty()) mItems.add(0, home());
+        // 站点首页没内容时原本不显示「首页」这一项；但用户指定了首页来源，就得给他一个首页入口
+        if (!result.getList().isEmpty() || !RecommendSetting.isOff()) mItems.add(0, home());
         if (!mItems.isEmpty()) mItems.get(0).setSelected(true);
         notifyDataSetChanged();
     }

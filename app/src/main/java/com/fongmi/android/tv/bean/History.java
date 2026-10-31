@@ -12,7 +12,6 @@ import androidx.room.PrimaryKey;
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.Constant;
 import com.fongmi.android.tv.R;
-import com.fongmi.android.tv.api.SiteApi;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.db.AppDatabase;
 import com.fongmi.android.tv.impl.Diffable;
@@ -21,8 +20,11 @@ import com.google.gson.annotations.SerializedName;
 import com.google.gson.reflect.TypeToken;
 
 import java.lang.reflect.Type;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
@@ -118,7 +120,39 @@ public class History implements Diffable<History> {
     }
 
     public static List<History> get(int cid) {
-        return AppDatabase.get().getHistoryDao().find(cid, System.currentTimeMillis() - Constant.HISTORY_TIME);
+        List<History> items = AppDatabase.get().getHistoryDao().find(cid, System.currentTimeMillis() - Constant.HISTORY_TIME);
+        return dedupe(items);
+    }
+
+    /**
+     * 同一部剧只留最新一条，并把旧条真正删掉。
+     *
+     * <p>为什么要在读的时候做：老版本把 push（服务端注入 / 本地下载）排除在按剧名合并之外，
+     * 库里已经堆了同一部剧的多条记录——站点一条、注入一条、本地下好的一条。
+     * 光改保存逻辑只能拦住新增，历史遗留还得清一遍，否则「最近观看」永远有一堆重复卡片。
+     *
+     * <p>查询本身按 createTime 倒序，所以每个剧名第一次出现的那条就是最新的，后面同名的都是旧条。
+     */
+    private static List<History> dedupe(List<History> items) {
+        if (items == null || items.size() < 2) return items;
+        Map<String, History> latest = new LinkedHashMap<>();
+        List<History> stale = new ArrayList<>();
+        for (History item : items) {
+            String name = item.getVodName();
+            if (TextUtils.isEmpty(name)) continue;
+            if (latest.putIfAbsent(name, item) != null) stale.add(item);
+        }
+        if (stale.isEmpty()) return items;
+        List<History> result = new ArrayList<>(items);
+        result.removeAll(stale);
+        // 删除失败（例如被并发写回）不影响展示，下次进来还会再清一次
+        for (History item : stale) {
+            try {
+                AppDatabase.get().getHistoryDao().delete(item.getCid(), item.getKey());
+            } catch (Exception ignored) {
+            }
+        }
+        return result;
     }
 
     public static History find(String key) {
@@ -130,6 +164,30 @@ public class History implements Diffable<History> {
             return AppDatabase.get().getHistoryDao().findByName(VodConfig.getCid(), name);
         } catch (Exception e) {
             return Collections.emptyList();
+        }
+    }
+
+    /**
+     * 追更卡片要用哪条观看记录算「已看第几集」。
+     *
+     * <p>三级兜底，缺一档用户就会看到标签不见：
+     * <ol>
+     *   <li>cid + key 精确命中（正常情况）；</li>
+     *   <li>只按 key 跨配置找——追更列表是跨配置展示的，换过点播源后 cid 会对不上；</li>
+     *   <li>同剧名找最新一条——服务端注入、本地下载的 key 与站点记录不同，
+     *       但合并之后它们本来就该算同一部剧。</li>
+     * </ol>
+     */
+    public static History forKeep(Keep keep) {
+        if (keep == null) return null;
+        try {
+            History history = AppDatabase.get().getHistoryDao().find(keep.getCid(), keep.getKey());
+            if (history != null) return history;
+            history = AppDatabase.get().getHistoryDao().findLatest(keep.getKey());
+            if (history != null) return history;
+            return AppDatabase.get().getHistoryDao().findLatestByVodName(keep.getVodName());
+        } catch (Throwable e) {
+            return null;
         }
     }
 
@@ -335,12 +393,12 @@ public class History implements Diffable<History> {
         return isRevPlay() ? R.string.play_backward_hint : R.string.play_forward_hint;
     }
 
-    private boolean isPushHistory() {
-        return key != null && key.startsWith(SiteApi.PUSH + AppDatabase.SYMBOL);
-    }
-
     private boolean canMergeByName() {
-        return !isPushHistory();
+        // 以前这里把 push（服务端注入 / 本地下载）排除在按剧名合并之外，理由是它的 key 是
+        // push@@@<地址>，和站点记录长得不一样。结果是同一部剧在「最近观看」里出现好几条：
+        // 一条站点的、一条注入的、一条本地下好的，用户明确要求合并成一条只留最新那一集。
+        // 合并条件本身还有「时长差不超过 10 分钟」兜底，不会把两部同名不同剧拼到一起。
+        return true;
     }
 
     private boolean shouldMerge(History item, boolean force) {
@@ -409,12 +467,14 @@ public class History implements Diffable<History> {
     public History save() {
         updateTime = System.currentTimeMillis();
         AppDatabase.get().getHistoryDao().insertOrUpdate(this);
+        com.fongmi.android.tv.setting.SyncScheduler.onDataChanged("history");
         return this;
     }
 
     public History delete() {
         AppDatabase.get().getHistoryDao().delete(VodConfig.getCid(), getKey());
         AppDatabase.get().getTrackDao().delete(getKey());
+        com.fongmi.android.tv.setting.SyncScheduler.onDataChanged("history-delete");
         return this;
     }
 

@@ -13,6 +13,7 @@ import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -48,6 +49,7 @@ import com.fongmi.android.tv.impl.FilterListener;
 import com.fongmi.android.tv.impl.SiteListener;
 import com.fongmi.android.tv.model.SiteViewModel;
 import com.fongmi.android.tv.setting.AccountStore;
+import com.fongmi.android.tv.setting.RecommendSetting;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.ui.activity.HomeActivity;
 import com.fongmi.android.tv.ui.activity.HistoryActivity;
@@ -126,6 +128,8 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
         setTitle();
         setLogo();
         updateToolbarMenu();
+        // 菜单的 actionView 要等 Toolbar 真正完成布局才拿得到，post 一帧再挂监听
+        mBinding.toolbar.post(this::setupPills);
         updateAccountIcon();
         mToolbarHeight = mBinding.toolbar.getLayoutParams().height;
         applySmallScreenLayout();
@@ -154,9 +158,9 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
             mInlineNavigation.setGravity(Gravity.CENTER_VERTICAL);
             mInlineNavigation.setPadding(ResUtil.dp2px(4), 0, ResUtil.dp2px(4), 0);
             mInlineNavigation.setBackground(createInlineNavigationBackground());
-            addInlineNavigationItem(R.drawable.ic_nav_vod, R.id.vod);
-            addInlineNavigationItem(R.drawable.ic_nav_live, R.id.live);
-            addInlineNavigationItem(R.drawable.ic_nav_setting, R.id.setting);
+            addInlineNavigationItem(R.string.pill_home, R.id.vod);
+            addInlineNavigationItem(R.string.nav_live, R.id.live);
+            addInlineNavigationItem(R.string.nav_setting, R.id.setting);
             Toolbar.LayoutParams params = new Toolbar.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ResUtil.dp2px(40));
             params.gravity = Gravity.START | Gravity.CENTER_VERTICAL;
             params.setMarginStart(ResUtil.dp2px(4));
@@ -179,18 +183,22 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
         return drawable;
     }
 
-    private void addInlineNavigationItem(int icon, int itemId) {
-        AppCompatImageView view = new AppCompatImageView(requireContext());
-        view.setImageResource(icon);
-        view.setColorFilter(ContextCompat.getColor(requireContext(), R.color.white));
-        TypedValue value = new TypedValue();
-        if (requireContext().getTheme().resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, value, true)) view.setBackgroundResource(value.resourceId);
-        view.setScaleType(android.widget.ImageView.ScaleType.CENTER);
-        view.setPadding(ResUtil.dp2px(9), ResUtil.dp2px(9), ResUtil.dp2px(9), ResUtil.dp2px(9));
+    /** 内联导航的一个「文字图标」：白字胶囊，点一下切到对应底栏页签。 */
+    private void addInlineNavigationItem(int textRes, int itemId) {
+        com.google.android.material.textview.MaterialTextView view = new com.google.android.material.textview.MaterialTextView(requireContext());
+        view.setText(textRes);
+        view.setTextSize(12);
+        view.setTextColor(ContextCompat.getColor(requireContext(), R.color.white));
+        view.setGravity(Gravity.CENTER);
+        view.setIncludeFontPadding(false);
+        view.setSingleLine(true);
+        view.setBackgroundResource(R.drawable.shape_home_pill);
+        view.setPadding(ResUtil.dp2px(12), 0, ResUtil.dp2px(12), 0);
         view.setOnClickListener(v -> ((HomeActivity) requireActivity()).selectNavigationItem(itemId));
-        LinearLayoutCompat.LayoutParams params = new LinearLayoutCompat.LayoutParams(ResUtil.dp2px(38), ResUtil.dp2px(38));
-        params.setMarginStart(ResUtil.dp2px(1));
-        params.setMarginEnd(ResUtil.dp2px(1));
+        LinearLayoutCompat.LayoutParams params = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ResUtil.dp2px(30));
+        params.setMarginStart(ResUtil.dp2px(3));
+        params.setMarginEnd(ResUtil.dp2px(3));
+        params.gravity = Gravity.CENTER_VERTICAL;
         mInlineNavigation.addView(view, params);
     }
 
@@ -209,6 +217,7 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
         mBinding.toolbar.post(() -> {
             MenuItem keep = mBinding.toolbar.getMenu().findItem(R.id.keep);
             if (keep != null && UpdateTrack.hasAnyUpdate()) keep.setTitle(keep.getTitle() + " \u2B24");
+            refreshPill(keep);
         });
         mBinding.toolbar.post(this::setSearchAction);
         mBinding.appBar.addOnOffsetChangedListener((appBarLayout, verticalOffset) -> {
@@ -227,6 +236,35 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
                 setFabVisible(position);
             }
         });
+    }
+
+    /** 顶栏这五个入口（刷新/追更/历史/下载/我的）统一用文字胶囊，不再画图标。 */
+    private static final int[] PILL_IDS = {R.id.refresh, R.id.keep, R.id.history, R.id.download, R.id.account};
+
+    /**
+     * 把菜单 title 填进胶囊，并把点击转回原来的菜单回调。
+     *
+     * <p>{@code app:actionLayout} 一旦用上，MenuItem 自己的点击回调就不会触发了，
+     * 所以必须给 actionView 单独挂监听，否则五个按钮全部变成死的。
+     */
+    private void setupPills() {
+        if (!isAdded() || mBinding == null) return;
+        Menu menu = mBinding.toolbar.getMenu();
+        for (int id : PILL_IDS) {
+            MenuItem item = menu.findItem(id);
+            View view = item == null ? null : item.getActionView();
+            if (view == null) continue;
+            view.setOnClickListener(v -> onMenuItemClick(item));
+            refreshPill(item);
+        }
+    }
+
+    /** 只刷新单个胶囊文字（追更有更新时要加个红点圆），不重建整个菜单。 */
+    private void refreshPill(MenuItem item) {
+        View view = item == null ? null : item.getActionView();
+        if (!(view instanceof TextView)) return;
+        CharSequence title = item.getTitle();
+        ((TextView) view).setText(title == null ? "" : title.toString());
     }
 
     private void setRecyclerView() {
@@ -390,6 +428,7 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
         if (fullscreen != null) fullscreen.setVisible(Setting.isWebHomeFullscreen() && mWeb != null && mWeb.isVisible());
         applyCompactToolbar();
         setSearchAction();
+        setupPills();
     }
 
     /** 小屏竖屏空间有限：隐藏站点名标题、搜索框缩成图标，把追更/最近观看/下载中心保留在顶栏。 */
@@ -428,31 +467,14 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
         });
     }
 
-    /** 账号图标：未登录灰白 + 小红点，登录后变为黄色。 */
+    /** 「我的」胶囊：未登录用半透明白，登录后变金色，一眼能看出账号状态。 */
     private void updateAccountIcon() {
         if (mBinding == null || !isAdded()) return;
         MenuItem item = mBinding.toolbar.getMenu().findItem(R.id.account);
-        if (item == null) return;
+        View view = item == null ? null : item.getActionView();
+        if (!(view instanceof TextView)) return;
         boolean login = AccountStore.isLogin();
-        Drawable person = ContextCompat.getDrawable(requireContext(), R.drawable.ic_menu_account);
-        if (person == null) return;
-        person = DrawableCompat.wrap(person).mutate();
-        DrawableCompat.setTint(person, ContextCompat.getColor(requireContext(), login ? R.color.account_online : R.color.white_60));
-        if (login) {
-            item.setIcon(person);
-            return;
-        }
-        Drawable dot = ContextCompat.getDrawable(requireContext(), R.drawable.shape_account_dot);
-        if (dot == null) {
-            item.setIcon(person);
-            return;
-        }
-        LayerDrawable layered = new LayerDrawable(new Drawable[]{person, dot});
-        int size = person.getIntrinsicWidth() > 0 ? person.getIntrinsicWidth() : ResUtil.dp2px(24);
-        int dotSize = Math.max(ResUtil.dp2px(6), Math.round(size * 0.34f));
-        layered.setLayerSize(1, dotSize, dotSize);
-        layered.setLayerGravity(1, Gravity.TOP | Gravity.END);
-        item.setIcon(layered);
+        ((TextView) view).setTextColor(ContextCompat.getColor(requireContext(), login ? R.color.account_online : R.color.white_60));
     }
 
     private void showProgress() {
@@ -490,7 +512,9 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
         Site home = getHome();
         WebHomeChromeStartup.remember(getConfig(), home);
         setTitle();
-        if (mWeb != null && mWeb.load(home)) {
+        // 用户把首页内容换成豆瓣/历史/站点推荐时，网页首页要让位，否则设了也看不到效果
+        boolean useWeb = mWeb != null && RecommendSetting.isOff() && mWeb.load(home);
+        if (useWeb) {
             clearPagerTypes();
             hideProgress();
             hideNativeContent();

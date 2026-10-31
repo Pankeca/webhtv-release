@@ -1,11 +1,16 @@
 package com.fongmi.android.tv.ui.dialog;
 
 import android.content.DialogInterface;
+import android.content.Intent;
 import android.content.res.ColorStateList;
+import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
+import android.hardware.display.DisplayManager;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.InputType;
 import android.text.TextUtils;
 import android.view.Gravity;
@@ -80,6 +85,38 @@ public class AccountDialog extends BaseAlertDialog {
     private int adminTaps;
     private boolean adminRevealed;
     private boolean registerMode;
+    private int lastWidth;
+    /**
+     * 转屏 / 分屏 / 改分辨率时窗口宽度是代码写死的，根布局宽度可能一点没变（甚至比屏幕还宽），
+     * 光靠 addOnLayoutChangeListener 收不到通知。DisplayManager 的 onDisplayChanged 这几件事都会回调，
+     * 比 ComponentCallbacks.onConfigurationChanged 更可靠（后者只在 Application 上才会被派发）。
+     */
+    private DisplayManager displayManager;
+    private final DisplayManager.DisplayListener displayListener = new DisplayManager.DisplayListener() {
+        @Override
+        public void onDisplayChanged(int displayId) {
+            refreshMetrics();
+        }
+
+        @Override
+        public void onDisplayAdded(int displayId) {
+        }
+
+        @Override
+        public void onDisplayRemoved(int displayId) {
+        }
+    };
+    private boolean displayListenerBound;
+
+    /** 等下一帧再算：回调触发时配置可能还没应用完，立刻取屏宽会拿到旧值。 */
+    private void refreshMetrics() {
+        if (binding == null) return;
+        binding.getRoot().post(() -> {
+            if (binding == null) return;
+            applyWindowMetrics();
+            render();
+        });
+    }
 
     public static void show(Fragment fragment, Runnable callback) {
         show(fragment.requireActivity(), callback);
@@ -107,28 +144,60 @@ public class AccountDialog extends BaseAlertDialog {
         if (getDialog() == null) return;
         Window window = getDialog().getWindow();
         if (window == null) return;
-        WindowManager.LayoutParams params = window.getAttributes();
-        int screenWidth = ResUtil.getScreenWidth(requireContext());
-        int screenHeight = ResUtil.getScreenHeight(requireContext());
-        boolean land = ResUtil.isLand(requireContext());
         window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         window.getDecorView().setPadding(0, 0, 0, 0);
-        params.width = (int) (screenWidth * (land ? 0.62f : 0.94f));
-        params.height = WindowManager.LayoutParams.WRAP_CONTENT;
-        window.setAttributes(params);
-        window.setLayout(params.width, params.height);
         // 弹窗窗口默认带 ALT_FOCUSABLE_IM，会导致输入法无法弹出输入内容，这里必须清掉
         window.clearFlags(WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM);
         // 允许输入法顶起窗口，避免输入框被软键盘遮挡
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
-        // 滚动区高度按实际可用屏高动态计算：竖屏多显示一些，横屏矮屏避免被系统栏裁掉
-        int reserved = ResUtil.dp2px(land ? 120 : 190);
-        int maxHeight = Math.max(ResUtil.dp2px(160), Math.min((int) (screenHeight * (land ? 0.54f : 0.66f)), screenHeight - reserved));
-        binding.contentScroll.setMaxHeight(maxHeight);
+        applyWindowMetrics();
         render();
         if (AccountStore.isLogin()) CloudConfigSync.refreshCounts(() -> {
             if (isAdded()) render();
         });
+        // 手机横竖屏切换、平板分屏拖拽都不会重走 onStart，尺寸和分栏要自己跟着窗口变。
+        // 只看宽度：内容重新排布会改高度，跟着高度重排会来回抖。
+        binding.getRoot().addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+            int width = right - left;
+            if (width <= 0 || width == lastWidth) return;
+            lastWidth = width;
+            applyWindowMetrics();
+            render();
+        });
+        if (!displayListenerBound) {
+            displayListenerBound = true;
+            displayManager = (DisplayManager) requireContext().getSystemService(Context.DISPLAY_SERVICE);
+            if (displayManager != null) displayManager.registerDisplayListener(displayListener, new Handler(Looper.getMainLooper()));
+        }
+    }
+
+    /** 窗口尺寸与滚动区最大高度：横屏更宽更矮，竖屏更窄更高；分栏判断也在这里统一。 */
+    private void applyWindowMetrics() {
+        Window window = getDialog() == null ? null : getDialog().getWindow();
+        if (window == null) return;
+        WindowManager.LayoutParams params = window.getAttributes();
+        int screenWidth = ResUtil.getScreenWidth(requireContext());
+        int screenHeight = ResUtil.getScreenHeight(requireContext());
+        boolean land = isLandscape();
+        params.width = (int) (screenWidth * (land ? (isWideLandscape() ? 0.78f : 0.86f) : 0.94f));
+        // 转屏瞬间可能还拿着旧方向的屏宽，兜个底，别让窗口比屏幕还宽被裁掉
+        params.width = Math.min(params.width, screenWidth);
+        params.height = WindowManager.LayoutParams.WRAP_CONTENT;
+        window.setAttributes(params);
+        window.setLayout(params.width, params.height);
+        // 滚动区高度按实际可用屏高动态计算：竖屏多显示一些，横屏矮屏避免被系统栏裁掉
+        int reserved = ResUtil.dp2px(land ? 80 : 190);
+        int maxHeight = Math.max(ResUtil.dp2px(160), Math.min((int) (screenHeight * (land ? 0.78f : 0.66f)), screenHeight - reserved));
+        binding.contentScroll.setMaxHeight(maxHeight);
+    }
+
+    private boolean isLandscape() {
+        return ResUtil.isLand(requireContext());
+    }
+
+    /** 宽屏（平板横屏）才用双列，手机竖屏单列；手机横屏窗口窄，双列会挤成两行字。 */
+    private boolean isWideLandscape() {
+        return isLandscape() && ResUtil.getScreenWidth(requireContext()) >= ResUtil.dp2px(640);
     }
 
     @Override
@@ -138,6 +207,13 @@ public class AccountDialog extends BaseAlertDialog {
 
     @Override
     public void onDismiss(@NonNull DialogInterface dialog) {
+        if (displayListenerBound) {
+            displayListenerBound = false;
+            try {
+                if (displayManager != null) displayManager.unregisterDisplayListener(displayListener);
+            } catch (Throwable ignored) {
+            }
+        }
         if (callback != null) callback.run();
         super.onDismiss(dialog);
     }
@@ -219,95 +295,125 @@ public class AccountDialog extends BaseAlertDialog {
         binding.content.addView(securityCard());
     }
 
-    /** 顶部概览：头像 + 账号 + 四项本地/云端统计压在同一张卡里，一屏就能看完一级菜单。 */
+    /** 顶部概览：头像 + 账号 + 状态药丸 + 四格统计，一屏看完全部一级入口。 */
     private View heroCard() {
         LinearLayoutCompat root = new LinearLayoutCompat(requireContext());
         root.setOrientation(LinearLayoutCompat.VERTICAL);
-        root.setPadding(dp(14), dp(12), dp(14), dp(12));
+        root.setPadding(dp(16), dp(14), dp(16), dp(12));
         GradientDrawable background = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-                new int[]{Color.parseColor("#FFFFFF"), Color.parseColor("#E6F0FE")});
-        background.setCornerRadius(dp(16));
-        background.setStroke(dp(1), Color.parseColor("#DDE8F8"));
+                new int[]{Color.parseColor("#FFFFFF"), Color.parseColor("#EDF4FF")});
+        background.setCornerRadius(dp(18));
+        background.setStroke(dp(1), Color.parseColor("#E1EAF8"));
         root.setBackground(background);
         LinearLayoutCompat.LayoutParams rootParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        rootParams.topMargin = dp(8);
+        rootParams.topMargin = dp(6);
         root.setLayoutParams(rootParams);
 
         LinearLayoutCompat head = new LinearLayoutCompat(requireContext());
         head.setOrientation(LinearLayoutCompat.HORIZONTAL);
         head.setGravity(Gravity.CENTER_VERTICAL);
-        head.addView(avatar(AccountStore.name()), new LinearLayoutCompat.LayoutParams(dp(42), dp(42)));
+        head.addView(avatar(AccountStore.name()), new LinearLayoutCompat.LayoutParams(dp(50), dp(50)));
 
         LinearLayoutCompat texts = new LinearLayoutCompat(requireContext());
         texts.setOrientation(LinearLayoutCompat.VERTICAL);
-        MaterialTextView name = text(AccountStore.name(), 16, Color.parseColor("#202124"), true);
+        MaterialTextView name = text(AccountStore.name(), 18, Color.parseColor("#1A1C1E"), true);
         name.setMaxLines(1);
+        name.setEllipsize(TextUtils.TruncateAt.END);
         texts.addView(name);
-        MaterialTextView sub = text(getString(R.string.account_uid, AccountStore.uid()), 11, Color.parseColor("#5F6368"), false);
+        MaterialTextView sub = text(getString(R.string.account_uid, AccountStore.uid()), 11, Color.parseColor("#6B7280"), false);
         sub.setMaxLines(1);
-        texts.addView(sub);
-        LinearLayoutCompat.LayoutParams textParams = new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
-        textParams.leftMargin = dp(10);
+        LinearLayoutCompat.LayoutParams subParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        subParams.topMargin = dp(3);
+        texts.addView(sub, subParams);
+        LinearLayoutCompat.LayoutParams textParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        textParams.leftMargin = dp(12);
         head.addView(texts, textParams);
-
+        LinearLayoutCompat.LayoutParams badgeParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        badgeParams.leftMargin = dp(8);
+        head.addView(badge(getString(R.string.account_badge_login), "#E7F5EC", "#177245"), badgeParams);
+        head.addView(new View(requireContext()), new LinearLayoutCompat.LayoutParams(0, 1, 1));
         root.addView(head);
-
-        View divider = new View(requireContext());
-        divider.setBackgroundColor(Color.parseColor("#DCE5F5"));
-        LinearLayoutCompat.LayoutParams dividerParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1));
-        dividerParams.topMargin = dp(10);
-        root.addView(divider, dividerParams);
 
         LinearLayoutCompat stats = new LinearLayoutCompat(requireContext());
         stats.setOrientation(LinearLayoutCompat.HORIZONTAL);
         stats.setGravity(Gravity.CENTER_VERTICAL);
-        stats.setPadding(dp(8), dp(8), dp(8), dp(8));
         GradientDrawable statsBg = new GradientDrawable();
-        statsBg.setColor(Color.parseColor("#F4F8FF"));
-        statsBg.setCornerRadius(dp(12));
-        statsBg.setStroke(dp(1), Color.parseColor("#E3EDFB"));
+        statsBg.setColor(Color.parseColor("#F3F7FE"));
+        statsBg.setCornerRadius(dp(14));
         stats.setBackground(statsBg);
+        stats.setPadding(dp(4), dp(10), dp(4), dp(10));
         LinearLayoutCompat.LayoutParams statsParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        statsParams.topMargin = dp(10);
+        statsParams.topMargin = dp(14);
         stats.setLayoutParams(statsParams);
-        addStat(stats, getString(R.string.account_stats_keep), keepCount(), CloudSyncStore.cloudKeepCount(), false);
-        addStat(stats, getString(R.string.account_stats_history), AccountSync.localHistoryCount(), CloudSyncStore.cloudHistoryCount(), true);
-        addStat(stats, getString(R.string.account_stats_vod), CloudConfigSync.localVodCount(), CloudSyncStore.cloudVodCount(), true);
-        addStat(stats, getString(R.string.account_stats_live), CloudConfigSync.localLiveCount(), CloudSyncStore.cloudLiveCount(), true);
+        addStat(stats, getString(R.string.account_stats_keep), keepCount(), CloudSyncStore.cloudKeepCount(), false, view -> {
+            dismiss();
+            openActivity("com.fongmi.android.tv.ui.activity.KeepActivity");
+        });
+        addStat(stats, getString(R.string.account_stats_history), AccountSync.localHistoryCount(), CloudSyncStore.cloudHistoryCount(), true, view -> {
+            dismiss();
+            openActivity("com.fongmi.android.tv.ui.activity.HistoryActivity");
+        });
+        addStat(stats, getString(R.string.account_stats_vod), CloudConfigSync.localVodCount(), CloudSyncStore.cloudVodCount(), true, view -> showConfigOptions());
+        addStat(stats, getString(R.string.account_stats_live), CloudConfigSync.localLiveCount(), CloudSyncStore.cloudLiveCount(), true, view -> showConfigOptions());
         root.addView(stats);
         return root;
     }
 
-    /** 每项统计三行：名称（加粗）/ 本地 N（蓝）/ 云端 N（绿），列间用细分隔线划分。 */
-    private void addStat(LinearLayoutCompat parent, String label, int local, int cloud, boolean divider) {
+    /** 一格统计：大号数字当主视觉，下面是名称和云端条数；整格可点，直接跳到对应页面。 */
+    private void addStat(LinearLayoutCompat parent, String label, int local, int cloud, boolean divider, View.OnClickListener listener) {
         if (divider) {
             View line = new View(requireContext());
-            line.setBackgroundColor(Color.parseColor("#E1E9F6"));
-            LinearLayoutCompat.LayoutParams lineParams = new LinearLayoutCompat.LayoutParams(dp(1), dp(30));
-            lineParams.leftMargin = dp(2);
-            lineParams.rightMargin = dp(2);
+            line.setBackgroundColor(Color.parseColor("#D9E3F2"));
+            LinearLayoutCompat.LayoutParams lineParams = new LinearLayoutCompat.LayoutParams(dp(1), dp(34));
             parent.addView(line, lineParams);
         }
         LinearLayoutCompat column = new LinearLayoutCompat(requireContext());
         column.setOrientation(LinearLayoutCompat.VERTICAL);
         column.setGravity(Gravity.CENTER_HORIZONTAL);
-        MaterialTextView title = text(label, 11, Color.parseColor("#202124"), true);
+        column.setClickable(true);
+        column.setFocusable(true);
+        column.setBackgroundResource(R.drawable.ripple_round_14);
+        column.setOnClickListener(listener);
+        MaterialTextView valueView = text(String.valueOf(local), 20, Color.parseColor("#111827"), true);
+        valueView.setGravity(Gravity.CENTER);
+        valueView.setMaxLines(1);
+        column.addView(valueView);
+        MaterialTextView title = text(label, 11, Color.parseColor("#5F6368"), false);
         title.setGravity(Gravity.CENTER);
         title.setMaxLines(1);
-        column.addView(title);
-        MaterialTextView localView = text(getString(R.string.account_stats_local, local), 11, Color.parseColor("#1A73E8"), false);
-        localView.setGravity(Gravity.CENTER);
-        localView.setMaxLines(1);
-        LinearLayoutCompat.LayoutParams localParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        localParams.topMargin = dp(3);
-        column.addView(localView, localParams);
-        MaterialTextView cloudView = text(getString(R.string.account_stats_cloud, cloud), 11, Color.parseColor("#137333"), false);
+        title.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayoutCompat.LayoutParams titleParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        titleParams.topMargin = dp(2);
+        column.addView(title, titleParams);
+        MaterialTextView cloudView = text(getString(R.string.account_stats_cloud, cloud), 10, Color.parseColor("#9AA0A6"), false);
         cloudView.setGravity(Gravity.CENTER);
         cloudView.setMaxLines(1);
         LinearLayoutCompat.LayoutParams cloudParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         cloudParams.topMargin = dp(1);
         column.addView(cloudView, cloudParams);
         parent.addView(column, new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+    }
+
+    /** 小圆角药丸：状态、角标都用它，统一视觉。 */
+    private View badge(String text, String bg, String fg) {
+        MaterialTextView view = text(text, 11, Color.parseColor(fg), true);
+        view.setMaxLines(1);
+        view.setPadding(dp(9), dp(3), dp(9), dp(3));
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setColor(Color.parseColor(bg));
+        drawable.setCornerRadius(dp(10));
+        view.setBackground(drawable);
+        return view;
+    }
+
+    /** 用类名跳转：HistoryActivity 只在 mobile 源集里，main 直接 import 会让 leanback 编译不过。 */
+    private void openActivity(String className) {
+        try {
+            Intent intent = new Intent();
+            intent.setClassName(requireContext(), className);
+            startActivity(intent);
+        } catch (Throwable ignored) {
+        }
     }
 
     /** 二级菜单入口：并排两列，图标 + 标题 + 状态角标，点击弹出对应二级菜单。 */
@@ -324,50 +430,52 @@ public class AccountDialog extends BaseAlertDialog {
         return row;
     }
 
-    /** 单个入口卡片：图标 + 标题 + 状态角标 + 右侧箭头。 */
+    /** 单个入口：图标 + 标题 + 状态角标 + 箭头，单行排布，比堆两行省一半高度。 */
     private View entryTile(String title, String badge, String icon, String badgeBg, String badgeFg, View.OnClickListener listener) {
         LinearLayoutCompat tile = new LinearLayoutCompat(requireContext());
-        tile.setOrientation(LinearLayoutCompat.VERTICAL);
-        tile.setPadding(dp(12), dp(10), dp(12), dp(10));
+        tile.setOrientation(LinearLayoutCompat.HORIZONTAL);
+        tile.setGravity(Gravity.CENTER_VERTICAL);
+        tile.setPadding(dp(12), dp(12), dp(12), dp(12));
         tile.setBackground(cardBackground());
         tile.setClickable(true);
         tile.setFocusable(true);
         tile.setOnClickListener(listener);
         if (android.os.Build.VERSION.SDK_INT >= 23) tile.setForeground(ContextCompat.getDrawable(requireContext(), R.drawable.ripple_round_14));
 
-        LinearLayoutCompat head = new LinearLayoutCompat(requireContext());
-        head.setOrientation(LinearLayoutCompat.HORIZONTAL);
-        head.setGravity(Gravity.CENTER_VERTICAL);
         MaterialTextView iconView = text(icon, 13, Color.parseColor(badgeFg), true);
         iconView.setGravity(Gravity.CENTER);
         GradientDrawable iconBg = new GradientDrawable();
         iconBg.setColor(Color.parseColor(badgeBg));
         iconBg.setCornerRadius(dp(9));
         iconView.setBackground(iconBg);
-        head.addView(iconView, new LinearLayoutCompat.LayoutParams(dp(28), dp(28)));
+        tile.addView(iconView, new LinearLayoutCompat.LayoutParams(dp(28), dp(28)));
 
-        MaterialTextView titleView = text(title, 14, Color.parseColor("#202124"), true);
+        MaterialTextView titleView = text(title, 14, Color.parseColor("#1A1C1E"), true);
         titleView.setMaxLines(1);
         titleView.setEllipsize(TextUtils.TruncateAt.END);
-        LinearLayoutCompat.LayoutParams titleParams = new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        LinearLayoutCompat.LayoutParams titleParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         titleParams.leftMargin = dp(8);
-        head.addView(titleView, titleParams);
-        LinearLayoutCompat.LayoutParams arrowParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        head.addView(text("›", 17, Color.parseColor("#B0B6BD"), false), arrowParams);
-        tile.addView(head);
+        tile.addView(titleView, titleParams);
 
-        MaterialTextView badgeView = text(badge, 10, Color.parseColor(badgeFg), true);
+        LinearLayoutCompat.LayoutParams spacer = new LinearLayoutCompat.LayoutParams(0, 1, 1);
+        tile.addView(new View(requireContext()), spacer);
+
+        MaterialTextView badgeView = text(badge, 10, Color.parseColor("#6B7280"), false);
         badgeView.setMaxLines(1);
         badgeView.setEllipsize(TextUtils.TruncateAt.END);
-        badgeView.setPadding(dp(7), dp(2), dp(7), dp(2));
+        badgeView.setPadding(dp(7), dp(3), dp(7), dp(3));
         GradientDrawable badgeDrawable = new GradientDrawable();
-        badgeDrawable.setColor(Color.parseColor(badgeBg));
-        badgeDrawable.setCornerRadius(dp(7));
+        badgeDrawable.setColor(Color.parseColor("#F1F4F9"));
+        badgeDrawable.setCornerRadius(dp(8));
         badgeView.setBackground(badgeDrawable);
         LinearLayoutCompat.LayoutParams badgeParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        badgeParams.topMargin = dp(8);
-        badgeParams.leftMargin = dp(36);
+        badgeParams.leftMargin = dp(8);
         tile.addView(badgeView, badgeParams);
+
+        MaterialTextView arrow = text("›", 17, Color.parseColor("#B0B6BD"), false);
+        LinearLayoutCompat.LayoutParams arrowParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        arrowParams.leftMargin = dp(4);
+        tile.addView(arrow, arrowParams);
         return tile;
     }
 
@@ -509,11 +617,39 @@ public class AccountDialog extends BaseAlertDialog {
 
     private LinearLayoutCompat securityCard() {
         LinearLayoutCompat card = card(getString(R.string.account_section_security));
-        card.addView(linkRow(getString(R.string.account_change_password), "#3C4043", view -> changePasswordPrompt()));
-        card.addView(linkRow(getString(R.string.account_logout), "#3C4043", view -> logout()));
-        card.addView(linkRow(getString(R.string.account_delete), "#D93025", view -> confirmDeleteAccount()));
+        LinearLayoutCompat row = new LinearLayoutCompat(requireContext());
+        row.setOrientation(LinearLayoutCompat.HORIZONTAL);
+        LinearLayoutCompat.LayoutParams firstParams = new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        firstParams.topMargin = dp(2);
+        LinearLayoutCompat.LayoutParams secondParams = new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        secondParams.topMargin = dp(2);
+        secondParams.leftMargin = dp(8);
+        LinearLayoutCompat.LayoutParams thirdParams = new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        thirdParams.topMargin = dp(2);
+        thirdParams.leftMargin = dp(8);
+        row.addView(chip(getString(R.string.account_change_password), "#F1F4F9", "#3C4043", view -> changePasswordPrompt()), firstParams);
+        row.addView(chip(getString(R.string.account_logout), "#F1F4F9", "#3C4043", view -> logout()), secondParams);
+        row.addView(chip(getString(R.string.account_delete), "#FDECEA", "#D93025", view -> confirmDeleteAccount()), thirdParams);
+        card.addView(row);
         card.addView(note(getString(R.string.account_delete_note)));
         return card;
+    }
+
+    /** 等宽文字按钮：浅色底 + 圆角，一行放三个，比三条整宽链接省一半高度。 */
+    private View chip(String label, String bg, String fg, View.OnClickListener listener) {
+        MaterialTextView view = text(label, 13, Color.parseColor(fg), false);
+        view.setGravity(Gravity.CENTER);
+        view.setMaxLines(1);
+        view.setEllipsize(TextUtils.TruncateAt.END);
+        view.setPadding(dp(6), dp(9), dp(6), dp(9));
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setColor(Color.parseColor(bg));
+        drawable.setCornerRadius(dp(12));
+        view.setBackground(drawable);
+        view.setClickable(true);
+        view.setFocusable(true);
+        view.setOnClickListener(listener);
+        return view;
     }
 
     /** 紧凑的可点击行：文字居中，代替整宽按钮，把一级菜单压进一屏。 */

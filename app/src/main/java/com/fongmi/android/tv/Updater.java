@@ -17,18 +17,19 @@ import com.fongmi.android.tv.bean.Update;
 import com.fongmi.android.tv.impl.UpdateListener;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.ui.dialog.UpdateDialog;
-import com.fongmi.android.tv.utils.FileUtil;
 import com.fongmi.android.tv.utils.AppVersion;
 import com.fongmi.android.tv.utils.Github;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.Task;
+import com.fongmi.android.tv.update.ApkInstall;
 import com.fongmi.android.tv.update.CnbArchiveTransfer;
 import com.fongmi.android.tv.update.GithubProxy;
 import com.fongmi.android.tv.update.HttpUpdateTransfer;
 import com.fongmi.android.tv.update.OciArtifact;
 import com.fongmi.android.tv.update.OciMirror;
 import com.fongmi.android.tv.update.OciUpdateTransfer;
+import com.fongmi.android.tv.update.PendingUpdate;
 import com.fongmi.android.tv.update.UpdateHttp;
 import com.fongmi.android.tv.update.UpdateRoutePlanner;
 import com.fongmi.android.tv.update.UpdateUrl;
@@ -53,6 +54,7 @@ import java.util.Set;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class Updater implements UpdateTransfer.Callback, UpdateListener {
 
@@ -80,7 +82,11 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
     private CheckCallback checkCallback;
     private DownloadListener downloadListener;
     private boolean force;
-    private boolean downloading;
+    /**
+     * 是否正在下载。用原子量是因为它会同时在主线程（点击、回调）和下载线程（error）里读写，
+     * 普通 boolean 会漏判，进而出现「两个线程同时写 update.apk」。
+     */
+    private final AtomicBoolean downloading = new AtomicBoolean(false);
     private boolean canceled;
     private int lastProgress = -1;
     private long lastBytes;
@@ -118,9 +124,37 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
             App.post(() -> callback.onResult(null));
             return this;
         }
+        // 正在下载时不要再拉一遍清单：界面应该把进度条接回来（见 isDownloading/attachProgress）
+        if (downloading.get()) {
+            App.post(() -> callback.onResult(null));
+            return this;
+        }
         this.checkCallback = callback;
         Task.execute(() -> doInBackground(activity, true));
         return this;
+    }
+
+    /** 是否有更新正在下载。界面用它决定「重新检查」还是「把进度条接回来」。 */
+    public boolean isDownloading() {
+        return downloading.get();
+    }
+
+    /** 正在下载的版本号，没有下载时返回空串。 */
+    public String getDownloadingVersion() {
+        Update update = selected;
+        return update == null ? "" : update.getVersionLabel();
+    }
+
+    /**
+     * 把进度回调接到正在进行的下载上：只回放最近一次进度快照，不触发任何网络请求、不重开文件。
+     *
+     * @return 当前没有下载时返回 false
+     */
+    public boolean attachProgress(DownloadListener listener) {
+        if (!downloading.get()) return false;
+        downloadListener = listener;
+        if (listener != null) listener.onProgress(lastProgress, lastBytes, lastTotal, lastSpeed, lastElapsed);
+        return true;
     }
 
     /** 点击版本号后直接按已配置更新源下载并安装最新稳定版。 */
@@ -131,6 +165,11 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
     /** 直接下载稳定版并把进度回调给界面，不展示版本选择弹窗。 */
     public void downloadStable(FragmentActivity activity, DownloadListener listener) {
         bind(activity);
+        // 已经在下载：只把进度接回界面，不重新拉清单、不重下、不覆盖正在写的文件
+        if (downloading.get()) {
+            attachProgress(listener);
+            return;
+        }
         if (stable == null || !stable.hasUpdate()) {
             Notify.show(R.string.update_latest);
             if (listener != null) listener.onError(ResUtil.getString(R.string.update_latest));
@@ -142,12 +181,16 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
     }
 
     private void startDirectDownload() {
-        downloading = true;
+        if (downloading.get()) {
+            attachProgress(downloadListener);
+            return;
+        }
+        downloading.set(true);
         canceled = false;
         routes = getRoutes(selected);
         routeIndex = 0;
         if (routes.isEmpty()) {
-            downloading = false;
+            downloading.set(false);
             notifyDownloadError(ResUtil.getString(R.string.update_download_source_unavailable));
             return;
         }
@@ -188,7 +231,7 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
         bind(activity);
         boolean forceCheck = force;
         force = false;
-        if (downloading) {
+        if (downloading.get()) {
             restoreDialog(activity);
             return;
         }
@@ -448,12 +491,12 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
             return;
         }
         view.setEnabled(false);
-        downloading = true;
+        downloading.set(true);
         canceled = false;
         routes = getRoutes(selected);
         routeIndex = 0;
         if (routes.isEmpty()) {
-            downloading = false;
+            downloading.set(false);
             view.setEnabled(true);
             Notify.show(R.string.update_download_source_unavailable);
             return;
@@ -507,9 +550,9 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
 
     @Override
     public void onCancel(View view) {
-        if (downloading) {
+        if (downloading.get()) {
             canceled = true;
-            downloading = false;
+            downloading.set(false);
             if (transfer != null) transfer.cancel();
             transfer = null;
             routes = null;
@@ -549,7 +592,7 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
     }
 
     private void setDialogProgress(int progress, long bytes, long total, long speed, long elapsed) {
-        if (canceled || !downloading) return;
+        if (canceled || !downloading.get()) return;
         long manifestSize = selected == null ? 0 : selected.size;
         if (total <= 0 && manifestSize > 0) total = manifestSize;
         if (progress < 0 && total > 0 && bytes > 0) progress = (int) (bytes * 100.0 / total);
@@ -569,7 +612,7 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
         Log.i("WebHTVUpdate", "route failed: " + msg);
         transfer = null;
         if (retryFallback()) return;
-        downloading = false;
+        downloading.set(false);
         routes = null;
         resetProgress();
         notifyDownloadError(msg);
@@ -586,13 +629,13 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
             String error = validate(file, target);
             App.post(() -> {
                 if (canceled) return;
-                downloading = false;
+                downloading.set(false);
                 resetProgress();
                 if (!TextUtils.isEmpty(error)) {
                     Path.clear(file);
-                    downloading = true;
+                    downloading.set(true);
                     if (retryFallback()) return;
-                    downloading = false;
+                    downloading.set(false);
                     routes = null;
                     notifyDownloadError(error);
                     Notify.show(error);
@@ -600,15 +643,18 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
                     return;
                 }
                 routes = null;
+                // 记下「已下载待安装」：用户如果在系统安装器里点取消，下次启动还能再提示，
+                // 不用把 150MB 重下一遍（PendingUpdate 会自己校验文件是否还在、装成功后自动作废）
+                PendingUpdate.save(target);
                 notifyDownloadComplete();
-                FileUtil.openFile(file);
+                ApkInstall.open(App.get(), file);
                 dismiss();
             });
         });
     }
 
     private void restoreDialog(FragmentActivity activity) {
-        if (!downloading || selected == null) return;
+        if (!downloading.get() || selected == null) return;
         show(activity);
         setDialogProgress(lastProgress, lastBytes, lastTotal, lastSpeed, lastElapsed);
     }
@@ -691,7 +737,7 @@ public class Updater implements UpdateTransfer.Callback, UpdateListener {
         if (current != activity) return;
         activity.getLifecycle().removeObserver(lifecycleObserver);
         activityRef = null;
-        if (!downloading) dialog = null;
+        if (!downloading.get()) dialog = null;
     }
 
     private void resetProgress() {

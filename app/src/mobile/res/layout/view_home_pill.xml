@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  顶栏「文字图标 + 胶囊文本框」。
+  原来的五个图标（刷新/追更/历史/下载/我的）一律换成这一个小胶囊，文字由菜单 title 填进来，
+  这样多语言只改 strings.xml，不用给每个按钮单独做一套图。
+-->
+<com.google.android.material.textview.MaterialTextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/pill"
+    android:layout_width="wrap_content"
+    android:layout_height="30dp"
+    android:layout_marginStart="4dp"
+    android:layout_marginEnd="4dp"
+    android:background="@drawable/shape_home_pill"
+    android:clickable="true"
+    android:focusable="true"
+    android:gravity="center"
+    android:includeFontPadding="false"
+    android:maxLines="1"
+    android:minWidth="40dp"
+    android:paddingStart="10dp"
+    android:paddingEnd="10dp"
+    android:textColor="@color/white"
+    android:textSize="12sp" />

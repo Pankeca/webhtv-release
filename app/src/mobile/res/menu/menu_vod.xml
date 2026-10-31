@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  首页顶栏菜单。
+  除搜索框外，所有入口一律用「文字图标 + 胶囊文本框」（app:actionLayout），不再放图标：
+  文字由 android:title 提供，VodFragment 会把它填进 view_home_pill 里。
+-->
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
@@ -10,30 +15,26 @@
 
     <item
         android:id="@+id/refresh"
-        android:icon="@drawable/ic_popup_refresh"
-        android:title="@string/live_refresh"
-        app:iconTint="@color/white"
+        android:title="@string/pill_refresh"
+        app:actionLayout="@layout/view_home_pill"
         app:showAsAction="always" />
 
     <item
         android:id="@+id/keep"
-        android:icon="@drawable/ic_popup_keep"
-        android:title="@string/app_keep"
-        app:iconTint="@color/white"
+        android:title="@string/pill_keep"
+        app:actionLayout="@layout/view_home_pill"
         app:showAsAction="always" />
 
     <item
         android:id="@+id/history"
-        android:icon="@drawable/ic_popup_history"
-        android:title="@string/app_history"
-        app:iconTint="@color/white"
+        android:title="@string/pill_history"
+        app:actionLayout="@layout/view_home_pill"
         app:showAsAction="always" />
 
     <item
         android:id="@+id/download"
-        android:icon="@drawable/ic_menu_download"
-        android:title="@string/download_manager_title"
-        app:iconTint="@color/white"
+        android:title="@string/pill_download"
+        app:actionLayout="@layout/view_home_pill"
         app:showAsAction="always" />
 
     <item
@@ -46,8 +47,8 @@
 
     <item
         android:id="@+id/account"
-        android:icon="@drawable/ic_menu_account"
-        android:title="@string/account_title"
+        android:title="@string/pill_mine"
+        app:actionLayout="@layout/view_home_pill"
         app:showAsAction="always" />
 
 </menu>

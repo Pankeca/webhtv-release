@@ -155,6 +155,11 @@ public class Vod implements Parcelable, Diffable<Vod> {
         return TextUtils.isEmpty(vodRemarks) ? "" : vodRemarks.trim();
     }
 
+    /** 首页推荐位（豆瓣/最近观看）没有站点数据，备注要自己填，例如评分或「已看第 3 集」。 */
+    public void setRemarks(String vodRemarks) {
+        this.vodRemarks = vodRemarks;
+    }
+
     public String getYear() {
         return TextUtils.isEmpty(vodYear) ? "" : vodYear.trim();
     }

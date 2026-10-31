@@ -1233,9 +1233,10 @@ public class VideoActivity extends PlaybackActivity implements CustomKeyDownVod.
         mInitialPlaybackPosition = resolveInitialPlaybackPosition();
         SpiderDebug.log("video-flow", "startPlayer dispatch initialPosition=%d music=%s ijk=%s", mInitialPlaybackPosition, isMusicLike(), service() != null && player().isIjk());
         long start = System.currentTimeMillis();
+        // 弹幕搜索前移：先发出去再起播放器，让「解析线路」和「找弹幕」并行跑
+        if (DanmakuApi.canAutoSearch(siteDanmakus)) DanmakuApi.search(mHistory.getVodName(), getEpisode().getName(), player()::setDanmaku);
         startPlayer(getHistoryKey(), result, isUseParse(), getSite().getTimeout(), buildMetadata(), mInitialPlaybackPosition);
         SpiderDebug.log("video-flow", "startPlayer return cost=%dms sincePlayerStart=%dms", System.currentTimeMillis() - start, System.currentTimeMillis() - playerStartTime);
-        if (DanmakuApi.canAutoSearch(siteDanmakus)) DanmakuApi.search(mHistory.getVodName(), getEpisode().getName(), player()::setDanmaku);
     }
 
     private void recordDetailHealth(Result result, long cost) {

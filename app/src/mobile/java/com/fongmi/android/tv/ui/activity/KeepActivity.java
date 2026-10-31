@@ -59,7 +59,6 @@ public class KeepActivity extends BaseActivity implements KeepAdapter.OnClickLis
     @Override
     protected void initView(Bundle savedInstanceState) {
         setSupportActionBar(mBinding.toolbar);
-        UpdateTrack.markAllSeen();
         setRecyclerView();
         getKeep();
     }
@@ -75,6 +74,9 @@ public class KeepActivity extends BaseActivity implements KeepAdapter.OnClickLis
         mAdapter.setItems(Keep.getVod(), () -> {
             mBinding.progressLayout.showContent(true, mAdapter.getItemCount());
             syncSelectAll();
+            // 先让「有更新」红标跟着列表绑一次（用户要看得见哪几部有更新），再把已看集数对齐，
+            // 这样下次进来红标才消失。原来是绑列表之前就 markAllSeen，结果红标永远不显示。
+            UpdateTrack.markAllSeen();
         });
     }
 

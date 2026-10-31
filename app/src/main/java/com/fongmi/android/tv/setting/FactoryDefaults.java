@@ -41,12 +41,27 @@ public final class FactoryDefaults {
     private static final String ASSET_DANMAKU = "factory/danmaku_sources.json";
     private static final String ASSET_CSP = "factory/custom_csp.json";
 
+    /**
+     * 站点注入上次是不是因为「没有所有文件访问权限」而没种上。
+     *
+     * <p>新装用户第一次启动时权限还没给，`CustomCspSetting.save()` 会抛异常。
+     * 只在启动时试一次的话，用户要退出去再进一次才能看到站点——所以这里留个标记，
+     * 首页每次 onResume 时若发现权限已经拿到就立刻补种，第一次会话就能生效。
+     */
+    private static volatile boolean cspPending;
+
     private FactoryDefaults() {
     }
 
     /** 启动时调用。幂等，可以每次启动都调。 */
     public static void applyIfNeeded() {
         seedDanmaku();
+        seedCustomCsp();
+    }
+
+    /** 权限刚被授予时补种一次。没有待补任务时直接返回，开销可以忽略。 */
+    public static void retryIfPending() {
+        if (!cspPending) return;
         seedCustomCsp();
     }
 
@@ -66,19 +81,30 @@ public final class FactoryDefaults {
     }
 
     private static void seedCustomCsp() {
-        if (CustomCspSetting.hasRegistry()) return;
+        if (CustomCspSetting.hasRegistry()) {
+            cspPending = false;
+            return;
+        }
         String json = readAsset(ASSET_CSP);
         if (TextUtils.isEmpty(json)) {
             SpiderDebug.log(TAG, "custom-csp seed skipped: asset empty");
+            return;
+        }
+        // 写外部存储要「所有文件访问」，没授权时先记账，等拿到权限再补（不写任何「已播种」标记）
+        if (!Setting.hasFileAccess()) {
+            cspPending = true;
+            SpiderDebug.log(TAG, "custom-csp seed pending: no file access");
             return;
         }
         try {
             CustomCspSetting.Registry registry = CustomCspSetting.parse(json);
             if (registry == null) return;
             CustomCspSetting.save(registry);
+            cspPending = false;
             SpiderDebug.log(TAG, "custom-csp seeded items=%d file=%s", CustomCspSetting.countItems(), CustomCspSetting.dir());
         } catch (Exception e) {
-            // 存储权限未授予等情况下写不进去，不要写任何标记，下次启动继续重试
+            // 存储权限未授予等情况下写不进去，不要写任何标记，下次启动/授权后继续重试
+            cspPending = true;
             SpiderDebug.log(TAG, "custom-csp seed failed: %s", e);
         }
     }
