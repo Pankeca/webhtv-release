@@ -778,6 +778,13 @@ docker run --rm -v /home/s:/home/s -v /usr/lib/locale:/usr/lib/locale:ro \
 - 排查经验：本包 release 签名、非 debuggable，`run-as` 读不到 `/data/data`；`SpiderDebug.log` 受 `DebugLogStore.enabled` 门控、默认关，logcat 里根本不会出现 —— 「日志里没看到」不等于「代码没执行」。判据只认产物文件是否真的出现。
 - 真机验证用 `/home/s/build/adb-usb.sh`（容器内 adb）；`/home/s/build/tap-text.sh` 可按文本精确点击，避免截图缩放（1080×675）与真实像素（1920×1200）换算偏差。
 
+### 发布仓库整理（2026-10-31 新增发布策略）
+
+- **仓库描述清空**：`Pankeca/webhtv-release` 的 description 置空（原为「WebHTV 自用影视客户端发布仓库（APK + 更新清单）」），homepage 保持空。
+- **只保留最新两个 Release**：v5.6.7 发布后，删除 `v5.6.5` / `v5.6.4` / `v5.6.2` 三个 Release 及同名 tag（`v5.6.1` 的孤儿 tag 一并清掉）。现在 `releases` 与 `tags` 各只剩 `v5.6.7`、`v5.6.6`。
+- 以后每发一版都执行同样清理，已写入 `docs/开发进度与交接.md` §3.3.1 第 9 步。删除前先确认旧包在 `/home/s/build/rel-<版本>/` 有本地归档。
+- ⚠️ **删旧 Release 会连带删资产**：`app-release` 里 `leanback-arm64_v8a.json` / `leanback-armeabi_v7a.json` / `mobile-armeabi_v7a.json` 三个清单仍指向已删除的 `v5.6.5`，电视端与 armeabi-v7a 端检查更新会 404（这三个变体按当前构建口径不产出 5.6.7）。要修就重新构建这两个变体补进 `v5.6.7`，或把这三个清单从 CNB 撤掉。
+
 ## 二十一、开发记录与文档索引（2026-10-31）
 
 > 以后每轮开发、发布或交接，都按 `docs/开发记录规范.md` 更新记录；入口页只保留当前状态。
