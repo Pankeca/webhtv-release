@@ -1816,6 +1816,7 @@
     <string name="download_summary">%1$s · %2$d episodes · tap to select</string>
     <string name="download_action">Download</string>
     <string name="download_empty">No episodes to download</string>
+    <string name="download_failed_toast">%1$s · %2$s failed after retries</string>
     <string name="download_queued">Queued %1$d download(s)</string>
     <string name="download_duplicate">Already in the download queue</string>
     <string name="download_busy_note">Note: downloads keep running in the background, with progress shown in the notification bar.</string>

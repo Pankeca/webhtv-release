@@ -512,13 +512,18 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
         Site home = getHome();
         WebHomeChromeStartup.remember(getConfig(), home);
         setTitle();
-        // 用户把首页内容换成豆瓣/历史/站点推荐时，网页首页要让位，否则设了也看不到效果
-        boolean useWeb = mWeb != null && RecommendSetting.isOff() && mWeb.load(home);
+        // 首页来源是豆瓣/最近观看时网页首页要让位，否则设了也看不到效果；
+        // 站点推荐则继续优先用网页首页——注入站点自带的配置（轮播/推荐位/分类入口）比原生的类型列表信息量大，
+        // 站点自带配置的优先级高于我们拼出来的列表。
+        boolean useWeb = mWeb != null && !RecommendSetting.isExternal(RecommendSetting.getSource()) && mWeb.load(home);
         if (useWeb) {
             clearPagerTypes();
             hideProgress();
             hideNativeContent();
         } else {
+            // 来源切到豆瓣/最近观看，或站点没有自带首页时，必须把上一轮加载的网页首页收起来，
+            // 否则返回首页看到的还是旧网页，切了来源却像没生效
+            if (mWeb != null) mWeb.hide();
             showNativeContent();
             homeContent();
         }
@@ -552,18 +557,9 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
     public void onRefreshEvent(RefreshEvent event) {
         switch (event.getType()) {
             case HOME:
-                if (mWeb != null && mWeb.isVisible()) {
-                    Site home = getHome();
-                    WebHomeChromeStartup.remember(getConfig(), home);
-                    requestNormalChrome();
-                    setTitle();
-                    if (!mWeb.load(home, true)) {
-                        showNativeContent();
-                        homeContent();
-                    }
-                } else {
-                    loadHome();
-                }
+                // 之前只看网页首页在不在：在就强制重载网页，于是把首页来源改成豆瓣/最近观看后
+                // 返回首页还是老网页。这里一律走 loadHome()，由它按当前来源决定用网页还是原生内容。
+                loadHome();
                 break;
             case SIZE:
                 if (mWeb != null && mWeb.isVisible()) return;

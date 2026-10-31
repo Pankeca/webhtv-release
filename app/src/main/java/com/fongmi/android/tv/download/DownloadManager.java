@@ -74,6 +74,7 @@ public final class DownloadManager {
      */
     public void reconcile() {
         boolean changed = adoptOrphanFiles();
+        changed |= fillPosters();
         for (DownloadTask task : tasks) {
             boolean exists = DownloadTask.findLocal(task.getVodName(), task.getEpisodeName()) != null;
             if (task.getState() == DownloadTask.State.DONE && !exists) {
@@ -107,7 +108,11 @@ public final class DownloadManager {
             File[] dirs = root.listFiles();
             if (dirs == null) return false;
             java.util.HashSet<String> known = new java.util.HashSet<>();
-            for (DownloadTask task : tasks) known.add(DownloadTask.sanitize(task.getVodName()) + "/" + DownloadTask.sanitize(task.getEpisodeName()));
+            java.util.HashMap<String, String> picByName = new java.util.HashMap<>();
+            for (DownloadTask task : tasks) {
+                known.add(DownloadTask.sanitize(task.getVodName()) + "/" + DownloadTask.sanitize(task.getEpisodeName()));
+                if (!TextUtils.isEmpty(task.getVodPic())) picByName.put(task.getVodName(), task.getVodPic());
+            }
             boolean changed = false;
             for (File dir : dirs) {
                 if (!dir.isDirectory()) continue;
@@ -121,7 +126,8 @@ public final class DownloadManager {
                     if (!DownloadTask.isVideoExt(ext)) continue;
                     String episodeName = fileName.substring(0, dot);
                     if (!known.add(dir.getName() + "/" + episodeName)) continue;
-                    DownloadTask task = new DownloadTask("", "", "", dir.getName(), "", "", episodeName, "");
+                    // 海报得自己找回来：本地文件里没有图，只能按剧名回查任务列表 / 观看历史
+                    DownloadTask task = new DownloadTask("", "", "", dir.getName(), posterOf(dir.getName(), picByName), "", episodeName, "");
                     task.setState(DownloadTask.State.DONE);
                     task.setProgressValue(100);
                     tasks.add(task);
@@ -132,6 +138,55 @@ public final class DownloadManager {
         } catch (Throwable e) {
             return false;
         }
+    }
+
+    /**
+     * 给已有任务补齐海报。
+     *
+     * <p>老版本下载的记录只存了剧名和地址，没存海报；清过缓存/换过机的记录更是一个空串，
+     * 于是「已下载」列表里全是字母占位。这里按「目录里的 .poster → 观看历史」的顺序补一遍，
+     * 补到的顺手写回记录，下次启动就不用再查。
+     */
+    private boolean fillPosters() {
+        boolean changed = false;
+        for (DownloadTask task : tasks) {
+            if (!TextUtils.isEmpty(task.getVodPic())) {
+                // 有海报但目录里没落盘（老版本下的），顺手补一个，清缓存后还能找回来
+                DownloadTask.writePoster(task.getVodName(), task.getVodPic());
+                continue;
+            }
+            String pic = posterOf(task.getVodName(), new java.util.HashMap<>());
+            if (TextUtils.isEmpty(pic)) continue;
+            task.setVodPic(pic);
+            changed = true;
+        }
+        return changed;
+    }
+
+    /** 补录本地文件时补海报：先看同剧其它任务，再看目录里记的，最后回查观看历史，都没有就留空由 UI 画占位图。 */
+    private String posterOf(String vodName, java.util.Map<String, String> picByName) {
+        String pic = picByName == null ? "" : picByName.get(vodName);
+        if (!TextUtils.isEmpty(pic)) return pic;
+        pic = DownloadTask.readPoster(vodName);
+        if (!TextUtils.isEmpty(pic)) {
+            if (picByName != null) picByName.put(vodName, pic);
+            return pic;
+        }
+        try {
+            com.fongmi.android.tv.bean.History history = com.fongmi.android.tv.db.AppDatabase.get().getHistoryDao().findLatestByVodName(vodName);
+            if (history == null) history = com.fongmi.android.tv.db.AppDatabase.get().getHistoryDao().findLatestByVodNamePrefix(vodName);
+            if (history == null) history = com.fongmi.android.tv.db.AppDatabase.get().getHistoryDao().findLatestByVodNameCovering(vodName);
+            if (history == null && vodName != null && vodName.length() >= 3) history = com.fongmi.android.tv.db.AppDatabase.get().getHistoryDao().findLatestByVodNameContains(vodName);
+            if (history != null && !TextUtils.isEmpty(history.getVodPic())) {
+                pic = history.getVodPic();
+                if (picByName != null) picByName.put(vodName, pic);
+                // 找到了就落盘，避免下次还要翻历史（历史被删也不影响缩略图）
+                DownloadTask.writePoster(vodName, pic);
+                return pic;
+            }
+        } catch (Throwable ignored) {
+        }
+        return "";
     }
 
     public DownloadTask find(String vodName, String episodeName) {

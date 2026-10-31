@@ -137,17 +137,19 @@
     <string name="pill_history">历史</string>
     <string name="pill_download">下载</string>
     <string name="pill_mine">我的</string>
+    <string name="download_failed_title">下载失败</string>
+    <string name="download_failed_line">《%1$s》%2$s</string>
+    <string name="download_failed_more">另有 %1$d 个任务失败</string>
+    <string name="download_failed_retry">重试</string>
     <string name="pill_home">首页</string>
 
     <!-- 首页推荐（伪 tab） -->
     <string name="recommend_title">首页内容来源</string>
-    <string name="recommend_source_off_desc">首页显示当前站点自带的内容</string>
-    <string name="recommend_source_off">站点默认</string>
     <string name="recommend_summary_off">站点默认</string>
     <string name="recommend_douban">豆瓣热播</string>
     <string name="recommend_douban_desc">首页显示豆瓣正在热播的电影和剧集</string>
     <string name="recommend_site">站点推荐</string>
-    <string name="recommend_site_desc">首页显示当前站点自己的推荐内容</string>
+    <string name="recommend_site_desc">首页显示当前站点自己的推荐内容（网页首页站点则显示网页里注入的内容）</string>
     <string name="recommend_history">最近观看</string>
     <string name="recommend_history_desc">首页显示你的最近观看记录</string>
 </resources>

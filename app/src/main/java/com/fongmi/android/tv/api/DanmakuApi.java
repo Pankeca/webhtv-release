@@ -1,6 +1,7 @@
 package com.fongmi.android.tv.api;
 
 import android.net.Uri;
+import android.os.SystemClock;
 import android.text.TextUtils;
 import android.util.LruCache;
 
@@ -48,6 +49,10 @@ public class DanmakuApi {
     private static final String UA = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
     /** 多源合并搜索的首包等待上限：超过这个时间就把已拿到的结果先交付，避免被最慢的源拖住。 */
     private static final long FIRST_RESULT_TIMEOUT_MS = 6000L;
+    /** 单集自动匹配时，给「靠前的来源」留的选择窗口：窗口内按优先级挑，窗口外谁先到用谁。 */
+    private static final long PRIORITY_WINDOW_MS = 1200L;
+    /** 高优先级源迟迟不回时的总预算：超过它就不再等，直接用已拿到的次顺位结果。 */
+    private static final long PRIORITY_MAX_WAIT_MS = 3200L;
     /**
      * 已拿到的弹幕结果缓存（name@@@episode → Danmaku）。
      *
@@ -132,16 +137,55 @@ public class DanmakuApi {
             return;
         }
         cancel();
+        // 各源并行探，但「谁快谁赢」会出问题：预设里排第一的源往往最准，只是慢个几百毫秒，
+        // 被后面的源抢走就会出现「有弹幕但没几刷/刷错剧」。这里先各自记账，再按来源优先级
+        // （也就是列表顺序）挑第一个有结果的——某个源没结果就自动落到下一档。
+        Danmaku[] hits = new Danmaku[sources.size()];
+        boolean[] replied = new boolean[sources.size()];
+        AtomicInteger pending = new AtomicInteger(sources.size());
         AtomicBoolean delivered = new AtomicBoolean();
-        for (DanmakuSource source : sources) {
-            fetch(source, name, episode, items -> {
-                if (items == null || items.isEmpty()) return;
-                if (!delivered.compareAndSet(false, true)) return;
-                Danmaku first = items.get(0);
-                CACHE.put(key, first);
-                // 已经有人胜出，剩下的来源不必再等
-                cancel();
-                App.post(() -> found.accept(first));
+        long deadline = SystemClock.elapsedRealtime() + PRIORITY_MAX_WAIT_MS;
+        // settle 要能给自己再排一次，lambda 里拿不到自己的引用，用一格数组兜住
+        final Runnable[] settleRef = new Runnable[1];
+        Runnable settle = () -> {
+            int hit = -1;
+            for (int i = 0; i < hits.length; i++) {
+                if (hits[i] != null) {
+                    hit = i;
+                    break;
+                }
+            }
+            // 还没有任何源给出结果，等回调再触发
+            if (hit < 0) return;
+            // 更靠前的源可能只是慢了点：只要它还没回话、总等待也还在预算内，就再等一小会儿，
+            // 避免「排第一的源 1.3 秒回来，却被 1.2 秒到货的第三顺位抢走」
+            int higherPending = -1;
+            for (int i = 0; i < hit; i++) {
+                if (!replied[i]) {
+                    higherPending = i;
+                    break;
+                }
+            }
+            if (higherPending >= 0 && SystemClock.elapsedRealtime() < deadline) {
+                App.post(settleRef[0], 200L);
+                return;
+            }
+            if (!delivered.compareAndSet(false, true)) return;
+            Danmaku chosen = hits[hit];
+            CACHE.put(key, chosen);
+            cancel();
+            SpiderDebug.log(TAG, "auto match pick #%d/%d %s", hit + 1, sources.size(), key);
+            App.post(() -> found.accept(chosen));
+        };
+        settleRef[0] = settle;
+        // 窗口结束后先结算一次：靠前的源都没结果时不必等满预算
+        App.post(settle, PRIORITY_WINDOW_MS);
+        for (int i = 0; i < sources.size(); i++) {
+            final int index = i;
+            fetch(sources.get(i), name, episode, items -> {
+                replied[index] = true;
+                if (items != null && !items.isEmpty()) hits[index] = items.get(0);
+                if (pending.decrementAndGet() == 0) settle.run();
             });
         }
     }

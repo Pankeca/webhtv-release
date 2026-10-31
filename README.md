@@ -830,7 +830,46 @@ docker run --rm -v /home/s:/home/s -v /usr/lib/locale:/usr/lib/locale:ro \
 - 弹窗宽度是代码写死的，屏幕变小后**根布局宽度一点没变**（窗口比屏幕还宽），`OnLayoutChangeListener` 收不到通知，只能被裁掉。`ComponentCallbacks.onConfigurationChanged` 在 Activity 上注册根本不派发、挂 Application 也不稳；最终用 `DisplayManager.registerDisplayListener` + `post` 到下一帧重算才可靠。
 - 豆瓣 rexxar 接口字段和旧版完全不一样：列表是 `subject_collection_items`（不是 `items`），封面 `cover.url`（不是 `pic.normal`），评分 `rating.value` 是数字要用 `getAsString()` 兜。
 
-## 二十二、开发记录与文档索引（2026-10-31）
+## 二十二、5.6.9：七条体验需求 + 弹幕优先级递增（真机验证通过，2026-10-31）
+
+> 状态：`versionCode 569 / versionName 5.6.9`，真机（HA1YL5GG）逐项验证通过，正式签名包已发布。
+> 本轮七条来自用户使用反馈：弹幕源递增、首页来源三选一（注入站点优先自带配置）、下载海报找回+失败重试弹窗、详情页站点定位、追更标签一致性、顶栏胶囊美化、个人中心列序。
+
+### 产物
+
+| 产物 | 大小 | SHA-256（前 8 位） | 说明 |
+| --- | --- | --- | --- |
+| `mobile-arm64_v8a.apk` | 150,442,967 | `a6517a37` | **正式签名包**（`CN=WebHTV`），已发布到 GitHub Release v5.6.9 |
+
+| 用途 | 路径 |
+| --- | --- |
+| **检验包（构建产物原始位置）** | `/home/s/REA-src/app/build/outputs/apk/mobileArm64_v8a/release/mobile-arm64_v8a.apk` |
+| **真项目目录（唯一可改）** | `/media/s/7A3A1DFD3A1DB6DB/REA` |
+| **构建副本（实际编译处）** | `/home/s/REA-src` |
+| **发布包归档** | `/home/s/build/rel-5.6.9/mobile-arm64_v8a.apk` |
+
+### 本轮改动（真机验证结论）
+
+| # | 需求 | 实现要点 | 验证 |
+| --- | --- | --- | --- |
+| 1 | 弹幕：站点不自带时**按预设优先级自动递增**换源，而不是谁快谁赢 | `DanmakuApi.search`：并行探源各自记账，1.2s 选择窗口到点**按来源列表顺序**挑第一个有结果的；更高优先级源还没回话时最多再等（总预算 3.2s）才交付次顺位，兼顾「准」和「快」 | 光速资源无站内弹幕，播放后弹幕自动从预设源匹配并滚动 |
+| 2 | 首页内容来源**删「站点默认」**只留三选一；**注入站点优先使用自带配置**；切换要即时生效 | `RecommendSetting` 只留 `site/douban/history`；`loadHome()` 站点推荐下网页首页优先（注入站点自带配置优先），豆瓣/最近观看下 `mWeb.hide()`；`onRefreshEvent(HOME)` 一律走 `loadHome()`（旧代码「网页可见就强制重载网页」，切了来源像没生效） | 设置里切来源 → 返回首页立刻换内容；站点推荐下显示注入站点（Pomo）自带首页；冷启动三档均正常 |
+| 3 | 下载中心**已下载海报丢失**；失败**自动重试两遍**，然后弹窗告知哪部剧哪一集 | 海报持久化：完成时写 `Downloads/webhtv/剧名/.poster`；旧记录 `fillPosters` 按「目录标记→历史精确/前缀/反向前缀/包含」补齐并回写任务。失败链路：自动重试 2 次 → toast 报剧名+集名 → 下载中心汇总弹窗（最多 6 行 + 一键重试）；修了「进下载中心不补报」（`addListener` 后主动 `onChange(tasks())`） | 断网实测：下载→重试×2→失败弹窗《嫁金钗》第01集+错误原因；「重试」按钮能重新起任务；《嫁金钗》海报恢复；《我在修仙界开超市第一季》为历史遗留（无历史记录、无目录标记）保留字母占位 |
+| 4 | 详情页站点列表**选择站点后自动定位**，不再滚回最前 | 根因：站点行用 FlexboxLayoutManager（NOWRAP），`scrollToPosition(非0)` 会把子项排到屏幕外——整行直接变白。换成横向 `LinearLayoutManager`；`scrollSiteChipsToSelected()` 同一 key 只滚一次 + `post` 下一帧 + 左 1/3 锚定 | 滚到站点行末端（光速资源）换站成功，选中胶囊停在可视区中间，线路/选集同步切换 |
+| 5 | 追更和最近观看的「已看/更新至」标签要一致（动漫常缺），标签字号加大 | 根因：站点把「原名 外文名」拼进剧名（`超巡！超条前辈 超巡！超条先輩`），追更存的是干净名字，精确匹配永远落空。`History.forKeep` 加主名（空格前第一段）前缀/反向前缀/包含三档召回；`HistoryProgressFormatter.episode` 把「第01集」「第 1 集」「更新至第12集」统一成「第1集」；标签 10sp→12sp、内边距加大；zh 文案「更新至 第N集」 | 《超巡》在追更里出现「已看 第1集 · 01:28 / 更新至 第1集」，与最近观看一致 |
+| 6 | 首页顶栏胶囊调间距、美化 | `view_home_pill.xml`（高 32dp、minWidth 44dp、padding 12dp）+ `shape_home_pill.xml`（#1FFFFFFF 底、#33FFFFFF 描边、17dp 圆角）+ ripple | 顶栏视觉统一，等距 3dp |
+| 7 | 个人中心概览每列顺序：名称 / 本地数量 / 云端数量 | `AccountDialog.addStat` 固定三行：标题（灰小字）→ 本地（18sp 大字）→ 云端（灰小字） | 四格均为 名称/本地/云端 |
+
+### 踩坑
+
+- **FlexboxLayoutManager + NOWRAP 的 `scrollToPosition(非0)` 会把子项排到屏幕外**，整行「看起来空了」但 adapter 有数据（uiautomator dump 里一个胶囊节点都没有）。单行横滑场景直接用横向 `LinearLayoutManager`，别用 Flexbox 凑合。
+- 自引用 lambda（settle 里要给自己再排一次）编译报「可能尚未初始化变量」，用 `final Runnable[] ref = new Runnable[1]` 兜住再赋值。
+- `DownloadManager.addListener()` 注册**不会立刻回调**，进入下载中心时失败任务不会触发弹窗——注册后必须主动 `onChange(tasks())` 对一次账。
+- 构建机 `/tmp` 是 10MB 的 tmpfs，pip 装 Pillow 一直报「设备上没有空间」；`TMPDIR=/home/s/tmp` 绕开。
+- 下载失败的 toast 必须包在 `App.post()` 里：失败发生在下载线程，直接 `Toast.makeText` 会崩（无线程 Looper）。
+- 追更标签「缺失」的真正根因是**剧名里拼了别名/外文名**，任何精确匹配都会落空；只补 DAO 查询不够，要做「主名归一 + 多档召回」。
+
+## 二十三、开发记录与文档索引（2026-10-31）
 
 > 以后每轮开发、发布或交接，都按 `docs/开发记录规范.md` 更新记录；入口页只保留当前状态。
 

@@ -51,6 +51,8 @@ import java.util.Set;
 public class DownloadCenterActivity extends BaseActivity implements DownloadTask.Listener {
 
     // 下载中心固定使用深色配色：不跟随系统明暗主题，避免白底卡片与背景割裂
+    private final java.util.Set<String> reportedFailures = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+
     private static final int COLOR_TEXT = 0xFFF3F0FA;
     private static final int COLOR_TEXT_DIM = 0xFFA9A2C0;
     private static final int COLOR_ACCENT = 0xFFFF6B72;
@@ -154,6 +156,9 @@ public class DownloadCenterActivity extends BaseActivity implements DownloadTask
         });
         mBinding.delete.setOnClickListener(view -> onDelete());
         DownloadManager.get().addListener(this);
+        // 进页面先主动对一次账：失败可能发生在上一轮监听器已注销的时候（比如重试用尽时用户已退出），
+        // addListener 本身不会触发回调，不补这一下就永远看不到失败弹窗
+        onChange(DownloadManager.get().tasks());
     }
 
     /** 左右滑动切换页签：仅在明显横向拖动时接管手势，不影响列表纵向滚动和剧集点击。 */
@@ -233,7 +238,47 @@ public class DownloadCenterActivity extends BaseActivity implements DownloadTask
             // 只有任务集合或状态变化时才重建视图，进度刷新原地改文字，避免闪烁和滚动跳动
             if (renderSignature.equals(signature())) refreshLabels();
             else render();
+            reportFailures(tasks);
         });
+    }
+
+    /**
+     * 下载失败弹窗：自动重试用尽后仍然失败的，一次性告诉用户是哪部剧哪一集。
+     *
+     * <p>用 id 记「已经报过」，同一批失败不会每刷新一次就再弹一遍；用户重新下载时会从集合里移除。
+     */
+    private void reportFailures(List<DownloadTask> tasks) {
+        List<DownloadTask> failed = new ArrayList<>();
+        for (DownloadTask task : tasks) {
+            if (task.getState() != DownloadTask.State.FAILED) continue;
+            if (!reportedFailures.add(task.getId())) continue;
+            failed.add(task);
+        }
+        if (failed.isEmpty() || isFinishing() || isDestroyed()) return;
+        StringBuilder builder = new StringBuilder();
+        int limit = Math.min(failed.size(), 6);
+        for (int i = 0; i < limit; i++) {
+            DownloadTask task = failed.get(i);
+            if (i > 0) builder.append('\n');
+            builder.append(getString(R.string.download_failed_line, task.getVodName(), task.getEpisodeName()));
+            if (!TextUtils.isEmpty(task.getError())) builder.append("（").append(task.getError()).append("）");
+        }
+        if (failed.size() > limit) builder.append('\n').append(getString(R.string.download_failed_more, failed.size() - limit));
+        MaterialAlertDialogBuilder builderDialog = new MaterialAlertDialogBuilder(this, R.style.ThemeOverlay_WebHTV_LightDialog)
+                .setTitle(R.string.download_failed_title)
+                .setMessage(builder.toString())
+                .setPositiveButton(R.string.download_failed_retry, (dialog, which) -> {
+                    for (DownloadTask task : failed) {
+                        reportedFailures.remove(task.getId());
+                        DownloadManager.get().retry(task);
+                    }
+                    render();
+                })
+                .setNegativeButton(R.string.dialog_negative, null);
+        try {
+            builderDialog.show();
+        } catch (Throwable ignored) {
+        }
     }
 
     private void initTabs() {

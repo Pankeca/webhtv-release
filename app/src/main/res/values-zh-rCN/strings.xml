@@ -755,7 +755,7 @@
     <string name="sync_item_history">观看记录</string>
     <string name="history_watched_time">已看 %1$s</string>
     <string name="history_watched_episode">已看 %1$s · %2$s</string>
-    <string name="history_update_to">更新至 第 %1$d 集</string>
+    <string name="history_update_to">更新至 第%1$d集</string>
     <string name="menu_select_all">全选</string>
     <string name="select_required">请先勾选要删除的内容</string>
     <string name="dialog_delete_selected">确定删除选中的 %1$d 项？</string>
@@ -1808,6 +1808,7 @@
     <string name="download_summary">%1$s · 共 %2$d 集 · 点选要下载的集数</string>
     <string name="download_action">下载</string>
     <string name="download_empty">没有可下载的剧集</string>
+    <string name="download_failed_toast">%1$s · %2$s 重试后仍下载失败</string>
     <string name="download_queued">已加入 %1$d 个下载任务</string>
     <string name="download_duplicate">该集已在下载队列中</string>
     <string name="download_busy_note">提示：下载会在后台继续，可在通知栏查看进度。</string>

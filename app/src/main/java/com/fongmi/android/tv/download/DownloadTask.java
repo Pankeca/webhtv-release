@@ -5,6 +5,7 @@ import android.text.TextUtils;
 import androidx.annotation.Nullable;
 
 import com.fongmi.android.tv.App;
+import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.api.SiteApi;
 import com.fongmi.android.tv.bean.Result;
 import com.fongmi.android.tv.utils.Task;
@@ -39,7 +40,8 @@ public class DownloadTask {
     private final String siteKey;
     private final String siteName;
     private final String vodName;
-    private final String vodPic;
+    /** 非 final：老记录里没有海报，启动时会从目录标记/观看历史补齐。 */
+    private String vodPic;
     private final String flag;
     private final String episodeName;
     private final String episodeUrl;
@@ -53,6 +55,11 @@ public class DownloadTask {
     private String error;
     private transient Future future;
     private transient int generation;
+    /** 自动重试次数上限：首次 + 自动重试两次。 */
+    private static final int MAX_AUTO_RETRY = 2;
+    /** 剧目录里记海报地址的文件名（下载列表缩略图用）。 */
+    public static final String POSTER_FILE = ".poster";
+    private transient int retryCount;
     private transient long speedTime;
     private transient long speedBytes;
 
@@ -137,6 +144,10 @@ public class DownloadTask {
         return vodPic == null ? "" : vodPic;
     }
 
+    public void setVodPic(String value) {
+        this.vodPic = value == null ? "" : value;
+    }
+
     public String getEpisodeUrl() {
         return episodeUrl;
     }
@@ -183,6 +194,7 @@ public class DownloadTask {
     public void start() {
         speedTime = 0;
         speedBytes = 0;
+        retryCount = 0;
         // 同步置 RUNNING，避免调度器还停在 WAITING 时多次 pump 把并发数算少
         state = State.RUNNING;
         final int gen = ++generation;
@@ -193,6 +205,7 @@ public class DownloadTask {
     public void retry() {
         if (isBusy()) return;
         error = null;
+        retryCount = 0;
         progress = 0;
         bytes = 0;
         total = 0;
@@ -245,14 +258,33 @@ public class DownloadTask {
             state = State.DONE;
             progress = 100;
             speed = 0;
+            writePosterFile();
             notifyChange();
         } catch (Throwable e) {
             if (!active(gen)) return;
-            state = State.FAILED;
             error = e.getMessage() == null ? e.toString() : e.getMessage();
+            // 下载失败先自动重试（最多两次）：网络抖动、分片偶发 403 占绝大多数，
+            // 重试会沿用已下分片断点续传，不用从头再来
+            if (retryCount < MAX_AUTO_RETRY) {
+                retryCount++;
+                if (target != null && target.exists() && !isPlayable(target)) target.delete();
+                notifyChange();
+                try {
+                    Thread.sleep(900L * retryCount);
+                } catch (InterruptedException ignored) {
+                    return;
+                }
+                if (!active(gen)) return;
+                run(gen);
+                return;
+            }
+            state = State.FAILED;
             // 校验不过的产物直接删除，避免“文件存在但打不开”被当成已下载
             if (target != null && target.exists() && !isPlayable(target)) target.delete();
             notifyChange();
+            // 重试用尽还失败：立刻用 toast 报出是哪部剧哪一集，
+            // 用户不在下载中心也收得到；进入下载中心还会看到一次汇总弹窗（含重试按钮）
+            reportFailed();
         }
     }
 
@@ -367,6 +399,48 @@ public class DownloadTask {
 
     private static File dirOf(String vodName) {
         return new File(rootDir(), sanitize(vodName));
+    }
+
+    /**
+     * 海报地址落盘（Downloads/webhtv/剧名/.poster）。
+     *
+     * <p>任务列表存在 SharedPreferences 里，清缓存、换机、老版本写入的记录都可能没有 vodPic，
+     * 一旦丢了就只能显示字母占位。海报地址跟视频放在同一个目录，只要文件还在海报就还在。
+     */
+    private void writePosterFile() {
+        writePoster(vodName, vodPic);
+    }
+
+    /** 失败提示要在主线程弹，且失败发生在下载线程里，不能直接碰 UI。 */
+    private void reportFailed() {
+        String text = App.get().getString(R.string.download_failed_toast, vodName, episodeName);
+        App.post(() -> com.fongmi.android.tv.utils.Notify.show(text));
+    }
+
+    /** 把海报地址写进剧目录，目录不在就先建。 */
+    public static void writePoster(String vodName, String vodPic) {
+        if (TextUtils.isEmpty(vodName) || TextUtils.isEmpty(vodPic)) return;
+        try {
+            File dir = dirOf(vodName);
+            if (!dir.exists() && !dir.mkdirs()) return;
+            Files.write(new File(dir, POSTER_FILE).toPath(), vodPic.getBytes(StandardCharsets.UTF_8));
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** 读某个剧目录里记着的海报地址，没有就返回空串。 */
+    public static String readPoster(String vodName) {
+        try {
+            File file = new File(dirOf(vodName), POSTER_FILE);
+            if (!file.exists() || file.length() == 0 || file.length() > 4096) return "";
+            return new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8).trim();
+        } catch (Throwable e) {
+            return "";
+        }
+    }
+
+    public static String posterFileOf(String vodName) {
+        return new File(dirOf(vodName), POSTER_FILE).getAbsolutePath();
     }
 
     public File targetFile() {

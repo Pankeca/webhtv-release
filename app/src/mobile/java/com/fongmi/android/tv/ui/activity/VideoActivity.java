@@ -259,6 +259,8 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     private boolean mSiteSwitching;
     /** 已经为哪个片名搜过站点，避免每次详情回包都重复搜索。 */
     private String mSiteSearchKeyword = "";
+    /** 已经为哪个站点滚过胶囊行：同一颗胶囊只定位一次，避免分站点回传时反复打断用户的手动滑动。 */
+    private String mScrolledSiteKey = "";
     /** 切换站点时暂存当前集名，新站点详情回来后仍停留在同一集。 */
     private String mPendingEpisode = "";
     /** 当前正在播放的影片，用于搜索后重建站点行时保留正在使用的站点。 */
@@ -1559,14 +1561,16 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         row.addView(header, new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         RecyclerView list = new RecyclerView(this);
-        FlexboxLayoutManager manager = new FlexboxLayoutManager(this, FlexDirection.ROW);
-        // 站点始终固定单行左右滑动，避免站点过多时铺满底部把线路和选集挤出屏幕
-        manager.setFlexWrap(FlexWrap.NOWRAP);
+        // 站点行就是单行横滑，用横向 LinearLayoutManager 而不是 Flexbox：
+        // Flexbox 在 NOWRAP 下调 scrollToPosition(非 0) 会把子项排到屏幕外（整行变白），
+        // 而横向 LLM 的 scrollToPositionWithOffset 是可靠的，换站后能稳稳把选中项滚进可视区。
+        LinearLayoutManager manager = new LinearLayoutManager(this, RecyclerView.HORIZONTAL, false);
         list.setLayoutManager(manager);
         list.setItemAnimator(null);
         list.setClipToPadding(false);
         list.setPadding(0, dp(8), 0, 0);
         list.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        list.setHasFixedSize(false);
         list.setAdapter(mSiteAdapter = new SiteChipAdapter(this::onSiteClick));
         row.addView(list, new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
@@ -1631,9 +1635,38 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         mSiteAdapter.setItems(mSiteVods);
         mSiteAdapter.setEpisodeCounts(mSiteEpisodes);
         if (mSiteCount != null) mSiteCount.setText(getString(R.string.detail_site_count, mSiteVods.size()));
-        // 换站后列表被重建，把横向滚动位置拉回起点，否则会停在旧的滚动偏移上显示空白
-        if (mSiteList != null && !mSiteVods.isEmpty()) mSiteList.scrollToPosition(0);
+        // 换站后列表被重建，要把当前选中的站点滚进可视区——以前一律 scrollToPosition(0)，
+        // 选到列表靠后的站点就会被拽回最前面，看着像没选上
+        scrollSiteChipsToSelected();
         updateSiteRow();
+    }
+
+    /**
+     * 把当前站点胶囊滚到可视区靠里的位置，既保证看得见，又留出相邻的候选站点。
+     *
+     * <p>两个坑：①快搜是分站点回传的，同一颗胶囊会被反复重建，每次都滚会让用户刚滑到的手感被打断，
+     * 所以同一个 key 只滚一次；②刚 setItems 时列表还没布局，立刻调 scrollToPositionWithOffset
+     * 会算错位置，必须等下一帧。横向站点行按 1/3 宽留白，纵向按 1/3 高。
+     */
+    private void scrollSiteChipsToSelected() {
+        if (mSiteList == null || mSiteAdapter == null) return;
+        String key = getKey();
+        if (TextUtils.equals(key, mScrolledSiteKey)) return;
+        if (mSiteAdapter.indexOf(key) < 0) return;
+        mScrolledSiteKey = key;
+        mSiteList.post(() -> {
+            if (mSiteList == null || mSiteAdapter == null) return;
+            int index = mSiteAdapter.indexOf(key);
+            if (index < 0) return;
+            RecyclerView.LayoutManager manager = mSiteList.getLayoutManager();
+            if (!(manager instanceof LinearLayoutManager)) {
+                mSiteList.scrollToPosition(index);
+                return;
+            }
+            boolean vertical = ((LinearLayoutManager) manager).getOrientation() == RecyclerView.VERTICAL;
+            int offset = Math.max(0, (vertical ? mSiteList.getHeight() : mSiteList.getWidth()) / 3);
+            ((LinearLayoutManager) manager).scrollToPositionWithOffset(index, offset);
+        });
     }
 
     /** 用搜索结果的「更新至第N集」先占位，避免等详情回包时站点没有集数。 */

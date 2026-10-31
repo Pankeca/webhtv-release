@@ -170,25 +170,67 @@ public class History implements Diffable<History> {
     /**
      * 追更卡片要用哪条观看记录算「已看第几集」。
      *
-     * <p>三级兜底，缺一档用户就会看到标签不见：
+     * <p>逐级兜底，缺一档用户就会看到标签不见：
      * <ol>
      *   <li>cid + key 精确命中（正常情况）；</li>
      *   <li>只按 key 跨配置找——追更列表是跨配置展示的，换过点播源后 cid 会对不上；</li>
      *   <li>同剧名找最新一条——服务端注入、本地下载的 key 与站点记录不同，
-     *       但合并之后它们本来就该算同一部剧。</li>
+     *       但合并之后它们本来就该算同一部剧；</li>
+     *   <li>「主名」精确命中：剧名后半截是别名/外文名时，取空格前的第一段再去认一次；</li>
+     *   <li>主名前缀召回：站点常把别名拼在剧名后面（「超巡！超条前辈 超巡！超条先輩」），
+     *       追更里存的是干净名字，只能靠前缀认；</li>
+     *   <li>同站点同影片 id。</li>
      * </ol>
      */
     public static History forKeep(Keep keep) {
         if (keep == null) return null;
         try {
-            History history = AppDatabase.get().getHistoryDao().find(keep.getCid(), keep.getKey());
+            com.fongmi.android.tv.db.dao.HistoryDao dao = AppDatabase.get().getHistoryDao();
+            History history = dao.find(keep.getCid(), keep.getKey());
             if (history != null) return history;
-            history = AppDatabase.get().getHistoryDao().findLatest(keep.getKey());
+            history = dao.findLatest(keep.getKey());
             if (history != null) return history;
-            return AppDatabase.get().getHistoryDao().findLatestByVodName(keep.getVodName());
+            String vodName = keep.getVodName();
+            history = dao.findLatestByVodName(vodName);
+            if (history != null) return history;
+            String baseName = baseNameOf(vodName);
+            if (!baseName.isEmpty() && !baseName.equals(vodName)) {
+                history = dao.findLatestByVodName(baseName);
+                if (history != null) return history;
+            }
+            if (baseName.length() >= 2) {
+                history = dao.findLatestByVodNamePrefix(baseName);
+                if (history != null) return history;
+                // 反向：追更里的名字更长（「XXX 第二季」），历史里存的是短名字
+                history = dao.findLatestByVodNameCovering(baseName);
+                if (history != null) return history;
+            }
+            if (baseName.length() >= 3) {
+                history = dao.findLatestByVodNameContains(baseName);
+                if (history != null) return history;
+            }
+            // 动漫常见：追更的剧名和最近观看的剧名不一致（带/不带季数），但同站点内影片 id 是同一个
+            return dao.findLatestByKeySuffix(AppDatabase.SYMBOL + keep.getVodId());
         } catch (Throwable e) {
             return null;
         }
+    }
+
+    /** 剧名的主名：站点常把「原名 别名/外文名」拼在一起，认剧时只用空格前第一段。 */
+    private static String baseNameOf(String vodName) {
+        String name = vodName == null ? "" : vodName.trim();
+        int split = -1;
+        for (int i = 0; i < name.length(); i++) {
+            char c = name.charAt(i);
+            if (c == ' ' || c == '\u3000' || c == '|' || c == '/') {
+                split = i;
+                break;
+            }
+        }
+        if (split <= 0) return name;
+        String base = name.substring(0, split).trim();
+        // 太短的主名（如「第」「The」）前缀召回会误伤，交给上层判空跳过
+        return base;
     }
 
     public static void delete(int cid) {

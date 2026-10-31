@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 首页来源弹窗里「当前选中」那一行的底色，浅灰蓝，和白色弹窗拉开一点层次 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#F1F3F5" />
+    <corners android:radius="12dp" />
+</shape>

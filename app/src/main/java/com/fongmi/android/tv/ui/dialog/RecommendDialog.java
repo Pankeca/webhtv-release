@@ -20,7 +20,8 @@ import com.google.android.material.textview.MaterialTextView;
 /**
  * 首页内容来源选择（单选）。
  *
- * <p>首页只有一个，所以这里是四选一：站点默认 / 豆瓣热播 / 站点推荐 / 最近观看。
+ * <p>首页只有一个，所以这里是三选一：站点推荐 / 豆瓣热播 / 最近观看。
+ * 站点推荐会优先用站点自带配置（注入的网页首页），没有自带配置才回落到站点类型列表。
  * 点一行立刻落盘并关窗，关窗后通知调用方重建首页——不然用户得手动切一次站点才生效。
  */
 public class RecommendDialog extends BaseAlertDialog {
@@ -44,10 +45,11 @@ public class RecommendDialog extends BaseAlertDialog {
         content.setOrientation(LinearLayoutCompat.VERTICAL);
         int padding = ResUtil.dp2px(16);
         content.setPadding(padding, ResUtil.dp2px(4), padding, ResUtil.dp2px(4));
+        // 默认宽度跟着标题走，三行描述会被挤成两行；给个下限让每行描述都能一行读完
+        content.setMinimumWidth(ResUtil.dp2px(300));
         String source = RecommendSetting.getSource();
-        addRow(content, RecommendSetting.OFF, R.string.recommend_source_off, R.string.recommend_source_off_desc, source);
-        addRow(content, RecommendSetting.DOUBAN, R.string.recommend_douban, R.string.recommend_douban_desc, source);
         addRow(content, RecommendSetting.SITE, R.string.recommend_site, R.string.recommend_site_desc, source);
+        addRow(content, RecommendSetting.DOUBAN, R.string.recommend_douban, R.string.recommend_douban_desc, source);
         addRow(content, RecommendSetting.HISTORY, R.string.recommend_history, R.string.recommend_history_desc, source);
         return new MaterialAlertDialogBuilder(requireActivity(), R.style.ThemeOverlay_WebHTV_LightDialog)
                 .setTitle(R.string.recommend_title)
@@ -60,7 +62,9 @@ public class RecommendDialog extends BaseAlertDialog {
         LinearLayoutCompat row = new LinearLayoutCompat(requireContext());
         row.setOrientation(LinearLayoutCompat.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(ResUtil.dp2px(4), ResUtil.dp2px(10), ResUtil.dp2px(4), ResUtil.dp2px(10));
+        row.setPadding(ResUtil.dp2px(10), ResUtil.dp2px(10), ResUtil.dp2px(10), ResUtil.dp2px(10));
+        // 选中行铺一层浅底，三行长得一样时也能一眼看出当前用的是哪个来源
+        row.setBackgroundResource(checked ? R.drawable.shape_recommend_row : 0);
 
         RadioButton radio = new RadioButton(requireContext());
         radio.setChecked(checked);

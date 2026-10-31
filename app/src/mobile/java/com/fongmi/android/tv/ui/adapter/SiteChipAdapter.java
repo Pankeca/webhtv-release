@@ -73,6 +73,15 @@ public class SiteChipAdapter extends RecyclerView.Adapter<SiteChipAdapter.ViewHo
         notifyItemRangeChanged(0, getItemCount());
     }
 
+    /** 某个站点在胶囊列表里的下标；找不到返回 -1（列表重建后用它把选中项滚进可视区）。 */
+    public int indexOf(String key) {
+        if (TextUtils.isEmpty(key)) return -1;
+        for (int i = 0; i < mItems.size(); i++) {
+            if (TextUtils.equals(mItems.get(i).getSiteKey(), key)) return i;
+        }
+        return -1;
+    }
+
     public void clear() {
         mItems.clear();
         notifyDataSetChanged();

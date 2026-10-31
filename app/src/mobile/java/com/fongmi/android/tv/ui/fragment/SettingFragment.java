@@ -108,9 +108,8 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
     private void setRecommendText() {
         if (mBinding == null) return;
         String source = RecommendSetting.getSource();
-        int res = R.string.recommend_source_off;
+        int res = R.string.recommend_site;
         if (RecommendSetting.DOUBAN.equals(source)) res = R.string.recommend_douban;
-        else if (RecommendSetting.SITE.equals(source)) res = R.string.recommend_site;
         else if (RecommendSetting.HISTORY.equals(source)) res = R.string.recommend_history;
         mBinding.recommendText.setText(getString(res));
     }

@@ -21,6 +21,7 @@ import com.fongmi.android.tv.utils.ImgUtil;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 public class HistoryAdapter extends BaseDiffAdapter<History, HistoryAdapter.ViewHolder> {
@@ -153,13 +154,14 @@ public class HistoryAdapter extends BaseDiffAdapter<History, HistoryAdapter.View
             else listener.onItemDelete(item);
         });
         String watchedTime = HistoryProgressFormatter.format(item.getPosition(), item.getDuration());
-        String episode = item.getVodRemarks();
-        boolean hasEpisode = !TextUtils.isEmpty(episode) && !TextUtils.isEmpty(watchedTime) && !same;
-        // 已看行：优先显示「已看 第X集 · 具体时间」，没有集数时退化为「已看 时间」
-        holder.binding.historyProgress.setText(hasEpisode
-                ? holder.itemView.getContext().getString(R.string.history_watched_episode, episode, watchedTime)
-                : holder.itemView.getContext().getString(R.string.history_watched_time, watchedTime));
-        boolean showProgress = !delete && !watchedTime.isEmpty();
+        String episode = HistoryProgressFormatter.episode(item.getVodRemarks());
+        // 已看行：有集数有时间「已看 第X集 · 时间」；只有集数就「已看 第X集」；只有进度就「已看 时间」
+        if (!episode.isEmpty() && !watchedTime.isEmpty()) {
+            holder.binding.historyProgress.setText(holder.itemView.getContext().getString(R.string.history_watched_episode, episode, watchedTime));
+        } else {
+            holder.binding.historyProgress.setText(holder.itemView.getContext().getString(R.string.history_watched_time, episode.isEmpty() ? watchedTime : episode));
+        }
+        boolean showProgress = !delete && !same && (!episode.isEmpty() || !watchedTime.isEmpty());
         holder.binding.historyProgress.setVisibility(showProgress ? View.VISIBLE : View.GONE);
         // 集数已并入已看行时不再重复显示 remark
         holder.binding.remark.setVisibility(!delete && !showProgress && !same ? View.VISIBLE : View.GONE);

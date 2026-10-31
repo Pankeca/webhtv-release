@@ -46,7 +46,7 @@ public class TypeAdapter extends RecyclerView.Adapter<TypeAdapter.ViewHolder> {
     public void addAll(Result result) {
         mItems.addAll(result.getTypes());
         // 站点首页没内容时原本不显示「首页」这一项；但用户指定了首页来源，就得给他一个首页入口
-        if (!result.getList().isEmpty() || !RecommendSetting.isOff()) mItems.add(0, home());
+        if (!result.getList().isEmpty() || RecommendSetting.isExternal(RecommendSetting.getSource())) mItems.add(0, home());
         if (!mItems.isEmpty()) mItems.get(0).setSelected(true);
         notifyDataSetChanged();
     }

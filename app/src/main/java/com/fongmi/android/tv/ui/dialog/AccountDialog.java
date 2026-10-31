@@ -374,22 +374,23 @@ public class AccountDialog extends BaseAlertDialog {
         column.setFocusable(true);
         column.setBackgroundResource(R.drawable.ripple_round_14);
         column.setOnClickListener(listener);
-        MaterialTextView valueView = text(String.valueOf(local), 20, Color.parseColor("#111827"), true);
-        valueView.setGravity(Gravity.CENTER);
-        valueView.setMaxLines(1);
-        column.addView(valueView);
+        // 顺序固定为 名称 / 本地数量 / 云端数量，四列横向对比时才对齐
         MaterialTextView title = text(label, 11, Color.parseColor("#5F6368"), false);
         title.setGravity(Gravity.CENTER);
         title.setMaxLines(1);
         title.setEllipsize(TextUtils.TruncateAt.END);
-        LinearLayoutCompat.LayoutParams titleParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        titleParams.topMargin = dp(2);
-        column.addView(title, titleParams);
+        column.addView(title);
+        MaterialTextView valueView = text(getString(R.string.account_stats_local, local), 18, Color.parseColor("#111827"), true);
+        valueView.setGravity(Gravity.CENTER);
+        valueView.setMaxLines(1);
+        LinearLayoutCompat.LayoutParams valueParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        valueParams.topMargin = dp(3);
+        column.addView(valueView, valueParams);
         MaterialTextView cloudView = text(getString(R.string.account_stats_cloud, cloud), 10, Color.parseColor("#9AA0A6"), false);
         cloudView.setGravity(Gravity.CENTER);
         cloudView.setMaxLines(1);
         LinearLayoutCompat.LayoutParams cloudParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        cloudParams.topMargin = dp(1);
+        cloudParams.topMargin = dp(2);
         column.addView(cloudView, cloudParams);
         parent.addView(column, new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
     }

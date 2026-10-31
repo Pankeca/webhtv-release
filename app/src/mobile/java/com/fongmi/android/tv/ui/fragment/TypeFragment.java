@@ -142,7 +142,7 @@ public class TypeFragment extends BaseFragment implements CustomScroller.Callbac
         mScroller.reset();
         mAdapter.clear(() -> {
             if (!mBinding.swipeLayout.isRefreshing()) mBinding.progressLayout.showProgress();
-            String source = isHome() ? RecommendSetting.getSource() : RecommendSetting.OFF;
+            String source = isHome() ? RecommendSetting.getSource() : RecommendSetting.SITE;
             if (RecommendSetting.DOUBAN.equals(source)) {
                 loadDouban();
             } else if (RecommendSetting.HISTORY.equals(source)) {
