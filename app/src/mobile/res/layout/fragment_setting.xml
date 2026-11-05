@@ -8,7 +8,7 @@
 
     <com.google.android.material.appbar.MaterialToolbar
         android:layout_width="match_parent"
-        android:layout_height="?attr/actionBarSize"
+        android:layout_height="48dp"
         app:navigationIconTint="@android:color/white"
         app:title="@string/nav_setting"
         app:titleTextAppearance="@style/ToolbarTextAppearance" />
@@ -32,8 +32,9 @@
                 android:id="@+id/account"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="8dp"
                 android:background="@drawable/shape_item"
+                android:minHeight="48dp"
                 android:orientation="horizontal">
 
                 <com.google.android.material.textview.MaterialTextView
@@ -60,7 +61,7 @@
             <androidx.appcompat.widget.LinearLayoutCompat
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="8dp"
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
 
@@ -71,6 +72,7 @@
                     android:layout_marginEnd="12dp"
                     android:layout_weight="1"
                     android:background="@drawable/shape_item"
+                android:minHeight="48dp"
                     android:orientation="horizontal">
 
                     <com.google.android.material.textview.MaterialTextView
@@ -101,6 +103,8 @@
                     android:layout_marginEnd="12dp"
                     android:background="@drawable/shape_item"
                     android:padding="7dp"
+                    android:minWidth="48dp"
+                    android:minHeight="48dp"
                     android:src="@drawable/ic_setting_home" />
 
                 <androidx.appcompat.widget.AppCompatImageView
@@ -109,6 +113,8 @@
                     android:layout_height="wrap_content"
                     android:background="@drawable/shape_item"
                     android:padding="7dp"
+                    android:minWidth="48dp"
+                    android:minHeight="48dp"
                     android:src="@drawable/ic_setting_history" />
 
             </androidx.appcompat.widget.LinearLayoutCompat>
@@ -116,7 +122,7 @@
             <androidx.appcompat.widget.LinearLayoutCompat
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="8dp"
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
 
@@ -127,6 +133,7 @@
                     android:layout_marginEnd="12dp"
                     android:layout_weight="1"
                     android:background="@drawable/shape_item"
+                android:minHeight="48dp"
                     android:orientation="horizontal">
 
                     <com.google.android.material.textview.MaterialTextView
@@ -157,6 +164,8 @@
                     android:layout_marginEnd="12dp"
                     android:background="@drawable/shape_item"
                     android:padding="7dp"
+                    android:minWidth="48dp"
+                    android:minHeight="48dp"
                     android:src="@drawable/ic_setting_home" />
 
                 <androidx.appcompat.widget.AppCompatImageView
@@ -165,6 +174,8 @@
                     android:layout_height="wrap_content"
                     android:background="@drawable/shape_item"
                     android:padding="7dp"
+                    android:minWidth="48dp"
+                    android:minHeight="48dp"
                     android:src="@drawable/ic_setting_history" />
 
             </androidx.appcompat.widget.LinearLayoutCompat>
@@ -172,7 +183,7 @@
             <androidx.appcompat.widget.LinearLayoutCompat
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="8dp"
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
 
@@ -183,6 +194,7 @@
                     android:layout_marginEnd="12dp"
                     android:layout_weight="1"
                     android:background="@drawable/shape_item"
+                android:minHeight="48dp"
                     android:orientation="horizontal">
 
                     <com.google.android.material.textview.MaterialTextView
@@ -213,6 +225,8 @@
                     android:layout_marginEnd="12dp"
                     android:background="@drawable/shape_item"
                     android:padding="7dp"
+                    android:minWidth="48dp"
+                    android:minHeight="48dp"
                     android:src="@drawable/ic_setting_home" />
 
                 <androidx.appcompat.widget.AppCompatImageView
@@ -221,6 +235,8 @@
                     android:layout_height="wrap_content"
                     android:background="@drawable/shape_item"
                     android:padding="7dp"
+                    android:minWidth="48dp"
+                    android:minHeight="48dp"
                     android:src="@drawable/ic_setting_refresh" />
 
             </androidx.appcompat.widget.LinearLayoutCompat>
@@ -229,8 +245,9 @@
                 android:id="@+id/enhance"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="8dp"
                 android:background="@drawable/shape_item"
+                android:minHeight="48dp"
                 android:orientation="horizontal">
 
                 <com.google.android.material.textview.MaterialTextView
@@ -246,8 +263,9 @@
                 android:id="@+id/player"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="8dp"
                 android:background="@drawable/shape_item"
+                android:minHeight="48dp"
                 android:orientation="horizontal">
 
                 <com.google.android.material.textview.MaterialTextView
@@ -263,8 +281,9 @@
                 android:id="@+id/danmaku"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="8dp"
                 android:background="@drawable/shape_item"
+                android:minHeight="48dp"
                 android:orientation="horizontal">
 
                 <com.google.android.material.textview.MaterialTextView
@@ -280,8 +299,9 @@
                 android:id="@+id/appearance"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="8dp"
                 android:background="@drawable/shape_item"
+                android:minHeight="48dp"
                 android:orientation="horizontal">
 
                 <com.google.android.material.textview.MaterialTextView
@@ -307,8 +327,9 @@
                 android:id="@+id/recommend"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="8dp"
                 android:background="@drawable/shape_item"
+                android:minHeight="48dp"
                 android:orientation="horizontal">
 
                 <com.google.android.material.textview.MaterialTextView
@@ -335,8 +356,9 @@
                 android:id="@+id/incognito"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="8dp"
                 android:background="@drawable/shape_item"
+                android:minHeight="48dp"
                 android:orientation="horizontal">
 
                 <com.google.android.material.textview.MaterialTextView
@@ -362,8 +384,9 @@
                 android:id="@+id/doh"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="8dp"
                 android:background="@drawable/shape_item"
+                android:minHeight="48dp"
                 android:orientation="horizontal">
 
                 <com.google.android.material.textview.MaterialTextView
@@ -389,8 +412,9 @@
                 android:id="@+id/cache"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="8dp"
                 android:background="@drawable/shape_item"
+                android:minHeight="48dp"
                 android:orientation="horizontal">
 
                 <com.google.android.material.textview.MaterialTextView
@@ -415,8 +439,9 @@
             <androidx.appcompat.widget.LinearLayoutCompat
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="8dp"
                 android:background="@drawable/shape_item"
+                android:minHeight="48dp"
                 android:orientation="horizontal"
                 android:padding="0dp">
 
@@ -426,6 +451,7 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:background="?android:attr/selectableItemBackground"
+                    android:minHeight="48dp"
                     android:paddingStart="12dp"
                     android:paddingTop="8dp"
                     android:paddingEnd="12dp"
@@ -440,6 +466,7 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:background="?android:attr/selectableItemBackground"
+                    android:minHeight="48dp"
                     android:gravity="end"
                     android:paddingStart="12dp"
                     android:paddingTop="8dp"
@@ -455,8 +482,9 @@
                 android:id="@+id/version"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="8dp"
                 android:background="@drawable/shape_item"
+                android:minHeight="48dp"
                 android:orientation="horizontal">
 
                 <com.google.android.material.textview.MaterialTextView

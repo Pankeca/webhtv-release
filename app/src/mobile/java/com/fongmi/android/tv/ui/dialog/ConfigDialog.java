@@ -3,16 +3,19 @@ package com.fongmi.android.tv.ui.dialog;
 import android.app.Activity;
 import android.content.Intent;
 import android.graphics.Color;
+import android.graphics.Rect;
 import android.graphics.drawable.ColorDrawable;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewTreeObserver;
 import android.view.Window;
 import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.appcompat.app.AlertDialog;
 import androidx.fragment.app.Fragment;
 import androidx.viewbinding.ViewBinding;
 
@@ -38,6 +41,9 @@ public class ConfigDialog extends BaseAlertDialog {
     private boolean edit;
     private String ori;
     private int type;
+    private int lastWidth;
+    private int lastMaxHeight = -1;
+    private final ViewTreeObserver.OnGlobalLayoutListener layoutListener = this::updateWindowSize;
 
     public static ConfigDialog create() {
         return new ConfigDialog();
@@ -113,6 +119,14 @@ public class ConfigDialog extends BaseAlertDialog {
         super.onStart();
         configureWindow();
         binding.url.requestFocus();
+        // 键盘弹出/收起、旋转都会改变可见区域，跟随重算尺寸，保证底部按钮始终可达
+        binding.scroll.getViewTreeObserver().addOnGlobalLayoutListener(layoutListener);
+    }
+
+    @Override
+    public void onStop() {
+        if (binding != null) binding.scroll.getViewTreeObserver().removeOnGlobalLayoutListener(layoutListener);
+        super.onStop();
     }
 
     private Config getConfig() {
@@ -196,19 +210,49 @@ public class ConfigDialog extends BaseAlertDialog {
         return config;
     }
 
+    /**
+     * 弹窗尺寸统一按「当前窗口可见区域」计算，而不是整屏宽度。
+     *
+     * <p>原实现用整屏宽 × 比例后再套一个固定 320dp 下限，窄屏/大字号/多窗口下
+     * 下限可能超过实际可用宽度，卡片右侧被顶出屏幕，底部按钮也点不到。
+     * 这里改为：宽度 = 可见宽度 - 两侧留白（再受最大阅读宽度限制），
+     * 高度不超过可见高度，超出部分交给内部 ScrollView 滚动。
+     */
     private void configureWindow() {
         if (getDialog() == null || getDialog().getWindow() == null) return;
         Window window = getDialog().getWindow();
         WindowManager.LayoutParams params = window.getAttributes();
-        boolean land = ResUtil.isLand(requireContext());
-        int width = Math.min(Math.round(ResUtil.getScreenWidth(requireContext()) * (land ? 0.58f : 0.92f)), ResUtil.dp2px(560));
-        params.width = Math.max(width, ResUtil.dp2px(320));
-        params.height = WindowManager.LayoutParams.WRAP_CONTENT;
         params.gravity = Gravity.CENTER;
         window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         window.getDecorView().setPadding(0, 0, 0, 0);
         window.setAttributes(params);
-        window.setLayout(params.width, WindowManager.LayoutParams.WRAP_CONTENT);
+        // 表单含输入框：既要让输入法能弹出，也要让窗口随键盘收缩，避免底部按钮被键盘挡住
+        window.clearFlags(WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM);
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+        updateWindowSize();
+        // 首次布局前 getWindowVisibleDisplayFrame 可能是空，布局完成后再校正一次
+        binding.scroll.post(this::updateWindowSize);
+    }
+
+    private void updateWindowSize() {
+        if (getDialog() == null || getDialog().getWindow() == null || binding == null) return;
+        Window window = getDialog().getWindow();
+        Rect visible = new Rect();
+        window.getDecorView().getWindowVisibleDisplayFrame(visible);
+        if (visible.isEmpty()) return;
+        int margin = ResUtil.dp2px(12);
+        int width = Math.min(ResUtil.dp2px(560), Math.max(0, visible.width() - margin * 2));
+        // 内容超过可见高度时锁定滚动区高度；横屏矮屏与键盘弹出都走这条路径
+        int maxHeight = Math.max(ResUtil.dp2px(120), visible.height() - margin * 2);
+        if (width <= 0) return;
+        if (maxHeight != lastMaxHeight) {
+            lastMaxHeight = maxHeight;
+            binding.scroll.setMaxHeight(maxHeight);
+        }
+        if (width != lastWidth) {
+            lastWidth = width;
+            window.setLayout(width, WindowManager.LayoutParams.WRAP_CONTENT);
+        }
     }
 
     private final ActivityResultLauncher<Intent> launcher = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {

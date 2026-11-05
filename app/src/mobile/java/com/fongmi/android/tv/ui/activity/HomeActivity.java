@@ -38,7 +38,6 @@ import com.fongmi.android.tv.receiver.ShortcutReceiver;
 import com.fongmi.android.tv.server.Server;
 import com.fongmi.android.tv.service.PlaybackService;
 import com.fongmi.android.tv.setting.CloudConfigSync;
-import com.fongmi.android.tv.setting.FactoryDefaults;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.ui.custom.FragmentStateManager;
@@ -52,8 +51,8 @@ import com.fongmi.android.tv.update.PendingUpdatePrompt;
 import com.fongmi.android.tv.utils.FileChooser;
 import com.fongmi.android.tv.utils.MobileWindow;
 import com.fongmi.android.tv.utils.Notify;
-import com.fongmi.android.tv.utils.PermissionUtil;
 import com.fongmi.android.tv.utils.ResUtil;
+import com.fongmi.android.tv.utils.PermissionUtil;
 import com.fongmi.android.tv.utils.UrlUtil;
 import com.fongmi.android.tv.utils.Util;
 import com.fongmi.android.tv.web.WebHomeChromeStartup;
@@ -114,9 +113,7 @@ public class HomeActivity extends BaseActivity implements WebHomeChromeControlle
     @Override
     protected void onResume() {
         super.onResume();
-        // 启动时不再无脑要「所有文件访问」：用户真去用了站点注入之类要写外部存储的功能时，
-        // 那边会自己发起申请；授权返回落在首页 onResume，这里顺手把当时没种上的出厂配置补上。
-        FactoryDefaults.retryIfPending();
+        // 站点注入已取消内置预设，不再需要在授权回来后补种
         // 更新包下完但安装被取消的情况，下次回到首页时再提示一次可安装
         PendingUpdatePrompt.showOnce(this);
     }
@@ -268,19 +265,19 @@ public class HomeActivity extends BaseActivity implements WebHomeChromeControlle
         mBinding.getRoot().requestApplyInsets();
     }
 
-    /** 手机横屏：隐藏系统状态栏与底栏，导航按钮移到站点名称旁；平板/竖屏保持原样。 */
+    /**
+     * 仅「手机横屏」压缩形态：底栏 3 个导航胶囊并入顶栏、隐藏底栏与顶部状态栏。
+     * 平板横屏不满足「垂直空间不足」的前提，底栏留在底部、状态栏保留，顶栏由容器按安全区下移；
+     * 形态用 ResUtil.isPad()（设备模式 / sw600dp 判定），不能只看是否横屏，否则平板横屏会被误压。
+     */
     private void applyDeviceAdaptation() {
         if (mChrome == null || mManager == null) return;
-        boolean phoneLandscape = isPhoneLandscape();
+        boolean landscape = getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
+        boolean phoneLandscape = landscape && !ResUtil.isPad();
         boolean hideNavigation = phoneLandscape && mManager.isVisible(0);
         mChrome.setAdaptiveLayout(phoneLandscape, hideNavigation);
         VodFragment fragment = (VodFragment) mManager.getFragment(0);
         if (fragment != null) fragment.setInlineNavigationVisible(hideNavigation);
-    }
-
-    private boolean isPhoneLandscape() {
-        Configuration configuration = getResources().getConfiguration();
-        return configuration.orientation == Configuration.ORIENTATION_LANDSCAPE && configuration.screenHeightDp < 480 && !ResUtil.isPad();
     }
 
     /** 供顶栏内联导航使用，避免直接依赖底栏是否可见。 */
@@ -464,9 +461,10 @@ public class HomeActivity extends BaseActivity implements WebHomeChromeControlle
 
     @Override
     protected void onBackInvoked() {
-        if (mChrome != null && mChrome.consumeBack()) {
-            return;
-        } else if (mBinding.navigation.getEntryView(R.id.vod) == null) {
+        // 返回顺序：页面/网页历史优先，最后才把「隐藏的原生栏」当作一层。
+        // 原实现先检查 mChrome.consumeBack()，沉浸模式下第一次返回只恢复工具栏、不导航，
+        // 用户看到的就是「滑两次才返回上一层」。
+        if (mBinding.navigation.getEntryView(R.id.vod) == null) {
             setNavigation();
         } else if (returnVodFromEnhance && mManager.isVisible(3)) {
             returnVodFromEnhance = false;
@@ -476,6 +474,8 @@ public class HomeActivity extends BaseActivity implements WebHomeChromeControlle
         } else if (mManager.isVisible(1)) {
             change(0);
         } else if (mManager.canBack(0)) {
+            // 首页已无可返回层级：本次返回用于恢复隐藏的原生栏（沉浸态的常规行为）
+            if (mChrome != null && mChrome.consumeBack()) return;
             if (PlaybackService.isRunning()) Util.moveToBackground(this);
             else super.onBackInvoked();
         }

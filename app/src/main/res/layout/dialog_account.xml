@@ -55,4 +55,16 @@
 
     </com.fongmi.android.tv.ui.custom.CustomNestedScrollView>
 
+    <!-- 底部整宽「关闭」：内容再长也能直接点到，四形态都不会被滚动区挡掉 -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/close"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginTop="10dp"
+        android:text="@string/account_close"
+        android:textColor="@color/dialog_outlined_button_text"
+        app:backgroundTint="@color/dialog_outlined_button_bg"
+        app:strokeColor="@color/dialog_outlined_button_stroke"
+        app:strokeWidth="1dp" />
+
 </androidx.appcompat.widget.LinearLayoutCompat>

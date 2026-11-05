@@ -8,6 +8,7 @@ import com.github.catvod.crawler.SpiderDebug;
 import com.github.catvod.net.OkHttp;
 import com.google.gson.JsonObject;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -25,6 +26,28 @@ public final class PlaybackWebhookSender {
 
     private final Map<String, Runnable> progressTasks = new ConcurrentHashMap<>();
     private final Map<String, Object> endpointLocks = new ConcurrentHashMap<>();
+
+    /**
+     * 账号分区首次切换用：把本地观看历史整份同步投递到新分区。
+     * 全部成功才返回 true；失败由调用方保留旧 cursor 并下次重试，避免历史消失。
+     */
+    public boolean pushSeeds(List<PlaybackRecord> records) {
+        if (!ViewingRecordSyncStore.isEnabled() || records == null || records.isEmpty()) return true;
+        for (WebhookConfig config : PlaybackWebhookStore.list()) {
+            if (!config.isUsable()) continue;
+            for (PlaybackRecord record : records) {
+                if (!matches(config, record) || !config.acceptsEvent(EVENT_PROGRESS)) continue;
+                try {
+                    post(config, delivery(config, record.withEvent(EVENT_PROGRESS)));
+                } catch (Exception e) {
+                    SpiderDebug.log("playback-webhook", "seed failed endpoint=%s error=%s", config.displayName(), e.toString());
+                    return false;
+                }
+            }
+        }
+        // 没有可用 webhook 视为无需投递（只做拉取）
+        return true;
+    }
 
     public void sendImmediate(PlaybackRecord record) {
         if (!ViewingRecordSyncStore.isEnabled()) return;

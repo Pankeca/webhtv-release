@@ -21,22 +21,35 @@
             app:menu="@menu/menu_vod"
             app:popupTheme="@style/ToolbarPopupTheme">
 
-            <androidx.appcompat.widget.AppCompatImageView
-                android:id="@+id/logo"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
-                android:layout_marginEnd="12dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:src="@drawable/ic_logo" />
-
-            <com.google.android.material.textview.MaterialTextView
-                android:id="@+id/title"
+            <!-- 图标与线路名称并为一组：整组占一个位置，组宽由 VodFragment 的 applyToolbarMetrics 统一计算，
+                 线路名不再在竖屏下被隐藏，名字过长时在组内省略而不是把胶囊挤出屏幕 -->
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:id="@+id/brand"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:ellipsize="marquee"
-                android:singleLine="true"
-                android:text="@string/app_name"
-                android:textAppearance="@style/ToolbarTextAppearance" />
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <androidx.appcompat.widget.AppCompatImageView
+                    android:id="@+id/logo"
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_logo" />
+
+                <com.google.android.material.textview.MaterialTextView
+                    android:id="@+id/title"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp"
+                    android:ellipsize="end"
+                    android:maxWidth="64dp"
+                    android:singleLine="true"
+                    android:text="@string/app_name"
+                    android:textAppearance="@style/ToolbarTextAppearance"
+                    android:textSize="13sp" />
+
+            </androidx.appcompat.widget.LinearLayoutCompat>
 
         </com.google.android.material.appbar.MaterialToolbar>
 

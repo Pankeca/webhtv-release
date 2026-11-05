@@ -64,6 +64,9 @@ public class Keep implements Diffable<Keep> {
     }
 
     public static void delete(String key) {
+        // 用户删除收藏：先落墓碑再删，云端合并时旧记录不会复活
+        Keep keep = AppDatabase.get().getKeepDao().find(key);
+        if (keep != null) com.fongmi.android.tv.playback.KeepTombstoneStore.mark(keep);
         AppDatabase.get().getKeepDao().delete(key);
     }
 
@@ -158,6 +161,8 @@ public class Keep implements Diffable<Keep> {
     }
 
     public Keep delete() {
+        // 删除前记录墓碑（身份 = key 前两段 + 剧名），避免对方备份把自己的删除覆盖回来
+        com.fongmi.android.tv.playback.KeepTombstoneStore.mark(this);
         AppDatabase.get().getKeepDao().delete(getCid(), getKey());
         com.fongmi.android.tv.setting.SyncScheduler.onDataChanged("keep-delete");
         return this;

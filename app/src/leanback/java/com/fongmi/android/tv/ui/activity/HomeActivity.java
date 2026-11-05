@@ -50,7 +50,6 @@ import com.fongmi.android.tv.player.Source;
 import com.fongmi.android.tv.server.Server;
 import com.fongmi.android.tv.service.DLNARendererService;
 import com.fongmi.android.tv.service.PlaybackService;
-import com.fongmi.android.tv.setting.FactoryDefaults;
 import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.ui.adapter.BaseDiffCallback;
 import com.fongmi.android.tv.ui.adapter.TypeAdapter;
@@ -755,8 +754,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         super.onResume();
         mClock.start();
         if (mWeb != null) mWeb.onResume();
-        // 启动时不再无脑申请「所有文件访问」，改为用到时再要；这里只负责授权回来的补种
-        FactoryDefaults.retryIfPending();
+        // 站点注入已取消内置预设，不再需要在授权回来后补种
         PendingUpdatePrompt.showOnce(this);
     }
 

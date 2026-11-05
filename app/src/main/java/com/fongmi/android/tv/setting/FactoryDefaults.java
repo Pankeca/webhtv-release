@@ -14,41 +14,20 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /**
- * 出厂默认配置：弹幕源 + 站点注入。
+ * 出厂默认配置：仅保留弹幕源。
  *
- * <p>为什么需要——debug 与 release 签名不一致，装发布包前必须先卸载，而卸载会清掉
- * SharedPreferences 和外部存储里的站点注入，用户手工配好的弹幕源与站点会一起消失，
- * 「换个包就白干」。这里把一份可用的出厂配置打进 assets，全新安装或清数据后自动播种回来。
+ * <p>站点注入与网页脚本规则已取消内置预设，改由管理员在云端配置中心发布，
+ * 普通用户通过云端同步获取后才生效；本机不再自带任何站点/脚本资产。
  *
- * <p><b>为什么不用「只播种一次」的标记位：</b>第一版是在 SharedPreferences 里写
- * {@code factory_csp_seeded} 之类的一次性标记。实测踩坑——先装包启动一次（那时配置还在）
- * 就顺手把标记置真了，之后配置文件一旦丢失，标记仍为真，永远不再播种，等于出厂默认形同虚设。
- * 改成按「用户有没有配置」判断，天然幂等，也不需要维护标记：
- *
- * <ol>
- *   <li><b>弹幕源</b>：只要 {@link DanmakuSourceSetting#hasCustomSources()} 为假就播种。
- *       用户把来源删空后存的是 {@code "[]"}，非空字符串，仍然算「配过」，不会被重新塞回来。</li>
- *   <li><b>站点注入</b>：只要 {@code registry.json} 不存在就播种。用户在界面上删空站点时
- *       {@link CustomCspSetting#save} 仍会写出一个空列表文件，文件既然在，就不会被重新塞回来；
- *       而卸载、清数据、升级把文件搞没了，下次启动自动补回。</li>
- *   <li><b>失败不标记、下次重试</b>：站点注入要写外部存储，存储权限还没授予时会失败，
- *       因为没有标记位，下次启动自然会再试一次，直到真正落盘。</li>
- * </ol>
+ * <p>弹幕源仍按「用户没有配置才播种」判断，天然幂等：
+ * {@link DanmakuSourceSetting#hasCustomSources()} 为假时读取 assets 播种；
+ * 用户把来源删空后存的是 {@code "[]"}，仍算「配过」，不会被重新塞回来。
+ * 失败不写任何标记，下次启动自动重试。
  */
 public final class FactoryDefaults {
 
     private static final String TAG = "factory";
     private static final String ASSET_DANMAKU = "factory/danmaku_sources.json";
-    private static final String ASSET_CSP = "factory/custom_csp.json";
-
-    /**
-     * 站点注入上次是不是因为「没有所有文件访问权限」而没种上。
-     *
-     * <p>新装用户第一次启动时权限还没给，`CustomCspSetting.save()` 会抛异常。
-     * 只在启动时试一次的话，用户要退出去再进一次才能看到站点——所以这里留个标记，
-     * 首页每次 onResume 时若发现权限已经拿到就立刻补种，第一次会话就能生效。
-     */
-    private static volatile boolean cspPending;
 
     private FactoryDefaults() {
     }
@@ -56,13 +35,6 @@ public final class FactoryDefaults {
     /** 启动时调用。幂等，可以每次启动都调。 */
     public static void applyIfNeeded() {
         seedDanmaku();
-        seedCustomCsp();
-    }
-
-    /** 权限刚被授予时补种一次。没有待补任务时直接返回，开销可以忽略。 */
-    public static void retryIfPending() {
-        if (!cspPending) return;
-        seedCustomCsp();
     }
 
     private static void seedDanmaku() {
@@ -77,35 +49,6 @@ public final class FactoryDefaults {
             SpiderDebug.log(TAG, "danmaku seeded count=%d", sources.size());
         } catch (Exception e) {
             SpiderDebug.log(TAG, "danmaku seed failed: %s", e);
-        }
-    }
-
-    private static void seedCustomCsp() {
-        if (CustomCspSetting.hasRegistry()) {
-            cspPending = false;
-            return;
-        }
-        String json = readAsset(ASSET_CSP);
-        if (TextUtils.isEmpty(json)) {
-            SpiderDebug.log(TAG, "custom-csp seed skipped: asset empty");
-            return;
-        }
-        // 写外部存储要「所有文件访问」，没授权时先记账，等拿到权限再补（不写任何「已播种」标记）
-        if (!Setting.hasFileAccess()) {
-            cspPending = true;
-            SpiderDebug.log(TAG, "custom-csp seed pending: no file access");
-            return;
-        }
-        try {
-            CustomCspSetting.Registry registry = CustomCspSetting.parse(json);
-            if (registry == null) return;
-            CustomCspSetting.save(registry);
-            cspPending = false;
-            SpiderDebug.log(TAG, "custom-csp seeded items=%d file=%s", CustomCspSetting.countItems(), CustomCspSetting.dir());
-        } catch (Exception e) {
-            // 存储权限未授予等情况下写不进去，不要写任何标记，下次启动/授权后继续重试
-            cspPending = true;
-            SpiderDebug.log(TAG, "custom-csp seed failed: %s", e);
         }
     }
 

@@ -390,6 +390,12 @@ public class HomeWebController {
         pauseAt = System.currentTimeMillis();
         dispatchLifecycle("fmpause", "{time:" + pauseAt + "}");
         webView.onPause();
+        // 站点登录态落盘：CookieManager 默认随进程退出持久化，这里显式 flush，
+        // 保证进程被杀（低内存回收）时会话 Cookie 也已写盘，下次进入免重新登录。
+        try {
+            CookieManager.getInstance().flush();
+        } catch (Throwable ignored) {
+        }
     }
 
     public boolean beginInlineEvaluation() {

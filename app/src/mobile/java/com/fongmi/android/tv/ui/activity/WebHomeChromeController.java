@@ -47,7 +47,7 @@ final class WebHomeChromeController {
     private String mode;
     private String previousMode;
     private int safeBottomMax;
-    private boolean adaptivePhoneLandscape;
+    private boolean adaptiveLandscape;
     private boolean adaptiveHideNavigation;
 
     WebHomeChromeController(HomeActivity activity, ActivityHomeBinding binding, Host host, Bundle savedInstanceState, JsonObject startupChrome) {
@@ -116,11 +116,16 @@ final class WebHomeChromeController {
         dispatchViewport();
     }
 
-    /** 手机横屏适配：隐藏状态栏，并在首页隐藏底栏由顶栏内联导航替代。 */
-    void setAdaptiveLayout(boolean phoneLandscape, boolean hideNavigation) {
-        adaptivePhoneLandscape = phoneLandscape;
+    /**
+     * 手机横屏压缩形态：隐藏顶部状态栏（保留返回/手势区），首页底栏由顶栏内联导航替代。
+     * 平板横屏传 false，状态栏恢复显示；这里请求一次 insets，让容器按新的状态栏高度重新留白。
+     */
+    void setAdaptiveLayout(boolean landscape, boolean hideNavigation) {
+        boolean changed = adaptiveLandscape != landscape;
+        adaptiveLandscape = landscape;
         adaptiveHideNavigation = hideNavigation;
         refreshLayout();
+        if (changed) ViewCompat.requestApplyInsets(binding.getRoot());
     }
 
     boolean consumeBack() {
@@ -175,7 +180,7 @@ final class WebHomeChromeController {
         if (WebHomeChrome.IMMERSIVE.equals(effectiveMode)) Util.hideSystemUI(activity);
         else {
             Util.showSystemUI(activity);
-            if (adaptivePhoneLandscape) {
+            if (adaptiveLandscape) {
                 controller.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
                 controller.hide(WindowInsetsCompat.Type.statusBars());
             }

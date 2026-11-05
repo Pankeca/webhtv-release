@@ -28,6 +28,8 @@ import com.fongmi.android.tv.utils.DanmakuSearchListFocusFixer;
 import com.fongmi.android.tv.utils.NsdDeviceDiscovery;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.PreviousProcessExitLogger;
+import com.fongmi.android.tv.utils.FileUtil;
+import com.fongmi.android.tv.utils.Task;
 import com.fongmi.hook.Hook;
 import com.github.catvod.crawler.DebugLogStore;
 import com.github.catvod.crawler.SpiderDebug;
@@ -115,7 +117,7 @@ public class App extends Application implements Application.ActivityLifecycleCal
         Notify.createChannel();
         ProxySetting.apply();
         DanmakuSearchListFocusFixer.start();
-        // 全新安装/清数据后把出厂弹幕源与站点注入播种回来；幂等，用户已有配置时不动
+        // 全新安装/清数据后只补出厂弹幕源；站点/脚本已取消内置，改由云端发布
         FactoryDefaults.applyIfNeeded();
         registerActivityLifecycleCallbacks(this);
         // 「改完过一会儿自动同步」：设置项一改就打个点，真正上传由 SyncScheduler 防抖决定
@@ -138,6 +140,8 @@ public class App extends Application implements Application.ActivityLifecycleCal
     private void startBackgroundServices() {
         SpiderDebug.log("startup", "background services start cost=%sms", System.currentTimeMillis() - time);
         Server.get().start();
+        // 启动时按体积自动清理缓存（TVBox 口径：默认关闭、超上限才清、保留 update.apk），放到后台线程避免阻塞启动
+        Task.execute(FileUtil::autoClearCacheIfNeeded);
         AccountSync.bindIfNeeded();
         KeepCloudBackup.restoreIfEmpty();
         PlaybackRemoteSyncer.start();

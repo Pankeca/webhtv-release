@@ -82,6 +82,12 @@ public class RemoteSyncConfig {
         cursors.put(cursorKey(configKey), value);
     }
 
+    /** 云端被清空或账号版本变化时清掉分区游标，下一次拉取从头开始。 */
+    public void clearCursor(String configKey) {
+        if (cursors == null) return;
+        cursors.remove(cursorKey(configKey));
+    }
+
     private String cursorKey(String configKey) {
         String value = PlaybackConfigIdentity.normalizeKey(configKey);
         return value.isEmpty() ? "_default" : value;

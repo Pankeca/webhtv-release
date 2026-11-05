@@ -32,6 +32,7 @@ import com.fongmi.android.tv.ui.base.BaseFragment;
 import com.fongmi.android.tv.ui.dialog.AboutDialog;
 import com.fongmi.android.tv.ui.dialog.AccountDialog;
 import com.fongmi.android.tv.ui.dialog.AppearanceDialog;
+import com.fongmi.android.tv.ui.dialog.CacheCleanDialog;
 import com.fongmi.android.tv.ui.dialog.ChoiceDialog;
 import com.fongmi.android.tv.ui.dialog.ConfigDialog;
 import com.fongmi.android.tv.ui.dialog.HistoryDialog;
@@ -320,13 +321,9 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
         mBinding.dohText.setText(doh.getName());
     }
 
+    /** 缓存条目改为打开「缓存管理」，口径与 TVBox 一致；行右侧继续显示当前缓存大小。 */
     private void onCache(View view) {
-        FileUtil.clearCache(new Callback() {
-            @Override
-            public void success() {
-                setCacheText();
-            }
-        });
+        CacheCleanDialog.show(requireActivity(), this::setCacheText);
     }
 
     private void onBackup(View view) {

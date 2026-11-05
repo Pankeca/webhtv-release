@@ -262,12 +262,16 @@ public class Config {
 
     public Config update() {
         if (isEmpty()) return this;
+        // 本机重新选用该地址：解除按 URL 的删除标记，允许再次参与合并
+        com.fongmi.android.tv.setting.TvboxUrlTombstoneStore.clear(getUrl(), getType());
         setTime(System.currentTimeMillis());
         Prefers.put("config_" + getType(), getUrl());
         return save();
     }
 
     public void delete() {
+        // 冻结规则 C：记录按 URL 的本地删除，防止 TVBox 备份下次合并时把已删地址加回来
+        com.fongmi.android.tv.setting.TvboxUrlTombstoneStore.mark(getUrl(), getType());
         AppDatabase.get().getConfigDao().delete(getUrl(), getType());
         History.delete(getId());
         Keep.delete(getId());

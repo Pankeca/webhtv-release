@@ -10,6 +10,7 @@ import androidx.core.content.FileProvider;
 import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.impl.Callback;
+import com.fongmi.android.tv.setting.Setting;
 import com.github.catvod.utils.Path;
 
 import java.io.BufferedInputStream;
@@ -92,6 +93,25 @@ public class FileUtil {
             String usage = byteCountToDisplaySize(getDirectorySize(Path.cache()));
             App.post(() -> callback.success(usage));
         });
+    }
+
+    /**
+     * 启动时按体积自动清理缓存（对齐 TVBox）：
+     * 1. 仅在设置里开启「自动清缓存」时生效，默认关闭；
+     * 2. 缓存目录总大小超过设定上限（默认 300MB）才清理，否则什么都不做；
+     * 3. 清理范围为整个应用缓存目录，保留 update.apk（更新包），静默执行、不弹提示。
+     */
+    public static boolean autoClearCacheIfNeeded() {
+        if (!Setting.isAutoClearCache()) return false;
+        long limit = Setting.getAutoClearCacheLimitMb() * 1024L * 1024L;
+        if (getDirectorySize(Path.cache()) < limit) return false;
+        File cache = Path.cache();
+        if (!cache.isDirectory()) return false;
+        for (File file : Path.list(cache)) {
+            if ("update.apk".equals(file.getName())) continue;
+            Path.clear(file);
+        }
+        return true;
     }
 
     public static long getDirectorySize(File dir) {

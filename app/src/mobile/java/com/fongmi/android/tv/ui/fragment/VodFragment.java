@@ -2,7 +2,6 @@ package com.fongmi.android.tv.ui.fragment;
 
 import android.content.res.Configuration;
 import android.graphics.drawable.Drawable;
-import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.LayerDrawable;
 import android.text.TextUtils;
 import android.util.TypedValue;
@@ -13,6 +12,7 @@ import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -22,6 +22,7 @@ import androidx.appcompat.widget.LinearLayoutCompat;
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.content.ContextCompat;
 import androidx.core.graphics.drawable.DrawableCompat;
+import androidx.core.widget.TextViewCompat;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentManager;
 import androidx.fragment.app.FragmentStatePagerAdapter;
@@ -79,6 +80,7 @@ import org.greenrobot.eventbus.EventBus;
 import org.greenrobot.eventbus.Subscribe;
 import org.greenrobot.eventbus.ThreadMode;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -93,6 +95,8 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
     private String mChromeMode = WebHomeChrome.NORMAL;
     private int mHomeWebTopMargin;
     private int mToolbarHeight;
+    private int mMetricsWidth;
+    private int mMetricsHeight;
     private LinearLayoutCompat mInlineNavigation;
 
     public static VodFragment newInstance() {
@@ -120,6 +124,8 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
     protected void initView() {
         EventBus.getDefault().register(this);
         mBinding.title.setSelected(true);
+        // 顶栏右侧留 8dp 安全边：最后一颗胶囊不贴屏幕边缘，也避开手势导航区
+        mBinding.toolbar.setPaddingRelative(mBinding.toolbar.getPaddingStart(), mBinding.toolbar.getPaddingTop(), ResUtil.dp2px(8), mBinding.toolbar.getPaddingBottom());
         mHomeWebTopMargin = ((ViewGroup.MarginLayoutParams) mBinding.homeWeb.getLayoutParams()).topMargin;
         setRecyclerView();
         setWebView();
@@ -130,6 +136,20 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
         updateToolbarMenu();
         // 菜单的 actionView 要等 Toolbar 真正完成布局才拿得到，post 一帧再挂监听
         mBinding.toolbar.post(this::setupPills);
+        // 顶栏尺寸变化（横竖屏切换、工具栏压扁）后重新分配胶囊与搜索框宽度
+        mBinding.toolbar.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+            int width = right - left;
+            int height = bottom - top;
+            if (width <= 0) return;
+            if (width == mMetricsWidth && height == mMetricsHeight) return;
+            mMetricsWidth = width;
+            mMetricsHeight = height;
+            applyToolbarMetrics();
+        });
+        // 站点名标题宽度变化（切站点/换语言）时，顶栏可用宽度也会变，需要重算
+        mBinding.title.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+            if (right - left != oldRight - oldLeft) applyToolbarMetrics();
+        });
         updateAccountIcon();
         mToolbarHeight = mBinding.toolbar.getLayoutParams().height;
         applySmallScreenLayout();
@@ -141,7 +161,8 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
      */
     private void applySmallScreenLayout() {
         Configuration configuration = getResources().getConfiguration();
-        if (configuration.orientation == Configuration.ORIENTATION_LANDSCAPE && configuration.screenHeightDp < 480) {
+        // 压扁顶栏只对手机横屏生效，平板横屏保留正常行高
+        if (configuration.orientation == Configuration.ORIENTATION_LANDSCAPE && configuration.screenHeightDp < 480 && !ResUtil.isPad()) {
             ViewGroup.LayoutParams params = mBinding.toolbar.getLayoutParams();
             params.height = ResUtil.dp2px(44);
             mBinding.toolbar.setLayoutParams(params);
@@ -157,7 +178,6 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
             mInlineNavigation.setOrientation(LinearLayoutCompat.HORIZONTAL);
             mInlineNavigation.setGravity(Gravity.CENTER_VERTICAL);
             mInlineNavigation.setPadding(ResUtil.dp2px(4), 0, ResUtil.dp2px(4), 0);
-            mInlineNavigation.setBackground(createInlineNavigationBackground());
             addInlineNavigationItem(R.string.pill_home, R.id.vod);
             addInlineNavigationItem(R.string.nav_live, R.id.live);
             addInlineNavigationItem(R.string.nav_setting, R.id.setting);
@@ -174,13 +194,18 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
         mBinding.toolbar.setLayoutParams(params);
         View live = mInlineNavigation.getChildAt(1);
         if (live != null) live.setVisibility(LiveConfig.hasUrl() ? View.VISIBLE : View.GONE);
+        // 3 个内联胶囊并入顶栏后需要重新计算整行宽度
+        applyToolbarMetrics();
     }
 
-    private Drawable createInlineNavigationBackground() {
-        GradientDrawable drawable = new GradientDrawable();
-        drawable.setColor(0x26FFFFFF);
-        drawable.setCornerRadius(ResUtil.dp2px(20));
-        return drawable;
+    @Override
+    public void onConfigurationChanged(@NonNull Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        if (mBinding == null) return;
+        // 尺寸缓存失效，下一帧按新方向重新分配
+        mMetricsWidth = 0;
+        mMetricsHeight = 0;
+        mBinding.toolbar.post(this::applyToolbarMetrics);
     }
 
     /** 内联导航的一个「文字图标」：白字胶囊，点一下切到对应底栏页签。 */
@@ -257,6 +282,7 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
             view.setOnClickListener(v -> onMenuItemClick(item));
             refreshPill(item);
         }
+        applyToolbarMetrics();
     }
 
     /** 只刷新单个胶囊文字（追更有更新时要加个红点圆），不重建整个菜单。 */
@@ -265,6 +291,175 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
         if (!(view instanceof TextView)) return;
         CharSequence title = item.getTitle();
         ((TextView) view).setText(title == null ? "" : title.toString());
+    }
+
+    /**
+     * 首页顶栏自适应分配：
+     * 竖屏：图标与线路名并为一组（组宽按实测标题宽度，标题在组内省略），
+     * 搜索框在旧宽度（2 份）基础上加长 0.5 倍（3 份），
+     * 其余 5 个胶囊等宽等高平分剩下的宽度，字号随行高同比缩放，任何屏幕都不截断文字；
+     * 手机横屏：底栏移上来的 3 个胶囊也计入同一行，8 颗胶囊等宽等高，搜索框吃满剩余宽度；
+     * 平板横屏不参与压缩，仍按竖屏那套 5 胶囊分配。
+     */
+    private void applyToolbarMetrics() {
+        if (!isAdded() || mBinding == null) return;
+        Toolbar toolbar = mBinding.toolbar;
+        int width = toolbar.getWidth();
+        if (width <= 0) return;
+        Configuration configuration = getResources().getConfiguration();
+        // 只有手机横屏才走「8 颗胶囊压缩」布局；平板横屏保持竖屏那套 5 胶囊 + 底栏
+        boolean phoneLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE && !ResUtil.isPad();
+        int rowHeight = toolbar.getHeight() > 0 ? toolbar.getHeight() : ResUtil.dp2px(56);
+        int gap = ResUtil.dp2px(2);
+        // 行高变矮（手机横屏 44dp）时胶囊同比压扁，字号跟随缩放，避免文字被裁切
+        int pillHeight = Math.min(ResUtil.dp2px(34), Math.max(ResUtil.dp2px(24), rowHeight - ResUtil.dp2px(10)));
+        float textSp = Math.max(9f, Math.min(12f, 12f * pillHeight / (float) ResUtil.dp2px(34)));
+        int logoSize = Math.min(pillHeight, ResUtil.dp2px(phoneLandscape ? 30 : 28));
+
+        Menu menu = toolbar.getMenu();
+        View search = actionView(menu, R.id.search);
+        List<View> pills = new ArrayList<>();
+        for (int id : PILL_IDS) {
+            View view = actionView(menu, id);
+            if (view != null && view.getVisibility() == View.VISIBLE) pills.add(view);
+        }
+        if (mInlineNavigation != null && mInlineNavigation.getVisibility() == View.VISIBLE) {
+            for (int i = 0; i < mInlineNavigation.getChildCount(); i++) {
+                View child = mInlineNavigation.getChildAt(i);
+                if (child != null && child.getVisibility() == View.VISIBLE) pills.add(child);
+            }
+        }
+        if (search == null || pills.isEmpty()) return;
+
+        int padding = toolbar.getPaddingStart() + toolbar.getPaddingEnd();
+        // 两侧间距：brand 组末尾 1 份 + 搜索框与每个胶囊各 2 份
+        int margins = gap * (1 + 2 * (pills.size() + 1));
+        // webhome 全屏按钮是普通菜单项，拿不到 actionView，按一个图标位预留宽度
+        MenuItem fullscreen = menu.findItem(R.id.web_home_fullscreen);
+        if (fullscreen != null && fullscreen.isVisible()) margins += ResUtil.dp2px(40);
+        // 顶栏去掉内边距与胶囊间距后的整行宽度
+        int total = Math.max(0, width - padding - margins);
+        // 线路名最多占整行的 18%，再长就在组内省略，保证胶囊不被挤出屏幕
+        int titleCap = Math.min(ResUtil.dp2px(64), (int) (total * 0.18f));
+        mBinding.title.setMaxWidth(Math.max(ResUtil.dp2px(24), titleCap));
+        int titleWidth = mBinding.title.getVisibility() == View.VISIBLE ? Math.min(mBinding.title.getWidth(), titleCap) : 0;
+        int brandWidth = logoSize + (titleWidth > 0 ? gap + titleWidth : 0);
+        int available = Math.max(0, total - brandWidth);
+
+        int searchWidth;
+        int pillWidth;
+        int count = pills.size();
+        if (!phoneLandscape) {
+            // 竖屏与平板横屏：搜索框占 3 份，剩下 5 颗胶囊等宽平分（平板横屏回到原有底栏尺寸）
+            int unit = Math.max(ResUtil.dp2px(14), total / (3 + count * 2));
+            int desiredSearch = unit * 3;
+            pillWidth = Math.max(ResUtil.dp2px(34), (available - desiredSearch) / count);
+            searchWidth = available - count * pillWidth;
+            if (searchWidth < ResUtil.dp2px(48)) {
+                // 空间很紧时先保证搜索框可点，再退让胶囊到 32dp
+                pillWidth = Math.max(ResUtil.dp2px(32), (available - ResUtil.dp2px(48)) / count);
+                searchWidth = available - count * pillWidth;
+            }
+        } else {
+            // 横屏：搜索框约占两成宽度，其余 8 颗胶囊（含底栏上移的 3 颗）等宽等高平分
+            int desiredSearch = Math.max(ResUtil.dp2px(120), (int) (available * 0.22f));
+            pillWidth = Math.max(ResUtil.dp2px(48), (available - desiredSearch) / count);
+            searchWidth = available - count * pillWidth;
+        }
+
+        applyLogoMetrics(logoSize, gap);
+        applySearchMetrics(search, searchWidth, pillHeight, textSp, gap);
+        for (View view : pills) applyPillMetrics(view, pillWidth, pillHeight, textSp, gap);
+        if (mInlineNavigation != null) {
+            // 容器不再额外留内边距，间距完全由每个胶囊的 margin 控制，保证总宽度可精确计算
+            mInlineNavigation.setPadding(0, 0, 0, 0);
+            ViewGroup.LayoutParams params = mInlineNavigation.getLayoutParams();
+            if (params instanceof ViewGroup.MarginLayoutParams) {
+                ((ViewGroup.MarginLayoutParams) params).setMarginStart(0);
+                ((ViewGroup.MarginLayoutParams) params).setMarginEnd(0);
+            }
+            if (params != null) {
+                params.width = ViewGroup.LayoutParams.WRAP_CONTENT;
+                params.height = pillHeight;
+                mInlineNavigation.setLayoutParams(params);
+            }
+        }
+    }
+
+    private View actionView(Menu menu, int id) {
+        MenuItem item = menu.findItem(id);
+        return item == null ? null : item.getActionView();
+    }
+
+    private void applyLogoMetrics(int size, int gap) {
+        ViewGroup.LayoutParams params = mBinding.logo.getLayoutParams();
+        if (params == null) return;
+        params.width = size;
+        params.height = size;
+        if (params instanceof ViewGroup.MarginLayoutParams) {
+            ((ViewGroup.MarginLayoutParams) params).setMarginStart(0);
+            ((ViewGroup.MarginLayoutParams) params).setMarginEnd(gap);
+        }
+        mBinding.logo.setLayoutParams(params);
+    }
+
+    private void applySearchMetrics(View search, int width, int height, float textSp, int gap) {
+        ViewGroup.LayoutParams params = search.getLayoutParams();
+        if (params != null) {
+            params.width = width;
+            params.height = height;
+            if (params instanceof ViewGroup.MarginLayoutParams) {
+                ((ViewGroup.MarginLayoutParams) params).setMarginStart(gap);
+                ((ViewGroup.MarginLayoutParams) params).setMarginEnd(gap);
+            }
+            search.setLayoutParams(params);
+        }
+        if (search instanceof ViewGroup && ((ViewGroup) search).getChildCount() > 0) {
+            View icon = ((ViewGroup) search).getChildAt(0);
+            if (icon instanceof ImageView) {
+                int size = Math.max(ResUtil.dp2px(12), (int) (height * 15f / ResUtil.dp2px(34)));
+                ViewGroup.LayoutParams iconParams = icon.getLayoutParams();
+                if (iconParams != null) {
+                    iconParams.width = size;
+                    iconParams.height = size;
+                    icon.setLayoutParams(iconParams);
+                }
+            }
+        }
+        View label = search.findViewById(R.id.searchText);
+        if (label != null) {
+            // 搜索框加长后文字有位置了，只要宽度够就显示「搜索」两个字
+            boolean show = width >= ResUtil.dp2px(64);
+            label.setVisibility(show ? View.VISIBLE : View.GONE);
+            if (label instanceof TextView) ((TextView) label).setTextSize(TypedValue.COMPLEX_UNIT_SP, textSp);
+        }
+    }
+
+    private void applyPillMetrics(View view, int width, int height, float textSp, int gap) {
+        ViewGroup.LayoutParams params = view.getLayoutParams();
+        if (params != null) {
+            params.width = width;
+            params.height = height;
+            if (params instanceof ViewGroup.MarginLayoutParams) {
+                ((ViewGroup.MarginLayoutParams) params).setMarginStart(gap);
+                ((ViewGroup.MarginLayoutParams) params).setMarginEnd(gap);
+            }
+            view.setLayoutParams(params);
+        }
+        if (view instanceof TextView) {
+            TextView text = (TextView) view;
+            text.setMinWidth(0);
+            text.setMinimumWidth(0);
+            text.setPadding(0, 0, 0, 0);
+            text.setIncludeFontPadding(false);
+            text.setSingleLine(true);
+            text.setMaxLines(1);
+            text.setEllipsize(TextUtils.TruncateAt.END);
+            int maxSp = Math.max(8, Math.round(textSp));
+            text.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSp);
+            // 字号随行高缩放后仍放不下时，再在 6sp~当前字号之间自动缩字，保证不截断
+            TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(text, 6, maxSp, 1, TypedValue.COMPLEX_UNIT_SP);
+        }
     }
 
     private void setRecyclerView() {
@@ -431,18 +626,10 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
         setupPills();
     }
 
-    /** 小屏竖屏空间有限：隐藏站点名标题、搜索框缩成图标，把追更/最近观看/下载中心保留在顶栏。 */
+    /** 线路图标与线路名并为一组常驻顶栏：竖屏不再隐藏名字，宽度由 applyToolbarMetrics 统一分配。 */
     private void applyCompactToolbar() {
         if (!isAdded() || mBinding == null) return;
-        boolean compact = getResources().getConfiguration().screenWidthDp < 600;
-        mBinding.title.setVisibility(compact ? View.GONE : View.VISIBLE);
-        int logoSize = ResUtil.dp2px(compact ? 28 : 36);
-        ViewGroup.LayoutParams logoParams = mBinding.logo.getLayoutParams();
-        if (logoParams != null) {
-            logoParams.width = logoSize;
-            logoParams.height = logoSize;
-            mBinding.logo.setLayoutParams(logoParams);
-        }
+        mBinding.title.setVisibility(View.VISIBLE);
     }
 
     private void setSearchAction() {
@@ -450,16 +637,7 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
         MenuItem item = mBinding.toolbar.getMenu().findItem(R.id.search);
         View search = item == null ? null : item.getActionView();
         if (search == null) return;
-        // 小屏（宽 < 600dp）只保留搜索图标，给最近观看/下载中心等按钮留位置
-        if (getResources().getConfiguration().screenWidthDp < 600) {
-            ViewGroup.LayoutParams params = search.getLayoutParams();
-            if (params != null) {
-                params.width = ResUtil.dp2px(44);
-                search.setLayoutParams(params);
-            }
-            View label = search.findViewById(R.id.searchText);
-            if (label != null) label.setVisibility(View.GONE);
-        }
+        // 宽高由 applyToolbarMetrics 统一分配（竖屏按比例，横屏吃满剩余宽度），这里只处理点击
         search.setOnClickListener(view -> SearchActivity.start(requireActivity()));
         search.setOnLongClickListener(view -> {
             SearchActivity.start(requireActivity(), "", getHome().getKey());
@@ -628,11 +806,10 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
 
     @Override
     public boolean canBack() {
+        // 网页历史优先：详情页一次返回就回到上一层。
+        // 原生栏隐藏不再在这里消费返回，否则第一次滑动只恢复工具栏、被当成「一层」吃掉；
+        // 恢复原生栏放到 HomeActivity 已无可返回层级时处理。
         if (mWeb != null && mWeb.handleBack()) return false;
-        if (isNativeChromeHidden()) {
-            requestNormalChrome();
-            return false;
-        }
         if (mBinding.pager.getAdapter() == null || mBinding.pager.getAdapter().getCount() == 0) return true;
         if (!getFragment().canBack()) return true;
         getFragment().goBack();

@@ -33,7 +33,7 @@ public final class SyncScheduler {
     private static final String TAG = "sync-scheduler";
     private static final String KEY_LAST_AT = "sync_scheduler_last_at";
     private static final long DEBOUNCE_MS = 8_000;
-    private static final long STARTUP_MIN_GAP_MS = 60_000;
+    private static final long STARTUP_MIN_GAP_MS = 30_000;
     private static final long BACKGROUND_DELAY_MS = 30_000;
 
     private static final AtomicBoolean syncing = new AtomicBoolean(false);
@@ -42,6 +42,10 @@ public final class SyncScheduler {
     private static volatile long dueAt;
     private static volatile boolean posted;
     private static volatile boolean prefListenerBound;
+    /** 本进程是否还没做过启动同步：冷启动必须补一次，不受前台间隔限制。 */
+    private static volatile boolean coldStart = true;
+    /** 下一次 run() 走启动双向同步（上传本地 → 拉取增量 → 合并）。 */
+    private static volatile boolean startupPending;
 
     private SyncScheduler() {
     }
@@ -54,9 +58,13 @@ public final class SyncScheduler {
         schedule(DEBOUNCE_MS);
     }
 
+    /** 冷启动 / 回前台：登录态下补一次双向同步；未登录直接不排期。 */
     public static void onStartup() {
         long last = Prefers.getLong(KEY_LAST_AT);
-        if (System.currentTimeMillis() - last < STARTUP_MIN_GAP_MS) return;
+        boolean cold = coldStart;
+        coldStart = false;
+        if (!cold && System.currentTimeMillis() - last < STARTUP_MIN_GAP_MS) return;
+        startupPending = true;
         schedule(3_000);
     }
 
@@ -87,7 +95,10 @@ public final class SyncScheduler {
     }
 
     private static void schedule(long delayMs) {
-        if (!canSync()) return;
+        if (!canSync()) {
+            startupPending = false;
+            return;
+        }
         dueAt = System.currentTimeMillis() + delayMs;
         if (posted) return;
         posted = true;
@@ -102,14 +113,23 @@ public final class SyncScheduler {
             return;
         }
         posted = false;
-        if (!canSync()) return;
+        if (!canSync()) {
+            startupPending = false;
+            return;
+        }
         if (!syncing.compareAndSet(false, true)) return;
         try {
-            AccountSync.syncNow(() -> {
+            Runnable done = () -> {
                 syncing.set(false);
                 Prefers.put(KEY_LAST_AT, System.currentTimeMillis());
                 SpiderDebug.log(TAG, "synced");
-            });
+            };
+            if (startupPending) {
+                startupPending = false;
+                AccountSync.syncStartup(done);
+            } else {
+                AccountSync.syncNow(done);
+            }
         } catch (Throwable e) {
             syncing.set(false);
             SpiderDebug.log(TAG, "sync failed: %s", e.toString());

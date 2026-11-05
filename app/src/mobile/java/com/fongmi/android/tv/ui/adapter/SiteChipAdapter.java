@@ -1,8 +1,11 @@
 package com.fongmi.android.tv.ui.adapter;
 
+import android.content.Context;
+import android.graphics.Paint;
 import android.text.SpannableStringBuilder;
 import android.text.TextUtils;
 import android.text.style.RelativeSizeSpan;
+import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.ViewGroup;
@@ -32,6 +35,10 @@ public class SiteChipAdapter extends RecyclerView.Adapter<SiteChipAdapter.ViewHo
     private final List<Vod> mItems;
     private final Map<String, Integer> mEpisodes;
     private String selectedKey = "";
+    /** 按最长「站点名 + 集数」测出的统一胶囊宽度；0 表示需要重新测量。 */
+    private int chipWidth;
+    private int chipHeight;
+    private int chipPadding;
 
     public SiteChipAdapter(OnClickListener listener) {
         this.listener = listener;
@@ -58,6 +65,7 @@ public class SiteChipAdapter extends RecyclerView.Adapter<SiteChipAdapter.ViewHo
                 mItems.add(vod);
             }
         }
+        chipWidth = 0;
         notifyDataSetChanged();
     }
 
@@ -65,6 +73,7 @@ public class SiteChipAdapter extends RecyclerView.Adapter<SiteChipAdapter.ViewHo
     public void setEpisodeCounts(Map<String, Integer> episodes) {
         mEpisodes.clear();
         if (episodes != null) mEpisodes.putAll(episodes);
+        chipWidth = 0;
         notifyItemRangeChanged(0, getItemCount());
     }
 
@@ -84,6 +93,7 @@ public class SiteChipAdapter extends RecyclerView.Adapter<SiteChipAdapter.ViewHo
 
     public void clear() {
         mItems.clear();
+        chipWidth = 0;
         notifyDataSetChanged();
     }
 
@@ -105,13 +115,18 @@ public class SiteChipAdapter extends RecyclerView.Adapter<SiteChipAdapter.ViewHo
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         Vod item = mItems.get(position);
-        String name = TextUtils.isEmpty(item.getSiteName()) ? item.getName() : item.getSiteName();
+        String name = siteName(item);
         Integer count = mEpisodes.get(item.getSiteKey());
         holder.binding.text.setBackgroundResource(R.drawable.shape_video_item);
         holder.binding.text.setTextColor(ContextCompat.getColorStateList(holder.binding.text.getContext(), R.color.selector_video_text));
         holder.binding.text.setTextSize(14);
         holder.binding.text.setGravity(Gravity.CENTER);
-        holder.binding.text.setText(buildText(holder, name, count == null ? 0 : count));
+        ensureChipMetrics(holder.binding.text.getContext());
+        holder.binding.text.setPadding(chipPadding, 0, chipPadding, 0);
+        // 统一宽度后超长站点名按中间省略，避免撑破胶囊或换行
+        int textWidth = Math.max(0, chipWidth - chipPadding * 2);
+        String displayName = TextUtils.ellipsize(name, holder.binding.text.getPaint(), textWidth, TextUtils.TruncateAt.MIDDLE).toString();
+        holder.binding.text.setText(buildText(holder, displayName, count == null ? 0 : count));
         holder.binding.text.setSelected(TextUtils.equals(selectedKey, item.getSiteKey()));
         holder.binding.text.setClickable(true);
         holder.binding.text.setOnClickListener(view -> listener.onItemClick(item));
@@ -119,14 +134,42 @@ public class SiteChipAdapter extends RecyclerView.Adapter<SiteChipAdapter.ViewHo
         int spacing = ResUtil.dp2px(8);
         params.setMargins(0, 0, spacing, spacing);
         // 站点始终单行横滑：flexbox 默认会把子项压缩进一行，胶囊被压成竖排文字；
-        // 明确不收缩 + 自适应宽度，超出的部分交给 RecyclerView 横向滚动。
-        params.width = ViewGroup.LayoutParams.WRAP_CONTENT;
+        // 明确不收缩 + 统一宽高，超出的部分交给 RecyclerView 横向滚动。
+        params.width = chipWidth;
+        params.height = chipHeight;
         if (params instanceof FlexboxLayoutManager.LayoutParams) {
             FlexboxLayoutManager.LayoutParams flex = (FlexboxLayoutManager.LayoutParams) params;
             flex.setFlexShrink(0f);
             flex.setFlexBasisPercent(-1f);
         }
         holder.binding.text.setLayoutParams(params);
+    }
+
+    private String siteName(Vod item) {
+        return TextUtils.isEmpty(item.getSiteName()) ? item.getName() : item.getSiteName();
+    }
+
+    /**
+     * 按「站点名 + 更新至第 N 集」里最长的一条测宽，所有胶囊统一宽高。
+     * 宽度封顶 150dp，超长名称在绑定阶段用中间省略号截断。
+     */
+    private void ensureChipMetrics(Context context) {
+        if (chipWidth > 0) return;
+        int padding = ResUtil.dp2px(24);
+        int max = 0;
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        paint.setTextSize(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 14, context.getResources().getDisplayMetrics()));
+        String episodeSample = context.getString(R.string.detail_site_episodes, 9999);
+        float episodeWidth = paint.measureText(episodeSample) * 0.82f;
+        for (Vod item : mItems) {
+            if (item == null) continue;
+            max = Math.max(max, (int) Math.ceil(paint.measureText(siteName(item))));
+            Integer count = mEpisodes.get(item.getSiteKey());
+            if (count != null && count > 0) max = Math.max(max, (int) Math.ceil(episodeWidth));
+        }
+        chipWidth = Math.min(ResUtil.dp2px(150), Math.max(ResUtil.dp2px(72), max + padding));
+        chipHeight = ResUtil.dp2px(42);
+        chipPadding = padding / 2;
     }
 
     /** 站点名一行，集数一行且字号略小，和可可影视的站点胶囊一致。 */

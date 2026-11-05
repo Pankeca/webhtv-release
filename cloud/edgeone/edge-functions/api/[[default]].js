@@ -39,6 +39,14 @@ const TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const PBKDF2_ITERATIONS = 60000;
 const MAX_BODY_BYTES = 1024 * 1024;
 const MAX_EVENTS_PER_REQUEST = 20;
+// 拉取并发的单 key 读取上限：历史坏 blob 会拖慢整请求，所以不能逐条串行 get。
+const READ_CONCURRENCY = 24;
+// 单 key 读取超时：超过该值视为坏 key 或瞬时限流，不阻塞整请求；下次拉取会重试。
+// 取 5s 是为了避免把「偶发变慢的有效记录」误判为坏 key（被跳过会推迟该条同步）。
+const READ_TIMEOUT_MS = 5000;
+// 记录内容读取走 CDN 缓存的 eventual 读：分区拉取只做增量合并，允许分钟级延迟以换取吞吐；
+// 写入/鉴权仍使用 strong 读，保证读己之写与令牌时效。
+const READ_CONSISTENCY = 'eventual';
 
 function json(status, body) {
     return new Response(JSON.stringify(body), {status, headers: JSON_HEADERS});
@@ -66,6 +74,11 @@ function kvOf(context) {
             const value = await blobStore().get(key, {type: 'text', consistency: 'strong'});
             return value == null ? null : value;
         },
+        // 仅用于分区记录的全量拉取：eventual 读走 CDN 缓存，避免 100+ 次 strong 读串行/饱和
+        getFast: async function (key) {
+            const value = await blobStore().get(key, {type: 'text', consistency: READ_CONSISTENCY});
+            return value == null ? null : value;
+        },
         put: async function (key, value) {
             await blobStore().set(key, String(value));
         },
@@ -80,6 +93,38 @@ function kvOf(context) {
             }), complete: true};
         },
     };
+}
+
+/** 单 key 读取加超时，避免单个坏 blob 拖住整个请求。 */
+async function getWithTimeout(kv, key) {
+    let timer;
+    const timeout = new Promise(function (_, reject) {
+        timer = setTimeout(function () {
+            reject(new Error('timeout after ' + READ_TIMEOUT_MS + 'ms'));
+        }, READ_TIMEOUT_MS);
+    });
+    try {
+        return await Promise.race([kv.getFast(key), timeout]);
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+/** 有并发上限的批量执行，结果按输入顺序返回。 */
+async function mapLimit(items, limit, worker) {
+    const results = new Array(items.length);
+    let next = 0;
+    async function runner() {
+        while (next < items.length) {
+            const index = next++;
+            results[index] = await worker(items[index], index);
+        }
+    }
+    const runners = [];
+    const size = Math.min(limit, items.length);
+    for (let i = 0; i < size; i++) runners.push(runner());
+    await Promise.all(runners);
+    return results;
 }
 
 function toHex(buffer) {
@@ -179,13 +224,34 @@ async function authUser(kv, request) {
         await kv.delete('t_' + hash);
         return null;
     }
-    const rawUser = await kv.get('u_' + entry.uid);
+    // 令牌条目仍 strong 读（撤销立即生效）；用户资料只读展示字段，允许 eventual 读降延迟
+    const rawUser = await kv.getFast('u_' + entry.uid);
     if (!rawUser) return null;
     try {
         return JSON.parse(rawUser);
     } catch (e) {
         return null;
     }
+}
+
+/** 仅校验令牌并取 uid：分区拉取只需要 uid，省掉一次用户资料读取。 */
+async function authUid(kv, request) {
+    const token = clientToken(request);
+    if (!token) return null;
+    const hash = await sha256hex(token);
+    const raw = await kv.get('t_' + hash);
+    if (!raw) return null;
+    let entry;
+    try {
+        entry = JSON.parse(raw);
+    } catch (e) {
+        return null;
+    }
+    if (!entry || !entry.uid || entry.exp <= Date.now()) {
+        await kv.delete('t_' + hash);
+        return null;
+    }
+    return entry.uid;
 }
 
 async function readJson(request) {
@@ -309,18 +375,246 @@ async function deletePrefix(kv, prefix) {
     }
 }
 
+// ---------- 账号版本纪元 bk_<uid>_rv ----------
+// 纪元只在「整份覆盖 / 清空账号数据 / 删除账号数据」时 +1；旧账号没有该 key，读作 rev=0，
+// 老客户端既不发送也不解析该字段，因此新增纪元对存量客户端完全透明。
+
+function revKey(uid) {
+    return 'bk_' + uid + '_rv';
+}
+
+async function getBackupRev(kv, uid) {
+    const raw = await kv.get(revKey(uid));
+    if (!raw) return {rev: 0, updatedAt: 0};
+    try {
+        const parsed = JSON.parse(raw);
+        const rev = Number(parsed && parsed.rev);
+        return {
+            rev: Number.isFinite(rev) && rev > 0 ? Math.floor(rev) : 0,
+            updatedAt: Number((parsed && parsed.updatedAt) || 0) || 0,
+        };
+    } catch (e) {
+        return {rev: 0, updatedAt: 0};
+    }
+}
+
+async function bumpBackupRev(kv, uid) {
+    const current = await getBackupRev(kv, uid);
+    const next = {rev: current.rev + 1, updatedAt: Date.now()};
+    await kv.put(revKey(uid), JSON.stringify(next));
+    return next;
+}
+
+// ---------- keep 快照按条目合并 ----------
+// 两端客户端上传的是整份 {keeps, tracks} 快照，服务端在 merge=1 时按「剧名优先、归一 key 兜底」
+// 求并集，同一剧取 createTime/time 较新者，并保留墓碑（tombstones 或 deleted:true 条目），
+// 避免先读后写的竞态把另一端的条目整份盖掉。
+
+const KEEP_SYMBOL = '@@@';
+const KEEP_TOMBSTONE_LIMIT = 500;
+const KEEP_MERGE_RETRIES = 3;
+
+function isObject(value) {
+    return value != null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function textOf(value) {
+    return value == null ? '' : String(value).trim();
+}
+
+/** key 归一为 siteKey@@@vodId@@@0：第三段 cid 只在本机有意义，跨端身份忽略。 */
+function canonicalKeepKey(key) {
+    const parts = textOf(key).split(KEEP_SYMBOL);
+    if (parts.length >= 2 && parts[0] && parts[1]) return parts[0] + KEEP_SYMBOL + parts[1] + KEEP_SYMBOL + '0';
+    return textOf(key);
+}
+
+/** 合并身份：剧名优先（与客户端「同名只留一条」口径一致），无名时退回归一 key。 */
+function keepIdentity(item) {
+    if (!isObject(item)) return '';
+    const name = textOf(item.vodName);
+    if (name) return 'n:' + name;
+    const key = canonicalKeepKey(item.key);
+    if (key) return 'k:' + key;
+    const siteKey = textOf(item.siteKey);
+    const vodId = textOf(item.vodId);
+    if (siteKey && vodId) return 'k:' + siteKey + KEEP_SYMBOL + vodId + KEEP_SYMBOL + '0';
+    return '';
+}
+
+function keepTime(item) {
+    if (!isObject(item)) return 0;
+    const value = item.createTime != null ? item.createTime : item.time;
+    return Number(value) || 0;
+}
+
+function normalizeKeep(item) {
+    const copy = Object.assign({}, item);
+    copy.key = canonicalKeepKey(item.key);
+    return copy;
+}
+
+function collectTombstones(map, list, fallbackTime, onlyDeleted) {
+    if (!Array.isArray(list)) return;
+    for (const entry of list) {
+        if (!isObject(entry)) continue;
+        if (onlyDeleted && entry.deleted !== true) continue;
+        const id = keepIdentity(entry);
+        if (!id) continue;
+        const deletedAt = Number(entry.deletedAt || entry.updatedAt || entry.time || entry.createTime || fallbackTime) || 0;
+        if (deletedAt <= 0) continue;
+        map.set(id, Math.max(map.get(id) || 0, deletedAt));
+    }
+}
+
+/** 合并两份 keep 快照：并集 + 同剧取新 + 墓碑删除，输出可重复执行（幂等）。 */
+function mergeKeepData(baseData, incomingData) {
+    const base = isObject(baseData) ? baseData : {};
+    const incoming = isObject(incomingData) ? incomingData : {};
+    const now = Date.now();
+    const tombstones = new Map();
+    collectTombstones(tombstones, base.tombstones, 0, false);
+    collectTombstones(tombstones, incoming.tombstones, now, false);
+    // 兼容「条目自带 deleted:true」的墓碑表达（老快照 + 新客户端都可能是这种）
+    collectTombstones(tombstones, base.keeps, 0, true);
+    collectTombstones(tombstones, base.tracks, 0, true);
+    collectTombstones(tombstones, incoming.keeps, now, true);
+    collectTombstones(tombstones, incoming.tracks, now, true);
+
+    const keepMap = new Map();
+    const trackMap = new Map();
+    const deletedAtOf = (id) => tombstones.get(id) || 0;
+
+    const mergeKeep = (item) => {
+        if (!isObject(item) || item.deleted === true) return;
+        const id = keepIdentity(item);
+        if (!id) return;
+        const entry = normalizeKeep(item);
+        if (keepTime(entry) <= deletedAtOf(id)) return; // 墓碑之后才允许出现，删除不复活
+        const old = keepMap.get(id);
+        if (!old || keepTime(entry) > keepTime(old)) keepMap.set(id, entry);
+    };
+    const mergeTrack = (item) => {
+        if (!isObject(item) || item.deleted === true) return;
+        const id = keepIdentity(item);
+        if (!id) return;
+        const entry = normalizeKeep(item);
+        if (Number(entry.time || 0) <= deletedAtOf(id)) return;
+        const old = trackMap.get(id);
+        if (!old) {
+            trackMap.set(id, entry);
+            return;
+        }
+        // 进度只增不减（seen/count 取大），展示字段取 time 较新一侧，days=-1 视为「未设置」
+        const newer = Number(entry.time || 0) >= Number(old.time || 0) ? entry : old;
+        const merged = Object.assign({}, newer);
+        const seen = Math.max(Number(old.seen) || 0, Number(entry.seen) || 0);
+        const count = Math.max(Number(old.count) || 0, Number(entry.count) || 0, seen);
+        merged.seen = seen;
+        merged.count = count;
+        const days = Number(entry.days);
+        merged.days = Number.isFinite(days) && days !== -1 ? days : (Number(old.days) || 0);
+        merged.time = Math.max(Number(old.time) || 0, Number(entry.time) || 0);
+        trackMap.set(id, merged);
+    };
+
+    for (const item of Array.isArray(base.keeps) ? base.keeps : []) mergeKeep(item);
+    for (const item of Array.isArray(incoming.keeps) ? incoming.keeps : []) mergeKeep(item);
+    for (const item of Array.isArray(base.tracks) ? base.tracks : []) mergeTrack(item);
+    for (const item of Array.isArray(incoming.tracks) ? incoming.tracks : []) mergeTrack(item);
+
+    const tombstoneList = Array.from(tombstones.entries())
+        .sort(function (a, b) { return b[1] - a[1]; })
+        .slice(0, KEEP_TOMBSTONE_LIMIT)
+        .map(function (pair) {
+            const id = pair[0];
+            const name = id.startsWith('n:') ? id.substring(2) : '';
+            return {
+                key: id.startsWith('k:') ? id.substring(2) : '',
+                vodName: name,
+                deletedAt: pair[1],
+            };
+        });
+
+    return {
+        keeps: Array.from(keepMap.values()),
+        tracks: Array.from(trackMap.values()),
+        tombstones: tombstoneList,
+    };
+}
+
+/**
+ * 回读校验：合并结果里的每条身份、时间与进度都还在云端。
+ * Blob 没有 CAS/事务，只能靠「写后延时回读」发现被并发写覆盖，再合并一轮收敛。
+ */
+function mergedFullyStored(raw, merged) {
+    try {
+        const stored = JSON.parse(raw);
+        if (!isObject(stored) || !isObject(stored.data)) return false;
+        const keeps = new Map();
+        for (const item of Array.isArray(stored.data.keeps) ? stored.data.keeps : []) {
+            const id = keepIdentity(item);
+            if (id) keeps.set(id, item);
+        }
+        const tracks = new Map();
+        for (const item of Array.isArray(stored.data.tracks) ? stored.data.tracks : []) {
+            const id = keepIdentity(item);
+            if (id) tracks.set(id, item);
+        }
+        for (const item of Array.isArray(merged.keeps) ? merged.keeps : []) {
+            const id = keepIdentity(item);
+            if (!id) continue;
+            const found = keeps.get(id);
+            if (!found || keepTime(found) < keepTime(item)) return false;
+        }
+        for (const item of Array.isArray(merged.tracks) ? merged.tracks : []) {
+            const id = keepIdentity(item);
+            if (!id) continue;
+            const found = tracks.get(id);
+            if (!found) return false;
+            if ((Number(found.seen) || 0) < (Number(item.seen) || 0)) return false;
+            if ((Number(found.count) || 0) < (Number(item.count) || 0)) return false;
+        }
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function sleep(ms) {
+    return new Promise(function (resolve) { setTimeout(resolve, ms); });
+}
+
+function wantsMerge(request, body) {
+    if (body && (body.merge === true || body.merge === 1 || body.merge === '1' || body.merge === 'true')) return true;
+    return new URL(request.url).searchParams.get('merge') === '1';
+}
+
 /** 注销账号：校验密码后清空该用户全部云端数据（用户经确认选择彻底删除）。 */
 async function deleteAccount(kv, user, request) {
     const body = await readJson(request);
     const hash = await hashPassword(body.password || '', user.salt);
     if (!safeEqual(hash, user.hash)) return fail(401, '密码不正确，无法注销');
+    const epoch = await bumpBackupRev(kv, user.uid);
     const indexKey = 'un_' + await sha256hex(String(user.username).toLowerCase());
     await kv.delete(indexKey);
     await kv.delete('u_' + user.uid);
     await deletePrefix(kv, 'ut_' + user.uid + '_');
     await deletePrefix(kv, 'bk_' + user.uid + '_');
     await deletePrefix(kv, 'r_' + user.uid + '_');
-    return ok({uid: user.uid, deleted: true});
+    // 账号已不存在，仅保留纪元墓碑：uid 的 rev 永不复用、不回退
+    await kv.put(revKey(user.uid), JSON.stringify({rev: epoch.rev, updatedAt: epoch.updatedAt, deleted: true}));
+    return ok({uid: user.uid, deleted: true, rev: epoch.rev});
+}
+
+/** 清空账号数据：删个人备份与播放历史，保留账号本身，纪元 +1，供「清空后全量重同步」识别。 */
+async function clearAccountData(kv, user) {
+    const epoch = await bumpBackupRev(kv, user.uid);
+    // deletePrefix 会把 bk_<uid>_rv 一起删掉，所以纪元必须在删完后重新写回
+    await deletePrefix(kv, 'bk_' + user.uid + '_');
+    await deletePrefix(kv, 'r_' + user.uid + '_');
+    await kv.put(revKey(user.uid), JSON.stringify(epoch));
+    return ok({uid: user.uid, cleared: true, rev: epoch.rev, updatedAt: epoch.updatedAt});
 }
 
 function appIdOf(request) {
@@ -346,7 +640,50 @@ function publicName(value) {
 async function saveBackup(kv, user, request) {
     const body = await readJson(request);
     const type = body.type;
-    if (!validType(type)) return fail(400, '备份类型不合法');
+    // rv 是纪元保留名，不允许作为备份类型写入
+    if (!validType(type) || type === 'rv') return fail(400, '备份类型不合法');
+    // 仅 keep 支持 merge=1；其它类型保持原有的整包覆盖行为不变
+    if (type === 'keep' && wantsMerge(request, body)) {
+        const revInfo = await getBackupRev(kv, user.uid);
+        const key = 'bk_' + user.uid + '_' + type;
+        const incomingData = isObject(body.data) ? body.data : {};
+        let last = null;
+        for (let attempt = 0; attempt < KEEP_MERGE_RETRIES; attempt++) {
+            const raw = await kv.get(key);
+            let base = null;
+            if (raw) {
+                try {
+                    base = JSON.parse(raw);
+                } catch (e) {
+                    base = null;
+                }
+            }
+            const merged = mergeKeepData(base && base.data, incomingData);
+            const record = {
+                type: type,
+                appId: appIdOf(request),
+                updatedAt: Date.now(),
+                data: merged,
+            };
+            await kv.put(key, JSON.stringify(record));
+            last = record;
+            // 没有 CAS/事务：写完延时回读；内容被并发写覆盖就基于最新内容再合并一轮
+            let stable = true;
+            for (const delay of [0, 200, 450]) {
+                if (delay > 0) await sleep(delay);
+                const check = await kv.get(key);
+                if (!check || !mergedFullyStored(check, merged)) {
+                    stable = false;
+                    break;
+                }
+            }
+            if (stable) {
+                return ok({type: type, updatedAt: record.updatedAt, rev: revInfo.rev, merged: true, attempts: attempt + 1});
+            }
+        }
+        return ok({type: type, updatedAt: last.updatedAt, rev: revInfo.rev, merged: true, attempts: KEEP_MERGE_RETRIES, partial: true});
+    }
+    const revInfo = await bumpBackupRev(kv, user.uid);
     const record = {
         type: type,
         appId: appIdOf(request),
@@ -354,16 +691,18 @@ async function saveBackup(kv, user, request) {
         data: body.data == null ? null : body.data,
     };
     await kv.put('bk_' + user.uid + '_' + type, JSON.stringify(record));
-    return ok({type: type, updatedAt: record.updatedAt});
+    return ok({type: type, updatedAt: record.updatedAt, rev: revInfo.rev});
 }
 
 async function loadBackup(kv, user, request) {
     const type = new URL(request.url).searchParams.get('type') || '';
-    if (!validType(type)) return fail(400, '备份类型不合法');
+    if (!validType(type) || type === 'rv') return fail(400, '备份类型不合法');
+    const revInfo = await getBackupRev(kv, user.uid);
     const raw = await kv.get('bk_' + user.uid + '_' + type);
-    if (!raw) return fail(404, '暂无云端备份');
+    // 404 仍按老格式返回；额外带上 rev，旧客户端只会读 ok/error，不会受影响
+    if (!raw) return json(404, {ok: false, error: '暂无云端备份', rev: revInfo.rev, updatedAt: revInfo.updatedAt});
     try {
-        return ok(JSON.parse(raw));
+        return ok(Object.assign({}, JSON.parse(raw), {rev: revInfo.rev}));
     } catch (e) {
         return fail(500, '云端备份数据损坏');
     }
@@ -499,13 +838,13 @@ async function ingestEvents(kv, user, request) {
     return ok({accepted: accepted, skipped: skipped});
 }
 
-async function pullChanges(kv, user, request) {
+async function pullChanges(kv, uid, request) {
     const url = new URL(request.url);
     const configKey = headerValue(request, 'x-webhtv-config-key') || url.searchParams.get('configKey') || '';
     const since = Number(headerValue(request, 'x-webhtv-since') || 0) || 0;
     const requested = Number(headerValue(request, 'x-webhtv-limit') || 100) || 100;
     const limit = Math.min(200, Math.max(1, requested));
-    const prefix = await hkey(user.uid, configKey);
+    const prefix = await hkey(uid, configKey);
     const keys = [];
     let cursor;
     for (let page = 0; page < 4; page++) {
@@ -515,13 +854,35 @@ async function pullChanges(kv, user, request) {
         cursor = result.cursor;
         if (!cursor || result.complete) break;
     }
+    // 并发读取 + 单 key 超时：历史坏 blob（COS 502）不再逐条串行重试拖慢整请求。
+    // 不做持久/内存失败标记：EdgeOne 每次都重建 isolate，内存缓存跨请求无效，落盘缓存又要多一次读；
+    // 每次请求重新探测的代价已被并发+超时压到最低，坏 blob 被修复后下一次请求即自动恢复。
+    let logged = 0;
+    const outcomes = await mapLimit(keys, READ_CONCURRENCY, async function (key) {
+        try {
+            return {key: key, raw: await getWithTimeout(kv, key)};
+        } catch (e) {
+            // 单条 blob 读取失败只跳过该条并记录，不能让整个增量接口 500；
+            // 不删除坏 blob，避免影响尚未迁移的其他设备
+            const reason = String((e && e.message) || e || 'unknown').slice(0, 200);
+            if (logged < 8) {
+                logged++;
+                console.error('[playback-sync] kv.get failed: ' + key + ' -> ' + reason);
+            }
+            return {key: key, error: reason};
+        }
+    });
     const records = [];
-    for (const key of keys) {
-        const raw = await kv.get(key);
-        if (!raw) continue;
+    const skipped = [];
+    for (const outcome of outcomes) {
+        if (outcome.error) {
+            skipped.push({key: outcome.key, error: outcome.error});
+            continue;
+        }
+        if (!outcome.raw) continue;
         let record;
         try {
-            record = JSON.parse(raw);
+            record = JSON.parse(outcome.raw);
         } catch (e) {
             continue;
         }
@@ -549,7 +910,14 @@ async function pullChanges(kv, user, request) {
         });
         else changes.push(record);
     }
-    return ok({changes: changes, deleted: deleted, nextSince: String(nextSince)});
+    // skipped/warnings 供客户端与排查使用；旧客户端会忽略这些新增可选字段
+    return ok({
+        changes: changes,
+        deleted: deleted,
+        nextSince: String(nextSince),
+        skipped: skipped.length,
+        warnings: skipped.slice(0, 5),
+    });
 }
 
 const DANDAN_BASE = 'https://api.dandanplay.net';
@@ -663,15 +1031,20 @@ async function route(context) {
             if (!user) return fail(401, '登录已失效');
             return await deleteAccount(kv, user, request);
         }
+        if ((path === '/api/account/clear' || path === '/api/backup/clear') && request.method === 'POST') {
+            const user = await authUser(kv, request);
+            if (!user) return fail(401, '登录已失效');
+            return await clearAccountData(kv, user);
+        }
         if ((path === '/api/playback/events' || path === '/api/playback/push') && request.method === 'POST') {
             const user = await authUser(kv, request);
             if (!user) return fail(401, '登录已失效');
             return await ingestEvents(kv, user, request);
         }
         if (path === '/api/playback/sync' && request.method === 'GET') {
-            const user = await authUser(kv, request);
-            if (!user) return fail(401, '登录已失效');
-            return await pullChanges(kv, user, request);
+            const uid = await authUid(kv, request);
+            if (!uid) return fail(401, '登录已失效');
+            return await pullChanges(kv, uid, request);
         }
         if (path === '/api/backup/save' && request.method === 'POST') {
             const user = await authUser(kv, request);

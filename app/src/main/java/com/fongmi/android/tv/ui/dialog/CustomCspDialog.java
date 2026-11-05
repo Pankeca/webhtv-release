@@ -50,6 +50,7 @@ import com.fongmi.android.tv.databinding.DialogCustomCspBinding;
 import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.setting.CspUrlImporter;
 import com.fongmi.android.tv.setting.CustomCspSetting;
+import com.fongmi.android.tv.setting.SiteAutoImporter;
 import com.fongmi.android.tv.ui.custom.CustomTextListener;
 import com.fongmi.android.tv.ui.custom.SafeScrollEditText;
 import com.fongmi.android.tv.ui.custom.SettingClipboardOverlay;
@@ -725,6 +726,7 @@ public class CustomCspDialog extends BaseAlertDialog {
             case PAGE -> importLinkPage(url, content);
             case EXTENSION -> importLinkExtension(url);
             case LIVE -> importLinkLive(url);
+            case SITE -> importLinkSite(url, content);
             default -> Notify.show(CspUrlImporter.looksLikeErrorPage(content)
                     ? R.string.setting_custom_csp_import_link_not_found
                     : R.string.setting_custom_csp_import_link_unknown);
@@ -767,6 +769,33 @@ public class CustomCspDialog extends BaseAlertDialog {
             item.setUrl(url);
             addImportedItems(Collections.singletonList(item));
             Notify.show(getString(R.string.setting_custom_csp_import_live_done, item.getName()));
+        } catch (Exception e) {
+            Notify.show(String.valueOf(e.getMessage()));
+        }
+    }
+
+    /**
+     * 一键导入在线站点：URL 归一到站点根，自动生成站点条目并挂上通用自适应扩展
+     * （{@code local://webhome/universal-enhance.js} + 站点级 __fmAutoConfig 覆写）。
+     * 落地后即可浏览站点，详情/播放页出现「App播放」，资源链接走原生链路。
+     */
+    private void importLinkSite(String url, String content) {
+        try {
+            com.fongmi.android.tv.web.WebHomeAssets.ensureInstalled();
+            SiteAutoImporter.Spec spec = SiteAutoImporter.build(url, content);
+            for (CustomCspSetting.Item existing : adapter.getItems()) {
+                if (existing != null && spec.homePage.equals(existing.getHomePage())) {
+                    Notify.show(getString(R.string.setting_custom_csp_import_site_exists, existing.getName()));
+                    return;
+                }
+            }
+            CustomCspSetting.Item item = CustomCspSetting.createDefaultItem();
+            item.setName(spec.name);
+            item.setHomePage(spec.homePage);
+            item.setExtensionsExpanded(true);
+            item.setExtensionsText(spec.extensionsJson);
+            addImportedItems(Collections.singletonList(item));
+            Notify.show(getString(R.string.setting_custom_csp_import_site_done, item.getName()));
         } catch (Exception e) {
             Notify.show(String.valueOf(e.getMessage()));
         }

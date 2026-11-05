@@ -756,6 +756,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
             }
         }, 12f);
         setVideoView();
+        applyTabletPortraitInfoLayout();
         setViewModel();
         setShortDisplay();
         if (shouldUseImmersiveAudio()) {
@@ -1121,11 +1122,16 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         return EpisodeGridLayoutPolicy.getMaxSpan(isLand(), ResUtil.isPad());
     }
 
+    private int mTabletScrollBaseMargin = -1;
+
     private void setVideoView() {
         mBinding.control.action.danmaku.setVisibility(View.VISIBLE);
         mBinding.control.action.reset.setText(ResUtil.getStringArray(R.array.select_reset)[Setting.getReset()]);
         setupActionButtons();
-        mBinding.getRoot().addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> applyVideoFrameSize());
+        mBinding.getRoot().addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+            applyVideoFrameSize();
+            syncTabletPortraitScrollOffset();
+        });
         mBinding.video.post(this::applyVideoFrameSize);
         mBinding.video.addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
             mPiP.update(this, view);
@@ -1155,18 +1161,49 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
             int margin = dp(16);
             int availWidth = rootWidth - margin * 2;
             int availHeight = rootHeight - statusBar - margin * 2;
-            int width;
-            if (ResUtil.isPad()) {
-                // 平板沿用原设计尺寸，仅在可用宽度不足时收缩
-                width = Math.min(dp(400), availWidth);
-            } else {
-                // 手机横屏是左右分栏：视频占可用宽约一半，右侧信息 + 线路/选集整列可上下滚。
-                // 取 0.46 而非 0.50：右列要放得下 4 列选集，按 0.50 算右列只有约 293dp，
-                // 集数按钮仅 71dp，「第10集」四个字（15sp≈60dp）会被 ellipsize 成「…集」。
-                width = Math.min(Math.round(availWidth * 0.46f), Math.round(availHeight * 16f / 9f));
-                width = Math.max(dp(240), Math.min(width, availWidth));
-            }
+            // 横屏左右 1:1 分屏：视频小窗占可用宽度的一半，右侧留给信息 + 线路/选集；
+            // 受可用高度限制时按 16:9 收缩，保证小窗不压到右侧选集区。
+            int width = Math.round(availWidth * 0.5f);
+            width = Math.max(dp(240), Math.min(width, Math.round(availHeight * 16f / 9f)));
             setVideoFrameSize(width, Math.round(width * 9f / 16f));
+        }
+    }
+
+    /**
+     * 平板竖屏：右侧信息列原本被视频高度卡住，简介只能显示两行；
+     * 这里放开内容高度，操作按钮跟随简介，页面滚动区自动下移，保证简介完整且不压住下方的站点/选集。
+     */
+    private void applyTabletPortraitInfoLayout() {
+        if (ResUtil.isLand(this) || !ResUtil.isPad() || mBinding == null) return;
+        ViewGroup.LayoutParams contentParams = mBinding.contentLayout.getLayoutParams();
+        if (contentParams instanceof RelativeLayout.LayoutParams) {
+            ((RelativeLayout.LayoutParams) contentParams).removeRule(RelativeLayout.ABOVE);
+            mBinding.contentLayout.setLayoutParams(contentParams);
+        }
+        ViewGroup.LayoutParams actionParams = mBinding.actionRow.getLayoutParams();
+        if (actionParams instanceof RelativeLayout.LayoutParams) {
+            RelativeLayout.LayoutParams params = (RelativeLayout.LayoutParams) actionParams;
+            params.removeRule(RelativeLayout.ALIGN_BOTTOM);
+            params.addRule(RelativeLayout.BELOW, R.id.content_layout);
+            params.topMargin = ResUtil.dp2px(6);
+            mBinding.actionRow.setLayoutParams(params);
+        }
+        mBinding.content.setMaxLines(Integer.MAX_VALUE);
+        mBinding.content.setEllipsize(null);
+    }
+
+    /** 平板竖屏信息列高于视频时，把下方滚动区推到信息列底部，避免简介被下面的选集区压住。 */
+    private void syncTabletPortraitScrollOffset() {
+        if (ResUtil.isLand(this) || !ResUtil.isPad() || mBinding == null || mBinding.swipeLayout == null) return;
+        ViewGroup.LayoutParams params = mBinding.swipeLayout.getLayoutParams();
+        if (!(params instanceof RelativeLayout.LayoutParams)) return;
+        RelativeLayout.LayoutParams lp = (RelativeLayout.LayoutParams) params;
+        if (mTabletScrollBaseMargin < 0) mTabletScrollBaseMargin = lp.topMargin;
+        int extra = Math.max(0, mBinding.actionRow.getBottom() - mBinding.video.getBottom());
+        int wanted = mTabletScrollBaseMargin + extra;
+        if (lp.topMargin != wanted) {
+            lp.topMargin = wanted;
+            mBinding.swipeLayout.setLayoutParams(lp);
         }
     }
 

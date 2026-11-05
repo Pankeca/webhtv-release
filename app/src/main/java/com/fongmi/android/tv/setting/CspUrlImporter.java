@@ -7,8 +7,12 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * 社区资源链接导入：把网友分享的一条链接，判断它到底是哪种物料，交给站点注入落地。
@@ -19,6 +23,7 @@ import java.util.Locale;
  *     <li>{@link Kind#EXTENSION} WebHome 扩展（manifest JSON 或单个 .js/.css）—— 挂到某个 WebHome 站点的 extensions；</li>
  *     <li>{@link Kind#PAGE} 自制主页 HTML —— 下载到本地，作为 WebHome 站点的 homePage；</li>
  *     <li>{@link Kind#LIVE} 直播源（.m3u / 频道 txt）—— 新建直播项；</li>
+ *     <li>{@link Kind#SITE} 在线站点 HTML —— 走 {@link SiteAutoImporter} 一键导入为注入站点；</li>
  *     <li>{@link Kind#UNKNOWN} 认不出来，直接提示用户。</li>
  * </ul>
  *
@@ -32,6 +37,7 @@ public final class CspUrlImporter {
         EXTENSION,
         PAGE,
         LIVE,
+        SITE,
         UNKNOWN
     }
 
@@ -43,6 +49,9 @@ public final class CspUrlImporter {
 
     /** 扩展清单里常见的字段。 */
     private static final String[] EXTENSION_FIELDS = {"extensions", "js", "code", "runAt", "cspKeyRegex"};
+
+    /** href 提取（用于数站内导航链接）。 */
+    private static final Pattern HREF_PATTERN = Pattern.compile("href=[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
 
     private CspUrlImporter() {
     }
@@ -68,7 +77,7 @@ public final class CspUrlImporter {
             return Kind.UNKNOWN;
         }
         if (looksLikeErrorPage(body)) return Kind.UNKNOWN;
-        if (looksLikeHtml(body)) return Kind.PAGE;
+        if (looksLikeHtml(body)) return looksLikeLiveSite(url, body) ? Kind.SITE : Kind.PAGE;
         JsonElement element = parseJson(body);
         if (element != null) {
             Kind json = classifyJson(element);
@@ -134,6 +143,70 @@ public final class CspUrlImporter {
                 || lower.contains("页面不存在")
                 || lower.contains("找不到页面")
                 || lower.contains("not found ·");
+    }
+
+    /**
+     * 判断这段 HTML 是不是「在线站点」（走 {@link SiteAutoImporter} 一键导入），
+     * 而不是社区分享的单文件主页快照（走 {@link Kind#PAGE}）。
+     *
+     * <p>分流规则：
+     * <ul>
+     *   <li>错误页（404 等）→ 不是站点；</li>
+     *   <li>路径不以 .html/.htm 结尾 → 是站点（普通站点 URL）；</li>
+     *   <li>路径是 .html 但站内导航链接丰富（≥6 条不同路径）→ 是站点
+     *       （用户粘了详情页之类的深链接）；</li>
+     *   <li>否则 → 单文件主页快照。</li>
+     * </ul>
+     */
+    public static boolean looksLikeLiveSite(String url, String body) {
+        if (isEmpty(body)) return false;
+        if (!looksLikeHtml(body)) return false;
+        if (looksLikeErrorPage(body)) return false;
+        String path = lowerPath(url);
+        boolean pageFile = path.endsWith(".html") || path.endsWith(".htm");
+        if (!pageFile) return true;
+        return countInternalLinks(body, hostOf(url)) >= 6;
+    }
+
+    /** 统计站内导航链接（同 host 或根相对路径）的去重数量，识别「真实站点的页面」。 */
+    static int countInternalLinks(String body, String host) {
+        if (isEmpty(body)) return 0;
+        String text = body.length() > 262144 ? body.substring(0, 262144) : body;
+        Matcher matcher = HREF_PATTERN.matcher(text);
+        Set<String> paths = new HashSet<>();
+        String lowerHost = host == null ? "" : host.toLowerCase(Locale.ROOT);
+        while (matcher.find()) {
+            String href = matcher.group(1).trim();
+            if (href.isEmpty() || href.startsWith("#") || href.startsWith("javascript:") || href.startsWith("mailto:")) continue;
+            if (href.startsWith("//")) {
+                int slash = href.indexOf('/', 2);
+                String linkHost = slash > 0 ? href.substring(2, slash) : href.substring(2);
+                int colon = linkHost.indexOf(':');
+                if (colon > 0) linkHost = linkHost.substring(0, colon);
+                if (!lowerHost.isEmpty() && linkHost.toLowerCase(Locale.ROOT).equals(lowerHost)) paths.add(href);
+            } else if (href.startsWith("/")) {
+                paths.add(href);
+            } else if (!lowerHost.isEmpty()) {
+                String linkHost = hostOf(href);
+                if (!linkHost.isEmpty() && linkHost.toLowerCase(Locale.ROOT).equals(lowerHost)) paths.add(pathOf(href));
+            }
+        }
+        return paths.size();
+    }
+
+    private static String hostOf(String url) {
+        if (isEmpty(url)) return "";
+        String value = url.trim();
+        int scheme = value.indexOf("://");
+        if (scheme < 0) return "";
+        String rest = value.substring(scheme + 3);
+        int slash = rest.indexOf('/');
+        String authority = slash >= 0 ? rest.substring(0, slash) : rest;
+        int at = authority.lastIndexOf('@');
+        if (at >= 0) authority = authority.substring(at + 1);
+        int colon = authority.indexOf(':');
+        if (colon > 0) authority = authority.substring(0, colon);
+        return authority.toLowerCase(Locale.ROOT);
     }
 
     /** 判断正文是不是一段脚本（扩展 js）。 */    public static boolean looksLikeScript(String body) {

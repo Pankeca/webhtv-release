@@ -439,6 +439,38 @@ public class Setting {
         Prefers.put("incognito", incognito);
     }
 
+    /** 缓存自动清理的可选档位（MB），与 TVBox 保持一致。 */
+    public static final int[] AUTO_CLEAR_CACHE_LIMITS = new int[]{100, 200, 300, 500, 1024};
+    private static final int DEFAULT_AUTO_CLEAR_CACHE_MB = 300;
+
+    /** 自动清缓存默认关闭，上限默认 300MB，口径与 TVBox 一致。 */
+    public static boolean isAutoClearCache() {
+        return Prefers.getBoolean("auto_clear_cache");
+    }
+
+    public static void putAutoClearCache(boolean auto) {
+        Prefers.put("auto_clear_cache", auto);
+    }
+
+    public static int getAutoClearCacheLimitMb() {
+        int mb = Prefers.getInt("auto_clear_cache_limit_mb", DEFAULT_AUTO_CLEAR_CACHE_MB);
+        return isAutoClearCacheLimit(mb) ? mb : DEFAULT_AUTO_CLEAR_CACHE_MB;
+    }
+
+    public static void putAutoClearCacheLimitMb(int mb) {
+        Prefers.put("auto_clear_cache_limit_mb", isAutoClearCacheLimit(mb) ? mb : DEFAULT_AUTO_CLEAR_CACHE_MB);
+    }
+
+    public static boolean isAutoClearCacheLimit(int mb) {
+        for (int limit : AUTO_CLEAR_CACHE_LIMITS) if (limit == mb) return true;
+        return false;
+    }
+
+    /** 缓存上限的展示文案：1024MB 显示为 1 GB，其余按 MB。 */
+    public static String formatAutoClearCacheLimit(int mb) {
+        return mb >= 1024 ? (mb / 1024) + " GB" : mb + " MB";
+    }
+
     public static int getLanguage() {
         int language = Prefers.getInt("language", LANGUAGE_FOLLOW_SYSTEM);
         return isLanguage(language) ? language : LANGUAGE_FOLLOW_SYSTEM;

@@ -1255,7 +1255,19 @@ function startSyncManage() {
 
 function loadCspManage(force = false) {
     if (cspLoadedKey === activeKey() && !force) return;
-    getJson('/manage/csp?' + targetQuery(), data => { cspRegistry = normalizeCspRegistry(data); cspLoadedKey = activeKey(); renderCspManage(); });
+    getJson('/manage/csp?' + targetQuery(), data => {
+        try {
+            cspRegistry = normalizeCspRegistry(data);
+            renderCspManage();
+            // 渲染成功后才记已加载；此前先记会导致首屏异常时状态栏卡住、只能手动刷新
+            cspLoadedKey = activeKey();
+        } catch (e) {
+            cspLoadedKey = '';
+            const summary = $('#cspSummary');
+            if (summary.length) summary.text('读取失败，请重试');
+            warnToast('站点注入数据解析失败');
+        }
+    }, '站点注入读取失败');
 }
 const CSP_KINDS = ['webHome', 'csp', 'live', 'other'];
 const CSP_ROOT_SKIP_FIELDS = ['enabled', 'insertIndex', 'homeKey', 'items', 'sites', 'lives', 'proxy'];

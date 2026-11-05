@@ -901,7 +901,39 @@ docker run --rm -v /home/s:/home/s -v /usr/lib/locale:/usr/lib/locale:ro \
 - 选中态同步用 `setSelectedId(itemId, false)`（只改 UI 不回调监听），替代旧的「临时摘监听 → setSelected → 再挂回去」三步舞。
 - **这台 ROM 的 toast 能不能被 screencap 捕到要看时机**：toast 窗口由 SystemUI 管理，部分帧里截不到；验证 toast 建议用「连拍多帧 + 帧差分」或 `dumpsys window windows | grep Toast`，不要凭单张截图断言「没弹」。
 
-## 二十四、开发记录与文档索引（2026-10-31）
+## 二十四、5.6.11：平板横屏回归修正 + 缓存自动清理（真机验证通过，2026-11-06）
+
+> 状态：`versionCode 571 / versionName 5.6.11`，真机（平板 `TB331FC`）验证通过，正式签名包已发布。
+> 本轮两条：横屏形态判定改为「横屏 **且** 非平板」，平板横屏不再隐藏状态栏、不再把底栏胶囊搬进顶栏；设置页新增缓存按体积自动清理（对齐 TVBox 的档位、默认值与触发口径）。
+
+### 产物
+
+| 产物 | 大小 | SHA-256（前 8 位） | 说明 |
+| --- | --- | --- | --- |
+| `mobile-arm64_v8a.apk` | 150,502,238 | `5753ae96` | **正式签名包**（`CN=WebHTV` / `5c3b6ccc` 验签通过），已发布到 GitHub Release v5.6.11 |
+
+| 用途 | 路径 |
+| --- | --- |
+| **检验包（构建产物原始位置）** | `/home/s/REA-src/app/build/outputs/apk/mobileArm64_v8a/release/mobile-arm64_v8a.apk` |
+| **真项目目录（唯一可改）** | `/media/s/7A3A1DFD3A1DB6DB/REA` |
+| **构建副本（实际编译处）** | `/home/s/REA-src` |
+| **发布包归档** | `/home/s/build/rel-5.6.11/mobile-arm64_v8a.apk` |
+
+### 本轮改动（真机验证结论）
+
+| # | 需求 | 实现要点 | 验证 |
+| --- | --- | --- | --- |
+| 1 | **平板横屏恢复原布局**：底栏胶囊不上移、状态栏不隐藏、顶栏不贴顶；只有手机横屏才做 8 胶囊 + 隐藏状态栏 | 判定拆成 `phoneLandscape = 横屏 && !ResUtil.isPad()`：`HomeActivity.applyDeviceAdaptation` 用它决定 `setAdaptiveLayout` 与内联导航；`VodFragment.applyToolbarMetrics` 的 logo/宽度分支与 `applySmallScreenLayout` 同口径（平板横屏不压扁）；`WebHomeChromeController.setAdaptiveLayout` 形态变化时 `requestApplyInsets` 让容器重新按安全区留白 | 平板横屏：状态栏可见、顶栏不贴顶、底栏 3 胶囊仍在底部、顶栏 5 胶囊原尺寸；竖屏不变；旋转往返正确 |
+| 2 | **缓存按体积自动清理**（与 TVBox 同布局/同逻辑） | 档位 100/200/300/500/1024MB，开关默认关、上限默认 300MB（非法值回落）；冷启动 `App.startBackgroundServices` 后台 `FileUtil.autoClearCacheIfNeeded()`，缓存目录 ≥ 上限才清，范围整个 `getCacheDir()`、保留 `update.apk`；设置页 `SettingFragment.onCache` → 新增 `CacheCleanDialog`（当前占用 / 开关 / 档位 / 立即清理 48dp）；两个 prefs 已登记 `Backup.APP_PREFS` | 弹窗四形态无压缩无截断；冷启动实测 534.5MB→2.9MB；关闭开关后冷启动不清理 |
+
+### 踩坑
+
+- **「横屏」不等于「手机横屏」**：形态判断必须叠加设备形态（`landscape && !ResUtil.isPad()`）；第 29 轮只用 orientation，导致平板横屏被当成手机横屏。
+- **新增 prefs 必须登记 `Backup.APP_PREFS`**：`auto_clear_cache` / `auto_clear_cache_limit_mb` 曾漏登记，云备份/恢复会丢设置，本版已补齐。
+- **自动清理只在启动时触发一次**（与 TVBox 同口径），运行期增长不会自动清；清理范围是整个 `getCacheDir()`，必须显式跳过 `update.apk`。
+- 已知差异：手动「立即清理」WebHTV **不重启**（TVBox 会重启）；`update.apk` 保留在设备上没有运行时直证（当时无该文件、无 root）。
+
+## 二十五、开发记录与文档索引（2026-10-31）
 
 > 以后每轮开发、发布或交接，都按 `docs/开发记录规范.md` 更新记录；入口页只保留当前状态。
 

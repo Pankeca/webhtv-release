@@ -8,8 +8,10 @@ import android.view.ViewGroup;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.bean.Config;
 import com.fongmi.android.tv.databinding.AdapterConfigBinding;
+import com.fongmi.android.tv.setting.TvboxConfigSync;
 
 import java.util.List;
 
@@ -69,7 +71,11 @@ public class ConfigAdapter extends RecyclerView.Adapter<ConfigAdapter.ViewHolder
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         Config item = mItems.get(position);
-        holder.binding.text.setText(item.getDesc());
+        // 本地残留的 TVBox 专用协议地址仍保留在列表中，但标记为不可用并弱化显示，
+        // 不静默删除用户数据，同时避免它被当作可用源选中
+        boolean unusable = !TvboxConfigSync.isSupported(item.getUrl());
+        holder.binding.text.setText(unusable ? item.getDesc() + holder.itemView.getContext().getString(R.string.config_unusable) : item.getDesc());
+        holder.binding.text.setAlpha(unusable ? 0.55f : 1f);
         holder.binding.text.setOnClickListener(v -> listener.onTextClick(item));
         holder.binding.delete.setVisibility(readOnly ? View.GONE : View.VISIBLE);
         holder.binding.delete.setOnClickListener(v -> listener.onDeleteClick(item));

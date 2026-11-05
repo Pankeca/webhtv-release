@@ -17,6 +17,7 @@ import android.widget.ImageView;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.widget.LinearLayoutCompat;
+import androidx.core.widget.TextViewCompat;
 import androidx.fragment.app.FragmentActivity;
 import androidx.viewbinding.ViewBinding;
 
@@ -192,7 +193,10 @@ public class DownloadDialog extends BaseAlertDialog implements com.fongmi.androi
 
     private View grid() {
         GridLayout grid = new GridLayout(requireContext());
-        grid.setColumnCount(EpisodeChipConfig.COLUMNS);
+        // 列数按弹窗实际可用宽度算：手机竖屏 2 列、手机横屏 3 列、平板竖屏/横屏 4 列，
+        // 保证每格文字区有足够宽度，长集名（如「第20261017期」）不会溢出或被裁掉
+        int columns = columns();
+        grid.setColumnCount(columns);
         int pad = dp(EpisodeChipConfig.GAP_DP);
         for (int viewIndex = 0; viewIndex < names.size(); viewIndex++) {
             int dataIndex = reverse ? names.size() - 1 - viewIndex : viewIndex;
@@ -204,6 +208,13 @@ public class DownloadDialog extends BaseAlertDialog implements com.fongmi.androi
             grid.addView(chip(dataIndex), params);
         }
         return grid;
+    }
+
+    private int columns() {
+        float density = getResources().getDisplayMetrics().density;
+        boolean land = ResUtil.isLand(requireContext());
+        float dialogDp = ResUtil.getScreenWidth(requireContext()) * (land ? 0.55f : 0.9f) / density;
+        return Math.max(2, Math.min(4, (int) (dialogDp / 120f)));
     }
 
     private View chip(int dataIndex) {
@@ -223,7 +234,11 @@ public class DownloadDialog extends BaseAlertDialog implements com.fongmi.androi
 
         String label = (downloaded ? "✓ " : "") + names.get(dataIndex);
         MaterialTextView name = text(label, EpisodeChipConfig.TEXT_SP, downloaded ? COLOR_DONE_TEXT : Color.BLACK, downloaded);
-        name.setSingleLine(true);
+        // 集数文字按可用宽度自动缩字，最多两行；不再单行硬裁，长集名（第20261017期等）不溢出、不压字
+        name.setSingleLine(false);
+        name.setMaxLines(2);
+        name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(name, 9, EpisodeChipConfig.TEXT_SP, 1, android.util.TypedValue.COMPLEX_UNIT_SP);
         name.setGravity(Gravity.CENTER);
         while (chipViews.size() <= dataIndex) chipViews.add(null);
         chipViews.set(dataIndex, name);

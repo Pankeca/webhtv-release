@@ -61,10 +61,25 @@ public final class CloudConfigSync {
 
     public static JsonObject collect(boolean vod, boolean live, boolean settings) {
         JsonObject data = new JsonObject();
-        if (vod) data.add("vod", App.gson().toJsonTree(Config.getAll(0)));
-        if (live) data.add("live", App.gson().toJsonTree(Config.getAll(1)));
+        // 上传前过滤 WebHTV 不支持的协议地址（如 TVBox 的 clan://），避免把对方本地源写回自己的备份
+        if (vod) data.add("vod", filterSupported(Config.getAll(0)));
+        if (live) data.add("live", filterSupported(Config.getAll(1)));
         if (settings) data.add("settings", collectSettings());
         return data;
+    }
+
+    /** 只序列化 http(s) 源；其余地址标记为不可用但不参与备份，防止反向污染。 */
+    private static JsonArray filterSupported(List<Config> items) {
+        JsonArray array = new JsonArray();
+        for (Config item : items) {
+            if (item == null) continue;
+            if (!TvboxConfigSync.isSupported(item.getUrl())) {
+                TvboxConfigSync.markUnusable(item.getUrl(), item.getType());
+                continue;
+            }
+            array.add(App.gson().toJsonTree(item));
+        }
+        return array;
     }
 
     /** 备份本地配置到当前账号云端（个人隔离）。 */
@@ -77,6 +92,8 @@ public final class CloudConfigSync {
         AuthApi.backupSave(TYPE, data, new AuthApi.Callback() {
             @Override
             public void success(JsonObject response) {
+                // 配置备份是整份覆盖，服务端会递增 rev；本机记录新值，避免自己的写回被当成「版本变化」
+                CloudSyncStore.noteRev(response);
                 CloudSyncStore.markConfigCount(vod ? Config.getAll(0).size() : CloudSyncStore.cloudVodCount(),
                         live ? Config.getAll(1).size() : CloudSyncStore.cloudLiveCount());
                 if (callback != null) callback.success(backupSummary(data));
@@ -102,6 +119,7 @@ public final class CloudConfigSync {
                 AuthApi.backupSave(TYPE, data, new AuthApi.Callback() {
                     @Override
                     public void success(JsonObject result) {
+                        CloudSyncStore.noteRev(result);
                         CloudSyncStore.markConfigCount(vod ? Config.getAll(0).size() : CloudSyncStore.cloudVodCount(),
                                 live ? Config.getAll(1).size() : CloudSyncStore.cloudLiveCount());
                         if (callback != null) callback.success(backupSummary(data));
@@ -129,15 +147,34 @@ public final class CloudConfigSync {
             JsonArray cloudItems = arrayOf(cloud, name);
             if (cloudItems == null) continue;
             JsonArray localItems = arrayOf(local, name);
+            int type = "vod".equals(name) ? 0 : 1;
             if (localItems == null) {
-                local.add(name, cloudItems);
+                // 本地没有该类目时，云端条目也要过协议白名单，避免 clan:// 等本机协议被并回备份
+                JsonArray filtered = new JsonArray();
+                for (JsonElement element : cloudItems) {
+                    String url = urlOf(element);
+                    if (!TvboxConfigSync.isSupported(url)) {
+                        TvboxConfigSync.markUnusable(url, type);
+                        continue;
+                    }
+                    filtered.add(element);
+                }
+                local.add(name, filtered);
                 continue;
             }
             Set<String> localUrls = new LinkedHashSet<>();
             for (JsonElement element : localItems) localUrls.add(urlOf(element));
             JsonArray result = new JsonArray();
             for (JsonElement element : localItems) result.add(element);
-            for (JsonElement element : cloudItems) if (!localUrls.contains(urlOf(element))) result.add(element);
+            for (JsonElement element : cloudItems) {
+                String url = urlOf(element);
+                // 云端历史遗留的不支持协议条目不再回传，避免污染持续扩散
+                if (!TvboxConfigSync.isSupported(url)) {
+                    TvboxConfigSync.markUnusable(url, type);
+                    continue;
+                }
+                if (!localUrls.contains(url)) result.add(element);
+            }
             local.add(name, result);
         }
         return local;
@@ -200,17 +237,19 @@ public final class CloudConfigSync {
         });
     }
 
-    /** 公共配置只拉取，不要求登录：新装用户也能拿到管理员发布的默认源。 */
+    /**
+     * 公共配置只拉取，不要求登录：新装用户也能拿到管理员发布的默认源。
+     * 读取顺序：tvbox_shared_* 新 key 优先，缺失/非法时回退旧 public_config。
+     */
     public static void pullPublic(boolean vod, boolean live, boolean settings, int mode, Callback callback) {
         if (AuthApi.server().isEmpty()) {
             if (callback != null) callback.error("未配置云端服务地址");
             return;
         }
-        AuthApi.publicGet(PUBLIC_KEY, new AuthApi.Callback() {
+        SharedConfigClient.loadForPull(vod, live, settings, new SharedConfigClient.PullCallback() {
             @Override
-            public void success(JsonObject response) {
-                JsonObject data = parseContent(response);
-                if (data == null) {
+            public void success(JsonObject data) {
+                if (data == null || data.size() == 0) {
                     if (callback != null) callback.error("云端公共配置为空");
                     return;
                 }
@@ -224,7 +263,7 @@ public final class CloudConfigSync {
 
             @Override
             public void error(String message) {
-                if (callback != null) callback.error("暂无公共配置：" + message);
+                if (callback != null) callback.error(message);
             }
         });
     }
@@ -269,7 +308,8 @@ public final class CloudConfigSync {
             public void success(JsonObject response) {
                 JsonObject data = payload(response);
                 if (data != null) {
-                    int keeps = sizeOf(data, "keeps");
+                    // 云端追更也按剧名合并计数，保证「本地 N · 云端 N」同一口径
+                    int keeps = countKeepNames(data);
                     int tracks = sizeOf(data, "tracks");
                     CloudSyncStore.markKeepCount(keeps, tracks);
                 }
@@ -281,6 +321,22 @@ public final class CloudConfigSync {
                 loadConfigCount(onDone);
             }
         });
+    }
+
+    /** 云端 backup 中 keeps 的剧名去重数量（同剧多站点只算一条）。 */
+    private static int countKeepNames(JsonObject data) {
+        if (data == null || !data.has("keeps") || !data.get("keeps").isJsonArray()) return 0;
+        List<String> names = new ArrayList<>();
+        try {
+            for (JsonElement element : data.getAsJsonArray("keeps")) {
+                if (element == null || !element.isJsonObject()) continue;
+                JsonObject item = element.getAsJsonObject();
+                names.add(item.has("vodName") && !item.get("vodName").isJsonNull() ? item.get("vodName").getAsString() : "");
+            }
+        } catch (Throwable e) {
+            return 0;
+        }
+        return CloudSyncStore.distinctNames(names);
     }
 
     private static void loadConfigCount(Runnable onDone) {
@@ -315,17 +371,9 @@ public final class CloudConfigSync {
         return record;
     }
 
-    private static JsonObject parseContent(JsonObject response) {
-        try {
-            JsonObject record = response.has("data") && response.get("data").isJsonObject() ? response.getAsJsonObject("data") : response;
-            if (record.has("content") && record.get("content").isJsonPrimitive()) {
-                return App.gson().fromJson(record.get("content").getAsString(), JsonObject.class);
-            }
-            if (record.has("data") && record.get("data").isJsonObject()) return record.getAsJsonObject("data");
-            return record.has("vod") || record.has("live") || record.has("settings") ? record : null;
-        } catch (Throwable e) {
-            return null;
-        }
+    /** 配置中心按勾选类别应用共享配置；复用与公共配置相同的合并/覆盖策略。 */
+    public static int[] applyShared(JsonObject data, boolean vod, boolean live, boolean settings, int mode) {
+        return apply(data, vod, live, settings, mode);
     }
 
     private static int[] apply(JsonObject data, boolean vod, boolean live, boolean settings, int mode) {
@@ -355,6 +403,11 @@ public final class CloudConfigSync {
         int changed = 0;
         for (Config item : items) {
             if (item == null || TextUtils.isEmpty(item.getUrl())) continue;
+            // 从云端拉取时同样按协议白名单过滤，避免历史污染再次落回本地
+            if (!TvboxConfigSync.isSupported(item.getUrl())) {
+                TvboxConfigSync.markUnusable(item.getUrl(), type);
+                continue;
+            }
             Config local = Config.find(item.getUrl(), type);
             boolean exists = local.getId() != 0;
             if (exists && mode == CloudSyncStore.MODE_MERGE) continue;

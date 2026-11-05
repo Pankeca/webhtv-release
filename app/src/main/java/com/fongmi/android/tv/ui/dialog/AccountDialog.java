@@ -13,6 +13,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.text.InputType;
 import android.text.TextUtils;
+import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -23,22 +24,19 @@ import android.view.inputmethod.EditorInfo;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.FrameLayout;
-import android.widget.RadioButton;
-import android.widget.RadioGroup;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.widget.LinearLayoutCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.widget.TextViewCompat;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentActivity;
 import androidx.viewbinding.ViewBinding;
 
-import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.BuildConfig;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.api.AuthApi;
-import com.fongmi.android.tv.bean.Config;
 import com.fongmi.android.tv.bean.Keep;
 import com.fongmi.android.tv.databinding.DialogAccountBinding;
 import com.fongmi.android.tv.playback.KeepCloudBackup;
@@ -70,7 +68,6 @@ import java.util.Locale;
 public class AccountDialog extends BaseAlertDialog {
 
     private static final int ADMIN_TAP_COUNT = 7;
-    private static final String PUBLIC_SUBSCRIPTION_KEY = "subscriptions.json";
 
     private DialogAccountBinding binding;
     private TextInputEditText usernameInput;
@@ -79,11 +76,9 @@ public class AccountDialog extends BaseAlertDialog {
     private TextInputEditText serverInput;
     private Runnable callback;
     private AlertDialog optionsDialog;
-    private boolean syncConfigVod = true;
-    private boolean syncConfigLive = true;
-    private boolean syncConfigSettings = true;
     private int adminTaps;
-    private boolean adminRevealed;
+    /** 上次连点时间：间隔超过 3 秒就重新计数，避免误触累积到 7 次。 */
+    private long adminTapTime;
     private boolean registerMode;
     private int lastWidth;
     /**
@@ -185,9 +180,10 @@ public class AccountDialog extends BaseAlertDialog {
         params.height = WindowManager.LayoutParams.WRAP_CONTENT;
         window.setAttributes(params);
         window.setLayout(params.width, params.height);
-        // 滚动区高度按实际可用屏高动态计算：竖屏多显示一些，横屏矮屏避免被系统栏裁掉
-        int reserved = ResUtil.dp2px(land ? 80 : 190);
-        int maxHeight = Math.max(ResUtil.dp2px(160), Math.min((int) (screenHeight * (land ? 0.78f : 0.66f)), screenHeight - reserved));
+        // 滚动区高度按实际可用屏高动态计算：竖屏多显示一些，横屏矮屏避免被系统栏裁掉；
+        // 底部固定「关闭」占 48dp + 间距，预留高度相应加大，别把关闭按钮顶出屏幕
+        int reserved = ResUtil.dp2px(land ? 150 : 250);
+        int maxHeight = Math.max(ResUtil.dp2px(160), Math.min((int) (screenHeight * (land ? 0.66f : 0.58f)), screenHeight - reserved));
         binding.contentScroll.setMaxHeight(maxHeight);
     }
 
@@ -202,7 +198,8 @@ public class AccountDialog extends BaseAlertDialog {
 
     @Override
     protected void initEvent() {
-        binding.title.setOnClickListener(view -> onTitleTap());
+        // 底部整宽「关闭」：弹窗内容再长也能一屏点到，不用去找外面的空白区
+        binding.close.setOnClickListener(view -> dismiss());
     }
 
     @Override
@@ -218,16 +215,25 @@ public class AccountDialog extends BaseAlertDialog {
         super.onDismiss(dialog);
     }
 
-    private void onTitleTap() {
+    /**
+     * 管理员解锁热区：连点账号名 7 次（与 TVBox 一致）。
+     * 第 3 次开始给出剩余次数提示，避免用户不知道要点几下。
+     */
+    private void onNameTap() {
+        long now = System.currentTimeMillis();
+        if (now - adminTapTime > 3000) adminTaps = 0;
+        adminTapTime = now;
         adminTaps++;
-        if (adminTaps < ADMIN_TAP_COUNT) return;
-        adminTaps = 0;
-        if (AccountStore.isAdminUnlocked()) {
-            adminRevealed = true;
-            render();
-            return;
+        if (adminTaps >= ADMIN_TAP_COUNT) {
+            adminTaps = 0;
+            if (AccountStore.isAdminUnlocked()) {
+                Notify.show(R.string.account_admin_already);
+                return;
+            }
+            promptAdminCode();
+        } else if (adminTaps >= 3) {
+            Notify.show(getString(R.string.account_admin_tap_hint, ADMIN_TAP_COUNT - adminTaps));
         }
-        promptAdminCode();
     }
 
     private void promptAdminCode() {
@@ -246,7 +252,6 @@ public class AccountDialog extends BaseAlertDialog {
                 .setPositiveButton(R.string.dialog_positive, (d, which) -> {
                     if (BuildConfig.ADMIN_CODE.equals(input.getText().toString().trim())) {
                         AccountStore.setAdminUnlocked(true);
-                        adminRevealed = true;
                         Notify.show(R.string.account_admin_unlocked);
                         render();
                     } else {
@@ -266,9 +271,15 @@ public class AccountDialog extends BaseAlertDialog {
         passwordInput = null;
         confirmInput = null;
         serverInput = null;
-        if (!AccountStore.isLogin()) renderLogin();
-        else renderAccount();
-        if (adminRevealed && AccountStore.isAdminUnlocked()) binding.content.addView(adminCard());
+        if (!AccountStore.isLogin()) {
+            renderLogin();
+        } else {
+            // 与 TVBox 个人中心的顺序一致：账号卡 → 四格统计 → 立即同步/同步设置 → 管理员区 → 修改密码/退出/注销
+            renderAccount();
+            // 解锁状态会持久化（与 TVBox 一致）：已经是管理员就直接显示管理区，普通用户永远看不到
+            if (AccountStore.isAdminUnlocked()) binding.content.addView(adminCard());
+            binding.content.addView(securityCard());
+        }
         binding.summary.setText(getString(AccountStore.isLogin() ? R.string.account_summary_login : R.string.account_summary_guest));
     }
 
@@ -289,17 +300,15 @@ public class AccountDialog extends BaseAlertDialog {
 
     private void renderAccount() {
         binding.content.addView(heroCard());
-        binding.content.addView(entryRow(
-                entryTile(getString(R.string.account_section_sync), syncSummary(), "云", "#E8F0FE", "#1A73E8", view -> showSyncOptions()),
-                entryTile(getString(R.string.account_section_config), configSummary(), "配", "#E6F4EA", "#137333", view -> showConfigOptions())));
-        binding.content.addView(securityCard());
+        binding.content.addView(statsCard());
+        binding.content.addView(actionsCard());
     }
 
-    /** 顶部概览：头像 + 账号 + 状态药丸 + 四格统计，一屏看完全部一级入口。 */
+    /** 账号卡：头像 + 「当前账号」+ 账号名（管理员解锁热区）+ UID + 已登录角标，与 TVBox 的账号卡对齐。 */
     private View heroCard() {
         LinearLayoutCompat root = new LinearLayoutCompat(requireContext());
         root.setOrientation(LinearLayoutCompat.VERTICAL);
-        root.setPadding(dp(16), dp(14), dp(16), dp(12));
+        root.setPadding(dp(16), dp(14), dp(16), dp(14));
         GradientDrawable background = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
                 new int[]{Color.parseColor("#FFFFFF"), Color.parseColor("#EDF4FF")});
         background.setCornerRadius(dp(18));
@@ -316,83 +325,151 @@ public class AccountDialog extends BaseAlertDialog {
 
         LinearLayoutCompat texts = new LinearLayoutCompat(requireContext());
         texts.setOrientation(LinearLayoutCompat.VERTICAL);
-        MaterialTextView name = text(AccountStore.name(), 18, Color.parseColor("#1A1C1E"), true);
+        texts.addView(text(getString(R.string.account_current), 11, Color.parseColor("#6B7280"), false));
+        // 账号名兼任管理员解锁热区：连点 7 次（与 TVBox 的交互一致）
+        String displayName = AccountStore.name();
+        if (AccountStore.isAdminUnlocked()) displayName += getString(R.string.account_admin_suffix);
+        MaterialTextView name = text(displayName, 18, Color.parseColor("#1A1C1E"), true);
         name.setMaxLines(1);
         name.setEllipsize(TextUtils.TruncateAt.END);
+        name.setGravity(Gravity.CENTER_VERTICAL);
+        // 账号名兼任管理员解锁热区，点击区按 48dp 起，保证手机上不会点偏
+        name.setMinimumHeight(dp(48));
+        name.setClickable(true);
+        name.setFocusable(true);
+        name.setOnClickListener(view -> onNameTap());
         texts.addView(name);
         MaterialTextView sub = text(getString(R.string.account_uid, AccountStore.uid()), 11, Color.parseColor("#6B7280"), false);
         sub.setMaxLines(1);
         LinearLayoutCompat.LayoutParams subParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        subParams.topMargin = dp(3);
+        subParams.topMargin = dp(2);
         texts.addView(sub, subParams);
-        LinearLayoutCompat.LayoutParams textParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        LinearLayoutCompat.LayoutParams textParams = new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
         textParams.leftMargin = dp(12);
         head.addView(texts, textParams);
         LinearLayoutCompat.LayoutParams badgeParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         badgeParams.leftMargin = dp(8);
         head.addView(badge(getString(R.string.account_badge_login), "#E7F5EC", "#177245"), badgeParams);
-        head.addView(new View(requireContext()), new LinearLayoutCompat.LayoutParams(0, 1, 1));
-        root.addView(head);
+        // 横向头部必须撑满卡片宽度，否则 wrap 宽度下列名会被压缩到 UID 的宽度而出现省略号
+        root.addView(head, new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        return root;
+    }
 
+    /**
+     * 四格统计 + 配置备份行。采用 2×2 排布（与 TVBox 一致），每格「本地 N · 云端 N」单行显示；
+     * 一行四格在手机竖屏放不下，只能靠缩字号硬塞，这里改成两行换字号不缩。
+     */
+    private View statsCard() {
         LinearLayoutCompat stats = new LinearLayoutCompat(requireContext());
-        stats.setOrientation(LinearLayoutCompat.HORIZONTAL);
-        stats.setGravity(Gravity.CENTER_VERTICAL);
+        stats.setOrientation(LinearLayoutCompat.VERTICAL);
         GradientDrawable statsBg = new GradientDrawable();
         statsBg.setColor(Color.parseColor("#F3F7FE"));
         statsBg.setCornerRadius(dp(14));
         stats.setBackground(statsBg);
         stats.setPadding(dp(4), dp(10), dp(4), dp(10));
         LinearLayoutCompat.LayoutParams statsParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        statsParams.topMargin = dp(14);
+        statsParams.topMargin = dp(10);
         stats.setLayoutParams(statsParams);
-        addStat(stats, getString(R.string.account_stats_keep), keepCount(), CloudSyncStore.cloudKeepCount(), false, view -> {
-            dismiss();
-            openActivity("com.fongmi.android.tv.ui.activity.KeepActivity");
-        });
-        addStat(stats, getString(R.string.account_stats_history), AccountSync.localHistoryCount(), CloudSyncStore.cloudHistoryCount(), true, view -> {
-            dismiss();
-            openActivity("com.fongmi.android.tv.ui.activity.HistoryActivity");
-        });
-        addStat(stats, getString(R.string.account_stats_vod), CloudConfigSync.localVodCount(), CloudSyncStore.cloudVodCount(), true, view -> showConfigOptions());
-        addStat(stats, getString(R.string.account_stats_live), CloudConfigSync.localLiveCount(), CloudSyncStore.cloudLiveCount(), true, view -> showConfigOptions());
-        root.addView(stats);
-        return root;
+
+        stats.addView(statPair(
+                statCell(getString(R.string.account_stats_keep), keepCount(), CloudSyncStore.cloudKeepCount(), view -> {
+                    dismiss();
+                    openActivity("com.fongmi.android.tv.ui.activity.KeepActivity");
+                }),
+                statCell(getString(R.string.account_stats_history), AccountSync.localHistoryCount(), CloudSyncStore.cloudHistoryCount(), view -> {
+                    dismiss();
+                    openActivity("com.fongmi.android.tv.ui.activity.HistoryActivity");
+                })));
+        LinearLayoutCompat.LayoutParams secondParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        secondParams.topMargin = dp(4);
+        LinearLayoutCompat second = statPair(
+                statCell(getString(R.string.account_stats_vod), CloudConfigSync.localVodCount(), CloudSyncStore.cloudVodCount(), view -> showSyncOptions()),
+                statCell(getString(R.string.account_stats_live), CloudConfigSync.localLiveCount(), CloudSyncStore.cloudLiveCount(), view -> showSyncOptions()));
+        second.setLayoutParams(secondParams);
+        stats.addView(second);
+
+        // 配置备份：本地是否已把点播源/直播源备份到云端（TVBox 的「已备份 / 未备份」）
+        LinearLayoutCompat configRow = new LinearLayoutCompat(requireContext());
+        configRow.setOrientation(LinearLayoutCompat.HORIZONTAL);
+        configRow.setGravity(Gravity.CENTER_VERTICAL);
+        configRow.setPadding(dp(10), 0, dp(10), 0);
+        configRow.setMinimumHeight(dp(48));
+        configRow.setBackgroundResource(R.drawable.ripple_round_14);
+        configRow.setClickable(true);
+        configRow.setFocusable(true);
+        configRow.setOnClickListener(view -> showSyncOptions());
+        configRow.addView(text(getString(R.string.account_stats_config), 12, Color.parseColor("#5F6368"), false), new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        MaterialTextView configValue = text(getString(CloudSyncStore.cloudConfigCount() > 0 ? R.string.account_config_backup_yes : R.string.account_config_backup_no), 13, Color.parseColor("#111827"), true);
+        configValue.setMaxLines(1);
+        configRow.addView(configValue, new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayoutCompat.LayoutParams configParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        configParams.topMargin = dp(4);
+        configRow.setLayoutParams(configParams);
+        stats.addView(configRow);
+        return stats;
     }
 
-    /** 一格统计：大号数字当主视觉，下面是名称和云端条数；整格可点，直接跳到对应页面。 */
-    private void addStat(LinearLayoutCompat parent, String label, int local, int cloud, boolean divider, View.OnClickListener listener) {
-        if (divider) {
-            View line = new View(requireContext());
-            line.setBackgroundColor(Color.parseColor("#D9E3F2"));
-            LinearLayoutCompat.LayoutParams lineParams = new LinearLayoutCompat.LayoutParams(dp(1), dp(34));
-            parent.addView(line, lineParams);
-        }
+    /** 两格并排，等宽。 */
+    private LinearLayoutCompat statPair(View left, View right) {
+        LinearLayoutCompat row = new LinearLayoutCompat(requireContext());
+        row.setOrientation(LinearLayoutCompat.HORIZONTAL);
+        row.addView(left, new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        LinearLayoutCompat.LayoutParams rightParams = new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        rightParams.leftMargin = dp(4);
+        row.addView(right, rightParams);
+        return row;
+    }
+
+    /** 一格统计：名称在上，「本地 N · 云端 N」单行在下；整格可点，直接跳到对应页面。 */
+    private View statCell(String label, int local, int cloud, View.OnClickListener listener) {
         LinearLayoutCompat column = new LinearLayoutCompat(requireContext());
         column.setOrientation(LinearLayoutCompat.VERTICAL);
-        column.setGravity(Gravity.CENTER_HORIZONTAL);
+        column.setGravity(Gravity.CENTER);
+        column.setPadding(dp(10), dp(8), dp(10), dp(8));
+        column.setMinimumHeight(dp(56));
         column.setClickable(true);
         column.setFocusable(true);
         column.setBackgroundResource(R.drawable.ripple_round_14);
         column.setOnClickListener(listener);
-        // 顺序固定为 名称 / 本地数量 / 云端数量，四列横向对比时才对齐
         MaterialTextView title = text(label, 11, Color.parseColor("#5F6368"), false);
         title.setGravity(Gravity.CENTER);
         title.setMaxLines(1);
         title.setEllipsize(TextUtils.TruncateAt.END);
         column.addView(title);
-        MaterialTextView valueView = text(getString(R.string.account_stats_local, local), 18, Color.parseColor("#111827"), true);
+        MaterialTextView valueView = text(getString(R.string.account_stats_value, local, cloud), 13, Color.parseColor("#111827"), true);
         valueView.setGravity(Gravity.CENTER);
         valueView.setMaxLines(1);
-        LinearLayoutCompat.LayoutParams valueParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        // 云端条数可能到三四位数：宽度不够时只缩字号，不截断
+        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(valueView, 9, 13, 1, TypedValue.COMPLEX_UNIT_SP);
+        LinearLayoutCompat.LayoutParams valueParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         valueParams.topMargin = dp(3);
         column.addView(valueView, valueParams);
-        MaterialTextView cloudView = text(getString(R.string.account_stats_cloud, cloud), 10, Color.parseColor("#9AA0A6"), false);
-        cloudView.setGravity(Gravity.CENTER);
-        cloudView.setMaxLines(1);
-        LinearLayoutCompat.LayoutParams cloudParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        cloudParams.topMargin = dp(2);
-        column.addView(cloudView, cloudParams);
-        parent.addView(column, new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        return column;
+    }
+
+    /**
+     * 一级操作：立即同步 / 同步设置并排，管理员多一颗整宽「发布共享订阅」。
+     * 旧的「云端同步」「配置中心」聚合入口已删除，点击直接进对应操作。
+     */
+    private View actionsCard() {
+        LinearLayoutCompat root = new LinearLayoutCompat(requireContext());
+        root.setOrientation(LinearLayoutCompat.VERTICAL);
+        LinearLayoutCompat.LayoutParams rootParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rootParams.topMargin = dp(10);
+        root.setLayoutParams(rootParams);
+
+        LinearLayoutCompat row = new LinearLayoutCompat(requireContext());
+        row.setOrientation(LinearLayoutCompat.HORIZONTAL);
+        MaterialButton syncNow = createButton(getString(R.string.account_sync_now), true);
+        MaterialButton syncSettings = createButton(getString(R.string.account_sync_settings), false);
+        row.addView(syncNow, new LinearLayoutCompat.LayoutParams(0, dp(48), 1));
+        LinearLayoutCompat.LayoutParams settingsParams = new LinearLayoutCompat.LayoutParams(0, dp(48), 1);
+        settingsParams.leftMargin = dp(8);
+        row.addView(syncSettings, settingsParams);
+        syncNow.setOnClickListener(view -> syncWithCloud());
+        syncSettings.setOnClickListener(view -> showSyncOptions());
+        root.addView(row);
+        return root;
     }
 
     /** 小圆角药丸：状态、角标都用它，统一视觉。 */
@@ -415,77 +492,6 @@ public class AccountDialog extends BaseAlertDialog {
             startActivity(intent);
         } catch (Throwable ignored) {
         }
-    }
-
-    /** 二级菜单入口：并排两列，图标 + 标题 + 状态角标，点击弹出对应二级菜单。 */
-    private View entryRow(View left, View right) {
-        LinearLayoutCompat row = new LinearLayoutCompat(requireContext());
-        row.setOrientation(LinearLayoutCompat.HORIZONTAL);
-        LinearLayoutCompat.LayoutParams rowParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        rowParams.topMargin = dp(8);
-        row.setLayoutParams(rowParams);
-        row.addView(left, new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        LinearLayoutCompat.LayoutParams rightParams = new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
-        rightParams.leftMargin = dp(8);
-        row.addView(right, rightParams);
-        return row;
-    }
-
-    /** 单个入口：图标 + 标题 + 状态角标 + 箭头，单行排布，比堆两行省一半高度。 */
-    private View entryTile(String title, String badge, String icon, String badgeBg, String badgeFg, View.OnClickListener listener) {
-        LinearLayoutCompat tile = new LinearLayoutCompat(requireContext());
-        tile.setOrientation(LinearLayoutCompat.HORIZONTAL);
-        tile.setGravity(Gravity.CENTER_VERTICAL);
-        tile.setPadding(dp(12), dp(12), dp(12), dp(12));
-        tile.setBackground(cardBackground());
-        tile.setClickable(true);
-        tile.setFocusable(true);
-        tile.setOnClickListener(listener);
-        if (android.os.Build.VERSION.SDK_INT >= 23) tile.setForeground(ContextCompat.getDrawable(requireContext(), R.drawable.ripple_round_14));
-
-        MaterialTextView iconView = text(icon, 13, Color.parseColor(badgeFg), true);
-        iconView.setGravity(Gravity.CENTER);
-        GradientDrawable iconBg = new GradientDrawable();
-        iconBg.setColor(Color.parseColor(badgeBg));
-        iconBg.setCornerRadius(dp(9));
-        iconView.setBackground(iconBg);
-        tile.addView(iconView, new LinearLayoutCompat.LayoutParams(dp(28), dp(28)));
-
-        MaterialTextView titleView = text(title, 14, Color.parseColor("#1A1C1E"), true);
-        titleView.setMaxLines(1);
-        titleView.setEllipsize(TextUtils.TruncateAt.END);
-        LinearLayoutCompat.LayoutParams titleParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        titleParams.leftMargin = dp(8);
-        tile.addView(titleView, titleParams);
-
-        LinearLayoutCompat.LayoutParams spacer = new LinearLayoutCompat.LayoutParams(0, 1, 1);
-        tile.addView(new View(requireContext()), spacer);
-
-        MaterialTextView badgeView = text(badge, 10, Color.parseColor("#6B7280"), false);
-        badgeView.setMaxLines(1);
-        badgeView.setEllipsize(TextUtils.TruncateAt.END);
-        badgeView.setPadding(dp(7), dp(3), dp(7), dp(3));
-        GradientDrawable badgeDrawable = new GradientDrawable();
-        badgeDrawable.setColor(Color.parseColor("#F1F4F9"));
-        badgeDrawable.setCornerRadius(dp(8));
-        badgeView.setBackground(badgeDrawable);
-        LinearLayoutCompat.LayoutParams badgeParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        badgeParams.leftMargin = dp(8);
-        tile.addView(badgeView, badgeParams);
-
-        MaterialTextView arrow = text("›", 17, Color.parseColor("#B0B6BD"), false);
-        LinearLayoutCompat.LayoutParams arrowParams = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        arrowParams.leftMargin = dp(4);
-        tile.addView(arrow, arrowParams);
-        return tile;
-    }
-
-    private String syncSummary() {
-        return getString(R.string.account_entry_sync_state, keepCount(), AccountSync.localHistoryCount());
-    }
-
-    private String configSummary() {
-        return getString(R.string.account_config_pull);
     }
 
     private LinearLayoutCompat optionsContent() {
@@ -541,80 +547,11 @@ public class AccountDialog extends BaseAlertDialog {
         }));
         content.addView(infoRow(getString(R.string.account_sync_state), syncStatus()));
 
-        // 上传与恢复合并为一个「同步方式」：三种策略最终都是让本地与云端保持一致
-        int mode = CloudSyncStore.syncMode();
-        content.addView(sectionLabel(getString(R.string.account_sync_mode_label)));
-        RadioGroup group = radioGroup(false);
-        RadioButton merge = radioButton(getString(R.string.account_sync_mode_merge), mode == CloudSyncStore.MODE_MERGE);
-        RadioButton local = radioButton(getString(R.string.account_sync_mode_local), mode == CloudSyncStore.MODE_LOCAL_FIRST);
-        RadioButton cloud = radioButton(getString(R.string.account_sync_mode_cloud), mode == CloudSyncStore.MODE_CLOUD_FIRST);
-        group.addView(merge);
-        group.addView(local);
-        group.addView(cloud);
-        group.setOnCheckedChangeListener((g, id) -> {
-            if (id == View.NO_ID) return;
-            CloudSyncStore.setSyncMode(id == local.getId() ? CloudSyncStore.MODE_LOCAL_FIRST
-                    : id == cloud.getId() ? CloudSyncStore.MODE_CLOUD_FIRST : CloudSyncStore.MODE_MERGE);
-        });
-        content.addView(group);
-        content.addView(buttonRow(getString(R.string.account_sync_now), true, view -> syncWithCloud()));
-        content.addView(note(getString(R.string.account_sync_mode_note)));
-
+        // 同步方式已固定：登录新账号直接上传本地，老账号弹窗二选一（合并默认/覆盖云端），不再提供手动策略
         content.addView(note(getString(R.string.account_auto_bind_note)));
-        showOptionsDialog(getString(R.string.account_section_sync), content);
+        showOptionsDialog(getString(R.string.account_sync_settings), content);
     }
 
-    /** 云端公共配置二级菜单：勾选内容项、冲突策略与拉取。 */
-    private void showConfigOptions() {
-        LinearLayoutCompat content = optionsContent();
-        content.addView(checkRow(getString(R.string.account_config_vod), syncConfigVod, checked -> syncConfigVod = checked));
-        content.addView(checkRow(getString(R.string.account_config_live), syncConfigLive, checked -> syncConfigLive = checked));
-        content.addView(checkRow(getString(R.string.account_config_settings), syncConfigSettings, checked -> syncConfigSettings = checked));
-        // 冲突策略同一行二选一，默认增量合并；勾选即时生效，不再重弹窗口刷新
-        content.addView(sectionLabel(getString(R.string.account_config_mode)));
-        content.addView(conflictModeRow());
-        content.addView(buttonRow(getString(R.string.account_config_pull), true, view -> {
-            dismissOptions();
-            pullPublicConfig();
-        }));
-        content.addView(note(getString(R.string.account_config_note)));
-        showOptionsDialog(getString(R.string.account_section_config), content);
-    }
-
-    /** 同一行展示「增量合并 / 云端覆盖本地」，始终有且仅有一个被选中。 */
-    private View conflictModeRow() {
-        RadioGroup group = radioGroup(true);
-        boolean cloudFirst = CloudSyncStore.conflictMode() == CloudSyncStore.MODE_CLOUD_FIRST;
-        RadioButton merge = radioButton(getString(R.string.account_config_mode_merge), !cloudFirst);
-        RadioButton cloud = radioButton(getString(R.string.account_config_mode_cloud), cloudFirst);
-        group.addView(merge, new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        group.addView(cloud, new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        group.setOnCheckedChangeListener((g, id) -> {
-            if (id == View.NO_ID) return;
-            CloudSyncStore.setConflictMode(id == cloud.getId() ? CloudSyncStore.MODE_CLOUD_FIRST : CloudSyncStore.MODE_MERGE);
-            CloudSyncStore.setConflictRemembered(true);
-        });
-        return group;
-    }
-
-    private RadioGroup radioGroup(boolean horizontal) {
-        RadioGroup group = new RadioGroup(requireContext());
-        group.setOrientation(horizontal ? RadioGroup.HORIZONTAL : RadioGroup.VERTICAL);
-        group.setPadding(0, dp(2), 0, dp(2));
-        return group;
-    }
-
-    private RadioButton radioButton(String label, boolean checked) {
-        RadioButton button = new RadioButton(requireContext());
-        button.setId(View.generateViewId());
-        button.setText(label);
-        button.setTextSize(14);
-        button.setTextColor(Color.parseColor("#3C4043"));
-        button.setChecked(checked);
-        button.setButtonTintList(new ColorStateList(new int[][]{{android.R.attr.state_checked}, {}}, new int[]{Color.parseColor("#1A73E8"), Color.parseColor("#8A8F98")}));
-        button.setPadding(0, dp(4), dp(8), dp(4));
-        return button;
-    }
 
     private LinearLayoutCompat securityCard() {
         LinearLayoutCompat card = card(getString(R.string.account_section_security));
@@ -642,6 +579,8 @@ public class AccountDialog extends BaseAlertDialog {
         view.setGravity(Gravity.CENTER);
         view.setMaxLines(1);
         view.setEllipsize(TextUtils.TruncateAt.END);
+        // 点击区不小于 48dp，手机上不会点偏
+        view.setMinimumHeight(dp(48));
         view.setPadding(dp(6), dp(9), dp(6), dp(9));
         GradientDrawable drawable = new GradientDrawable();
         drawable.setColor(Color.parseColor(bg));
@@ -673,6 +612,8 @@ public class AccountDialog extends BaseAlertDialog {
 
     private View adminCard() {
         LinearLayoutCompat card = card(getString(R.string.account_section_admin));
+        // 管理员区与 TVBox 一致：发布共享订阅排在最前，随后是服务器、后端、更新
+        card.addView(buttonRow(getString(R.string.account_publish_shared), false, view -> SharedConfigCenter.show(requireActivity())));
         card.addView(sectionLabel(getString(R.string.account_section_server)));
         card.addView(fieldRow(getString(R.string.account_server), false));
         card.addView(buttonRow(getString(R.string.account_server_save), true, view -> saveServer()));
@@ -684,10 +625,7 @@ public class AccountDialog extends BaseAlertDialog {
                 render();
             }));
         }
-        card.addView(sectionLabel(getString(R.string.account_section_public)));
-        card.addView(buttonRow(getString(R.string.account_public_publish), false, view -> publishSubscriptions()));
-        card.addView(buttonRow(getString(R.string.account_admin_publish_config), false, view -> publishConfig()));
-        card.addView(buttonRow(getString(R.string.account_public_list), false, view -> listPublic()));
+        // 旧「一键发布订阅 / 公共配置发布 / 公共目录」入口已下线，发布统一走账号卡片上的「发布共享订阅」
         card.addView(sectionLabel(getString(R.string.account_section_backend)));
         card.addView(buttonRow(getString(R.string.account_admin_backend), false, view -> backendLogin()));
         card.addView(buttonRow(getString(R.string.account_admin_update_settings), false, view -> {
@@ -727,7 +665,8 @@ public class AccountDialog extends BaseAlertDialog {
                 AccountSync.onLogin();
                 Notify.show(R.string.account_welcome);
                 render();
-                if (login) promptLoginSync();
+                if (login) promptLoginSyncWhenNeeded();
+                else pushLocalToNewAccount();
             }
 
             @Override
@@ -749,17 +688,57 @@ public class AccountDialog extends BaseAlertDialog {
         return parts.isEmpty() ? getString(R.string.account_sync_result) : getString(R.string.account_sync_done_detail, TextUtils.join(" · ", parts));
     }
 
-    /** 登录后提示是否把本地记录同步到云端，覆盖操作均需用户明确选择。 */
+    /** 新账号：用户未登录期间产生的数据直接上传云端，不再询问。 */
+    private void pushLocalToNewAccount() {
+        if (!isAdded()) return;
+        binding.progress.setVisibility(View.VISIBLE);
+        AccountSync.applyLoginChoice(CloudSyncStore.MODE_LOCAL_FIRST, () -> {
+            if (!isAdded()) return;
+            binding.progress.setVisibility(View.GONE);
+            render();
+            Notify.show(syncResultText());
+        });
+    }
+
+    /**
+     * 登录后按云端状态走固定策略：
+     * - 云端空（新建账号）：直接上传本地数据，不弹窗；
+     * - 云端有数据（老账号）+ 本地有数据：弹窗二选一（合并默认 / 覆盖云端）；
+     * - 云端有数据 + 本地空：静默按合并拉取。
+     */
+    private void promptLoginSyncWhenNeeded() {
+        if (!isAdded()) return;
+        int local = keepCount() + AccountSync.localHistoryCount();
+        AccountSync.probeCloudData(hasCloudData -> {
+            if (!isAdded()) return;
+            if (!hasCloudData) {
+                if (local > 0) pushLocalToNewAccount();
+                return;
+            }
+            if (local == 0) {
+                binding.progress.setVisibility(View.VISIBLE);
+                AccountSync.applyLoginChoice(CloudSyncStore.MODE_MERGE, () -> {
+                    if (!isAdded()) return;
+                    binding.progress.setVisibility(View.GONE);
+                    render();
+                });
+                return;
+            }
+            promptLoginSync();
+        });
+    }
+
+    /** 老账号登录：默认高亮「合并」；取消则暂不同步，也不写入任何选择状态。 */
     private void promptLoginSync() {
         if (!isAdded()) return;
         int local = keepCount() + AccountSync.localHistoryCount();
         if (local == 0) return;
         final int[] mode = {CloudSyncStore.MODE_MERGE};
-        String[] items = {getString(R.string.account_login_sync_merge), getString(R.string.account_login_sync_cloud), getString(R.string.account_login_sync_local)};
+        String[] items = {getString(R.string.account_login_sync_merge), getString(R.string.account_login_sync_local)};
         new MaterialAlertDialogBuilder(requireContext(), R.style.ThemeOverlay_WebHTV_LightDialog)
                 .setTitle(R.string.account_login_sync_title)
                 .setMessage(R.string.account_login_sync_message)
-                .setSingleChoiceItems(items, 0, (d, which) -> mode[0] = which)
+                .setSingleChoiceItems(items, 0, (d, which) -> mode[0] = which == 0 ? CloudSyncStore.MODE_MERGE : CloudSyncStore.MODE_LOCAL_FIRST)
                 .setNegativeButton(R.string.account_login_sync_later, null)
                 .setPositiveButton(R.string.account_login_sync_confirm, (d, which) -> {
                     binding.progress.setVisibility(View.VISIBLE);
@@ -771,48 +750,6 @@ public class AccountDialog extends BaseAlertDialog {
                     });
                 })
                 .show();
-    }
-
-    private void pullPublicConfig() {
-        if (!syncConfigVod && !syncConfigLive && !syncConfigSettings) {
-            Notify.show(R.string.account_config_none_selected);
-            return;
-        }
-        // 冲突策略已在二级菜单内选好（默认增量合并），拉取后界面已关闭，直接回到一级菜单
-        int mode = CloudSyncStore.conflictMode();
-        binding.progress.setVisibility(View.VISIBLE);
-        Notify.show(R.string.account_config_pulling);
-        CloudConfigSync.pullPublic(syncConfigVod, syncConfigLive, syncConfigSettings, mode, new CloudConfigSync.Callback() {
-            @Override
-            public void success(String message) {
-                if (!isAdded()) return;
-                binding.progress.setVisibility(View.GONE);
-                render();
-                Notify.show(message);
-            }
-
-            @Override
-            public void error(String message) {
-                if (!isAdded()) return;
-                binding.progress.setVisibility(View.GONE);
-                Notify.show(message);
-            }
-        });
-    }
-
-    private void publishConfig() {
-        if (!AccountStore.isAdminUnlocked()) return;
-        CloudConfigSync.publish(true, true, true, new CloudConfigSync.Callback() {
-            @Override
-            public void success(String message) {
-                Notify.show(message);
-            }
-
-            @Override
-            public void error(String message) {
-                Notify.show(message);
-            }
-        });
     }
 
     /** 后端服务设置：管理员可在此修改云端服务地址、检测连通性并重建同步绑定。 */
@@ -980,7 +917,7 @@ public class AccountDialog extends BaseAlertDialog {
     private void clearLocalLogin(boolean notify) {
         AccountStore.logout();
         AccountSync.unbind();
-        adminRevealed = false;
+        adminTaps = 0;
         if (notify) Notify.show(R.string.account_logout_done);
         render();
     }
@@ -993,38 +930,6 @@ public class AccountDialog extends BaseAlertDialog {
         render();
     }
 
-    private void publishSubscriptions() {
-        if (!AccountStore.isAdminUnlocked()) return;
-        List<Config> configs = Config.findUrls();
-        String content = App.gson().toJson(configs);
-        AuthApi.publicPut(PUBLIC_SUBSCRIPTION_KEY, content, new AuthApi.Callback() {
-            @Override
-            public void success(com.google.gson.JsonObject data) {
-                Notify.show(R.string.account_public_publish_done);
-            }
-
-            @Override
-            public void error(String message) {
-                Notify.show(message);
-            }
-        });
-    }
-
-    private void listPublic() {
-        AuthApi.publicList(new AuthApi.Callback() {
-            @Override
-            public void success(com.google.gson.JsonObject data) {
-                int count = data.has("keys") ? data.getAsJsonArray("keys").size() : 0;
-                Notify.show(getString(R.string.account_public_list_done, count));
-            }
-
-            @Override
-            public void error(String message) {
-                Notify.show(message);
-            }
-        });
-    }
-
     private String syncStatus() {
         if (!CloudSyncStore.isHistoryEnabled()) return getString(R.string.account_sync_off);
         return getString(R.string.account_sync_status_value, AccountSync.activeSources(), AccountSync.totalSources());
@@ -1032,7 +937,11 @@ public class AccountDialog extends BaseAlertDialog {
 
     private int keepCount() {
         try {
-            return Keep.getVod().size() + Keep.getLive().size();
+            // 按剧名合并：同一部剧在不同站点/配置下只算一条，与列表展示口径一致
+            List<String> names = new ArrayList<>();
+            for (Keep keep : Keep.getVod()) names.add(keep.getVodName());
+            for (Keep keep : Keep.getLive()) names.add(keep.getVodName());
+            return CloudSyncStore.distinctNames(names);
         } catch (Throwable e) {
             return 0;
         }
@@ -1180,11 +1089,12 @@ public class AccountDialog extends BaseAlertDialog {
         return edit;
     }
 
-    private View buttonRow(String label, boolean tonal, View.OnClickListener listener) {
+    /** 生成统一配色的按钮（高度 48dp，保证点击区），由调用方决定整宽还是并排等宽。 */
+    private MaterialButton createButton(String label, boolean tonal) {
         MaterialButton button = new MaterialButton(requireContext());
         button.setText(label);
-        button.setMinHeight(dp(40));
-        button.setMinimumHeight(dp(40));
+        button.setMinHeight(dp(48));
+        button.setMinimumHeight(dp(48));
         button.setPadding(0, 0, 0, 0);
         ColorStateList bg = ContextCompat.getColorStateList(requireContext(), tonal ? R.color.dialog_tonal_button_bg : R.color.dialog_outlined_button_bg);
         ColorStateList fg = ContextCompat.getColorStateList(requireContext(), tonal ? R.color.dialog_tonal_button_text : R.color.dialog_outlined_button_text);
@@ -1194,8 +1104,13 @@ public class AccountDialog extends BaseAlertDialog {
             button.setStrokeColor(ContextCompat.getColorStateList(requireContext(), R.color.dialog_outlined_button_stroke));
             button.setStrokeWidth(dp(1));
         }
+        return button;
+    }
+
+    private View buttonRow(String label, boolean tonal, View.OnClickListener listener) {
+        MaterialButton button = createButton(label, tonal);
         button.setOnClickListener(listener);
-        LinearLayoutCompat.LayoutParams params = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(40));
+        LinearLayoutCompat.LayoutParams params = new LinearLayoutCompat.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
         params.topMargin = dp(10);
         button.setLayoutParams(params);
         return button;
@@ -1218,32 +1133,12 @@ public class AccountDialog extends BaseAlertDialog {
         return root;
     }
 
-    /** 统计行：左侧标签，右侧「本地 N · 云端 M」右对齐。 */
-    private View statRow(String label, int local, int cloud) {
-        return infoRow(label, getString(R.string.account_stats_value, local, cloud));
-    }
-
-    private View checkRow(String label, boolean checked, SwitchRowListener listener) {
-        LinearLayoutCompat row = new LinearLayoutCompat(requireContext());
-        row.setOrientation(LinearLayoutCompat.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(0, dp(6), 0, dp(6));
-        row.addView(text(label, 14, Color.parseColor("#3C4043"), false), new LinearLayoutCompat.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        CheckBox box = new CheckBox(requireContext());
-        box.setChecked(checked);
-        box.setButtonTintList(new ColorStateList(new int[][]{{android.R.attr.state_checked}, {}}, new int[]{Color.parseColor("#1A73E8"), Color.parseColor("#8A8F98")}));
-        box.setOnCheckedChangeListener((button, value) -> listener.onChanged(value));
-        row.setOnClickListener(view -> box.setChecked(!box.isChecked()));
-        row.addView(box, new LinearLayoutCompat.LayoutParams(dp(36), dp(36)));
-        return row;
-    }
-
-    /** 按选中的同步方式让本地与云端保持一致。 */
+    /** 同步方式已固定为增量合并；「覆盖云端」只在登录旧账号的二选一弹窗里出现。 */
     private void syncWithCloud() {
         dismissOptions();
         binding.progress.setVisibility(View.VISIBLE);
         Notify.show(R.string.account_sync_running);
-        AccountSync.sync(CloudSyncStore.syncMode(), () -> {
+        AccountSync.sync(CloudSyncStore.MODE_MERGE, () -> {
             if (!isAdded()) return;
             binding.progress.setVisibility(View.GONE);
             render();
